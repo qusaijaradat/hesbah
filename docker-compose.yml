@@ -26,7 +26,7 @@ services:
         condition: service_healthy
     environment:
       ConnectionStrings__Default: "Host=postgres;Port=5432;Database=greenmarket;Username=greenmarket_app;Password=${POSTGRES_PASSWORD:-ChangeMe_DevOnly!}"
-      Jwt__SigningKey: ${JWT_SIGNING_KEY:-CHANGE_ME_TO_A_LONG_RANDOM_SECRET_AT_LEAST_32_BYTES}
+      Jwt__SigningKey: ${JWT_SIGNING_KEY:-143FHygG1bHhyDvti4Nx/vseNsAs3YCRO1iu2WWXnvo=} #change me
       Jwt__Issuer: GreenMarket
       Jwt__Audience: GreenMarketClients
       Cors__AllowedOrigins__0: http://localhost:5173

@@ -34,4 +34,11 @@
     <ProjectReference Include="..\GreenMarket.Infrastructure\GreenMarket.Infrastructure.csproj" />
   </ItemGroup>
 
+  <!-- Ships inside the compiled DLL (not copied loose to the output folder) so CompanyLogoService
+       can always find it regardless of the process's working directory — used as the invoice-PDF
+       logo whenever the market hasn't uploaded their own via Settings. -->
+  <ItemGroup>
+    <EmbeddedResource Include="Assets\default-logo.png" />
+  </ItemGroup>
+
 </Project>

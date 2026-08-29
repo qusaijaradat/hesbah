@@ -1,0 +1,160 @@
+# Shared non-production infrastructure, deployed ONCE to the Docker host as a
+# long-lived Portainer stack named `hesbah-nonprod`.
+#
+# Why shared: a full per-environment stack would mean a Postgres container per
+# open pull request. Instead every non-prod environment — the persistent `dev`
+# one and every `pr-<n>` — gets its own DATABASE on this one server
+# (hesbah_dev, hesbah_pr_123, …), so isolation is preserved while the marginal
+# cost of a preview drops to its own api + web containers.
+#
+# Production does NOT use anything in here. It runs its own Postgres in
+# compose/prod.yml, with its own volume, and publishes its own port — so
+# nothing a preview does can reach production data, and this stack can be
+# destroyed and rebuilt without touching it.
+#
+# Bootstrap once with deploy/scripts/bootstrap-nonprod.sh, which creates the
+# `hesbah-preview-net` network this stack and every environment stack attach to.
+#
+# The network name is project-scoped on purpose, and that is not cosmetic. The
+# Docker host this deploys to already runs another project with the same
+# design, on a network called `preview-net`, whose shared Postgres carries the
+# service alias `preview-db`. Sharing that network would have made hesbah's
+# `Host=preview-db` connection string resolve to THAT project's database —
+# silently, and only for whichever container Docker's DNS answered with
+# first. A separate network makes the collision impossible rather than
+# unlikely.
+
+networks:
+  hesbah-preview-net:
+    external: true
+    name: hesbah-preview-net
+
+services:
+  # Routes a preview/dev hostname to that environment's web container.
+  #
+  # No Docker socket and no Docker API: Docker's embedded DNS (127.0.0.11)
+  # already resolves container names on a user-defined network, and Portainer
+  # names a stack's containers deterministically — stack `hesbah-pr-123` gives
+  # `hesbah-pr-123-web-1`. So the hostname alone determines the upstream, a
+  # regex server_name turns one into the other, and bringing a preview up or
+  # down needs no configuration change anywhere. It is also strictly safer
+  # than a label-discovery router: the Docker socket is root-equivalent on the
+  # host and this design never mounts it.
+  #
+  # Routing is decided by the SUBDOMAIN alone — the `dev.` / `pr-<n>.` label
+  # in front of the parent domain — and the parent domain appears nowhere in
+  # this file. It cannot: this container is reachable only through the edge
+  # proxy's single wildcard vhost, so by the time a request arrives the parent
+  # domain has already been decided and matching it again would only be a
+  # second place to update. Moving every environment to a new domain is
+  # therefore one change at the edge, one GitHub variable, and nothing here.
+  preview-router:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    ports:
+      # The edge reverse proxy sends the wildcard *.<base-domain> here. This
+      # port is the whole contract between the edge and this stack: one
+      # wildcard vhost, one port, and every environment behind it appears and
+      # disappears without the edge being touched.
+      - "${ROUTER_PORT:-5174}:80"
+    networks:
+      - hesbah-preview-net
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        cat > /etc/nginx/conf.d/default.conf <<'NGINX'
+        # Docker's embedded DNS. `valid=5s` matters: a preview container is
+        # recreated on every push to its PR and comes back on a new IP, so a
+        # cached record would send traffic to a dead address. Resolution is
+        # per-request because the upstream is held in a variable.
+        resolver 127.0.0.11 valid=5s ipv6=off;
+
+        server {
+            listen 80 default_server;
+            server_name _;
+            default_type text/plain;
+            return 503 "no preview environment for this hostname\n";
+        }
+
+        # dev.<parent> -> hesbah-dev-web-1
+        server {
+            listen 80;
+            server_name ~^dev\.;
+            set $$env_upstream "hesbah-dev-web-1";
+            include /etc/nginx/hesbah-proxy.inc;
+        }
+
+        # pr-<n>.<parent> -> hesbah-pr-<n>-web-1
+        server {
+            listen 80;
+            server_name ~^pr-(?<hesbah_pr>[0-9]+)\.;
+            set $$env_upstream "hesbah-pr-$${hesbah_pr}-web-1";
+            include /etc/nginx/hesbah-proxy.inc;
+        }
+        NGINX
+        cat > /etc/nginx/hesbah-proxy.inc <<'NGINX'
+        location / {
+            proxy_pass http://$$env_upstream:80;
+            proxy_http_version 1.1;
+            proxy_set_header Host              $$host;
+            proxy_set_header X-Real-IP         $$remote_addr;
+            proxy_set_header X-Forwarded-For   $$proxy_add_x_forwarded_for;
+            # The edge terminates TLS, so tell the app it is https — otherwise
+            # it builds http:// links.
+            proxy_set_header X-Forwarded-Proto https;
+            client_max_body_size 32m;
+            proxy_read_timeout 300s;
+            proxy_send_timeout 300s;
+
+            # A torn-down preview still matches the pr-<n>. pattern, so its URL
+            # would otherwise answer a bare 502 that reads like a broken
+            # router. `proxy_intercept_errors` is deliberately left OFF: this
+            # catches nginx's own connect/resolve failures, which is what a
+            # missing environment is, while a 502 the APPLICATION returns
+            # passes through untouched.
+            error_page 502 503 504 = @unavailable;
+        }
+
+        location @unavailable {
+            default_type text/plain;
+            return 503 "this environment is not running — it may have been torn down, or a deploy is in progress\n";
+        }
+        NGINX
+        nginx -t && exec nginx -g 'daemon off;'
+    deploy:
+      resources:
+        limits:
+          memory: 64m
+
+  # One Postgres for every non-production environment, one database each.
+  #
+  # Credentials default to the same values docker-compose.yml uses for local
+  # development, so this stack comes up with no configuration at all. Set
+  # NONPROD_POSTGRES_PASSWORD on the stack to change it — and do, if this host
+  # is shared with anything you care about.
+  preview-db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    # No published port: only containers on hesbah-preview-net need it, and a
+    # published 5432 would be reachable by every other host on this network.
+    environment:
+      POSTGRES_USER: ${NONPROD_POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${NONPROD_POSTGRES_PASSWORD:-ChangeMe_DevOnly!}
+      POSTGRES_DB: postgres
+    volumes:
+      - nonprod-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${NONPROD_POSTGRES_USER:-postgres}"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+    networks:
+      - hesbah-preview-net
+    deploy:
+      resources:
+        limits:
+          memory: 768m
+
+volumes:
+  nonprod-pgdata:

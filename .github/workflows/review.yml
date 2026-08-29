@@ -1,0 +1,94 @@
+name: Review
+
+# Everything that must be true of a change before it is allowed to become an
+# image: the backend compiles and its domain smoke tests pass, the frontend
+# lints, typechecks and builds, and both Dockerfiles still produce an image.
+#
+# Also called as a reusable workflow by deploy-dev.yml and deploy-prod.yml, so
+# nothing reaches an environment on a merge that would have failed on the pull
+# request. A rollback deploy skips it — it redeploys an image that already
+# passed this on its way in, and re-checking today's source says nothing about
+# an older tag.
+
+on:
+  pull_request:
+    branches: [main, develop]
+  workflow_call:
+
+concurrency:
+  # Superseded pull-request pushes are cancelled; a review that a deploy is
+  # waiting on is not.
+  group: review-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  backend:
+    name: Backend — build + smoke tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+      - name: Restore
+        run: dotnet restore backend/GreenMarket.sln
+      - name: Build
+        # The solution builds clean today (0 warnings), so adding -warnaserror
+        # here would cost nothing and keep it that way — left off only so a new
+        # SDK's analyzer set cannot turn an unrelated pull request red.
+        run: dotnet build backend/GreenMarket.sln -c Release --no-restore
+      - name: Domain smoke tests
+        # tools/SmokeTests is a console harness, not a test framework — it
+        # exits non-zero when a check fails, which is all a CI gate needs.
+        run: dotnet run --project backend/tools/SmokeTests -c Release --no-build
+
+  frontend:
+    name: Frontend — lint + typecheck + build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          # Matches the node:20-alpine build stage in frontend/Dockerfile —
+          # CI passing on a different major than the image builds on is a
+          # gap worth not having.
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - name: Lint
+        run: npm run lint
+      - name: Typecheck + build
+        # `npm run build` is `tsc -b && vite build`, so this is the typecheck
+        # too — and it fails on the same errors the image build would.
+        run: npm run build
+
+  images:
+    name: Docker images build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      # Built and thrown away — nothing is pushed from a review. The point is
+      # that a broken Dockerfile fails on the pull request rather than at
+      # publish time, after the merge. The cache is shared with build.yml, so
+      # publishing the same commit later is mostly a cache hit.
+      - name: Build API image
+        uses: docker/build-push-action@v6
+        with:
+          context: backend
+          file: backend/Dockerfile
+          push: false
+          cache-from: type=gha,scope=api
+          cache-to: type=gha,mode=max,scope=api
+      - name: Build web image
+        uses: docker/build-push-action@v6
+        with:
+          context: frontend
+          file: frontend/Dockerfile
+          push: false
+          cache-from: type=gha,scope=web
+          cache-to: type=gha,mode=max,scope=web

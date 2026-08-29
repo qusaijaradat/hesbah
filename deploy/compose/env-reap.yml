@@ -1,0 +1,39 @@
+# Teardown for one preview environment. Deleting the `hesbah-pr-<n>` stack
+# removes its containers — the expensive part — but leaves its database behind
+# on the shared Postgres. This one-shot stack reclaims that, and is itself
+# deleted immediately afterwards by the teardown workflow.
+#
+# Deployed as `hesbah-${ENV_ID}-reap`.
+#
+# Deliberately never usable against dev or production: the workflow that
+# deploys it only runs on `pull_request: closed`, ENV_DB_NAME is always the
+# `hesbah_pr_<n>` name CI derived from the PR number, and the container itself
+# refuses anything that does not match that shape.
+
+networks:
+  hesbah-preview-net:
+    external: true
+    name: hesbah-preview-net
+
+services:
+  drop-db:
+    image: postgres:16-alpine
+    restart: "no"
+    networks:
+      - hesbah-preview-net
+    environment:
+      PGPASSWORD: ${NONPROD_POSTGRES_PASSWORD:-ChangeMe_DevOnly!}
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        set -e
+        # Refuse to run against anything that is not a preview database, so a
+        # mistyped ENV_ID can never drop the dev environment.
+        case "${ENV_DB_NAME:?}" in
+          hesbah_pr_*) ;;
+          *) echo "refusing to drop '${ENV_DB_NAME}' — not a hesbah_pr_* database"; exit 1 ;;
+        esac
+        psql -h preview-db -U '${NONPROD_POSTGRES_USER:-postgres}' -c \
+          "DROP DATABASE IF EXISTS \"${ENV_DB_NAME:?}\" WITH (FORCE)"
+        echo "dropped database ${ENV_DB_NAME}"

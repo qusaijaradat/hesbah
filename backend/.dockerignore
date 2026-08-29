@@ -1,0 +1,11 @@
+# bin/ and obj/ hold host-built output. Copying them into the context both
+# bloats it and lets stale artifacts confuse `dotnet publish` inside the image.
+**/bin/
+**/obj/
+**/*.user
+.vs/
+.idea/
+.git
+.DS_Store
+# Local-only overrides — never bake these into an image.
+**/appsettings.*.local.json

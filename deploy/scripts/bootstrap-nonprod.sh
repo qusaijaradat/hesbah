@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # One-time setup for the non-production side of the deployment.
 #
-# Creates the `preview-net` Docker network and deploys the shared
+# Creates the `hesbah-preview-net` Docker network and deploys the shared
 # `hesbah-nonprod` stack (preview-router + preview-db) that every dev and
 # preview environment attaches to. Safe to re-run: the network is created only
 # if missing, and re-deploying the stack just updates it in place.
@@ -54,14 +54,14 @@ resolve_endpoint() {
 eid="$(resolve_endpoint)"
 
 # `attachable` is what lets a separately deployed stack join this network.
-# Without it, every environment stack fails at "network preview-net not found"
+# Without it, every environment stack fails at "network hesbah-preview-net not found"
 # in a way that reads like the network is missing rather than unusable.
-if api GET "/api/endpoints/${eid}/docker/networks/preview-net" >/dev/null 2>&1; then
-  echo "network preview-net already exists"
+if api GET "/api/endpoints/${eid}/docker/networks/hesbah-preview-net" >/dev/null 2>&1; then
+  echo "network hesbah-preview-net already exists"
 else
-  echo "creating network preview-net on endpoint ${eid}"
+  echo "creating network hesbah-preview-net on endpoint ${eid}"
   api POST "/api/endpoints/${eid}/docker/networks/create" --data-binary @- >/dev/null <<'JSON'
-{"Name": "preview-net", "Driver": "bridge", "Attachable": true, "CheckDuplicate": true}
+{"Name": "hesbah-preview-net", "Driver": "bridge", "Attachable": true, "CheckDuplicate": true}
 JSON
   echo "created"
 fi
@@ -85,7 +85,7 @@ cat <<'DONE'
 Done. Point the edge reverse proxy's wildcard vhost at this host:
 
   *.<base-domain>  ->  http://<docker-host>:5174   (dev + PR previews)
-  <base-domain>    ->  http://<docker-host>:5173   (production)
+  <base-domain>    ->  http://<docker-host>:5175   (production)
 
 where <base-domain> is the value of the HESBAH_BASE_DOMAIN GitHub variable.
 

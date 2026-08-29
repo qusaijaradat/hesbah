@@ -80,13 +80,16 @@ services:
   web:
     image: ${WEB_IMAGE:?}
     restart: unless-stopped
-    # The only published port in the stack, and the same one docker-compose.yml
-    # publishes locally. Production is NOT behind preview-router: the wildcard
-    # *.<base-domain> that feeds the router on 5174 matches subdomains only,
-    # not the apex, so the apex gets its own edge vhost pointing straight
-    # here.
+    # Production is NOT behind preview-router: the wildcard *.<base-domain>
+    # that feeds the router on 5174 matches subdomains only, not the apex, so
+    # the apex gets its own edge vhost pointing straight here.
+    #
+    # 5175, not the 5173 docker-compose.yml uses locally: 5173 is already
+    # published by another project on the target host, and a colliding port
+    # fails the stack at container-create time with an error that names the
+    # port and nothing else.
     ports:
-      - "${WEB_PORT:-5173}:80"
+      - "${WEB_PORT:-5175}:80"
     depends_on:
       - api
     deploy:

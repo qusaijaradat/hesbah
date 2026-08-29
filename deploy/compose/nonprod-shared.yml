@@ -13,12 +13,21 @@
 # destroyed and rebuilt without touching it.
 #
 # Bootstrap once with deploy/scripts/bootstrap-nonprod.sh, which creates the
-# `preview-net` network this stack and every environment stack attach to.
+# `hesbah-preview-net` network this stack and every environment stack attach to.
+#
+# The network name is project-scoped on purpose, and that is not cosmetic. The
+# Docker host this deploys to already runs another project with the same
+# design, on a network called `preview-net`, whose shared Postgres carries the
+# service alias `preview-db`. Sharing that network would have made hesbah's
+# `Host=preview-db` connection string resolve to THAT project's database —
+# silently, and only for whichever container Docker's DNS answered with
+# first. A separate network makes the collision impossible rather than
+# unlikely.
 
 networks:
-  preview-net:
+  hesbah-preview-net:
     external: true
-    name: preview-net
+    name: hesbah-preview-net
 
 services:
   # Routes a preview/dev hostname to that environment's web container.
@@ -49,7 +58,7 @@ services:
       # disappears without the edge being touched.
       - "${ROUTER_PORT:-5174}:80"
     networks:
-      - preview-net
+      - hesbah-preview-net
     entrypoint:
       - /bin/sh
       - -c
@@ -127,7 +136,7 @@ services:
   preview-db:
     image: postgres:16-alpine
     restart: unless-stopped
-    # No published port: only containers on preview-net need it, and a
+    # No published port: only containers on hesbah-preview-net need it, and a
     # published 5432 would be reachable by every other host on this network.
     environment:
       POSTGRES_USER: ${NONPROD_POSTGRES_USER:-postgres}
@@ -141,7 +150,7 @@ services:
       timeout: 3s
       retries: 10
     networks:
-      - preview-net
+      - hesbah-preview-net
     deploy:
       resources:
         limits:

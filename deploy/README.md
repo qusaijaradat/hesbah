@@ -21,13 +21,13 @@ deploy, and the dev deploy is a rehearsal of production's.
 ```
 *.<base-domain>  ──►  host:5174  ──►  preview-router  ──►  hesbah-dev-web-1
                                           (nginx)     └─►  hesbah-pr-<n>-web-1
-  <base-domain>  ──►  host:5173  ──►  hesbah-web-1    (production, not routed)
+  <base-domain>  ──►  host:5175  ──►  hesbah-web-1    (production, not routed)
 ```
 
 `preview-router` lives in the shared `hesbah-nonprod` stack and needs no
 per-environment configuration at all. It matches on the **subdomain** —
 `dev.` or `pr-<n>.` — and turns it into a container name, which Docker's
-embedded DNS resolves on the shared `preview-net` network. Portainer names a
+embedded DNS resolves on the shared `hesbah-preview-net` network. Portainer names a
 stack's containers deterministically (stack `hesbah-pr-123` → container
 `hesbah-pr-123-web-1`), so the hostname alone determines the upstream.
 
@@ -49,7 +49,7 @@ CORS never applies.
 ### Why the API service is called `backend`
 
 Docker adds the **service name** as a network alias on every network a
-container joins. Every environment attaches to the shared `preview-net`, so a
+container joins. Every environment attaches to the shared `hesbah-preview-net`, so a
 service named `api` would make `api` resolve to N different containers there —
 and `frontend/nginx.conf` proxies to the literal name `api:8080`. One PR's
 frontend could reach another PR's API.
@@ -97,14 +97,14 @@ export PORTAINER_TOKEN=…
 deploy/scripts/bootstrap-nonprod.sh
 ```
 
-Creates the `preview-net` network and deploys `preview-router` + `preview-db`.
+Creates the `hesbah-preview-net` network and deploys `preview-router` + `preview-db`.
 Safe to re-run.
 
 ### 2. Point the edge reverse proxy at the host
 
 ```
 *.<base-domain>  ->  http://<docker-host>:5174    dev + PR previews
-  <base-domain>  ->  http://<docker-host>:5173    production
+  <base-domain>  ->  http://<docker-host>:5175    production
 ```
 
 Both forwarding `X-Forwarded-Proto: https`. The wildcard matches subdomains
@@ -127,7 +127,7 @@ Variables):
 | `HESBAH_BASE_DOMAIN` | **yes** | e.g. `hesbah.example.com`. The only value with no default — the deploys fail fast without it. |
 | `PORTAINER_ENDPOINT_ID` | no | Needed only when Portainer has more than one endpoint. |
 | `PORTAINER_INSECURE` | no | `1` if Portainer is behind a self-signed certificate. Default `0`. |
-| `PROD_WEB_PORT` | no | Default `5173`. |
+| `PROD_WEB_PORT` | no | Default `5175`. Not 5173 — that port is already used by another project on the target host. |
 | `PROD_DB_NAME` / `PROD_DB_USER` | no | Default `greenmarket` / `greenmarket_app`. |
 
 **Repository secrets**:

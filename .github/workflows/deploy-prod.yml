@@ -129,7 +129,7 @@ jobs:
           JWT_SIGNING_KEY=${JWT_SIGNING_KEY}
           JWT_ISSUER=GreenMarket
           JWT_AUDIENCE=GreenMarketClients
-          WEB_PORT=${{ vars.PROD_WEB_PORT || '5173' }}
+          WEB_PORT=${{ vars.PROD_WEB_PORT || '5175' }}
           API_MEM=768m
           EOF
 

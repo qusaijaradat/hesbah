@@ -218,4 +218,18 @@ app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
 
+// ---------- Health ----------
+// Anonymous and dependency-free on purpose. The deploy pipeline polls this
+// through the public hostname to decide whether a rollout succeeded
+// (deploy/scripts/portainer.sh), and the container healthcheck polls it
+// locally — so it must answer 200 as soon as the app can serve requests, and
+// must not depend on anything that could make a healthy API look unhealthy.
+// The database is not probed here: schema creation and seeding already ran
+// above, so reaching this line at all means the connection worked.
+//
+// Removing this endpoint does not fail a build or a test — it fails every
+// deploy, several minutes in, as a health-gate timeout that looks like a
+// networking problem. It was dropped once already in 1c712fb.
+app.MapGet("/health", () => Results.Ok(new { status = "ok" })).AllowAnonymous();
+
 app.Run();

@@ -31,12 +31,42 @@ set -euo pipefail
 CURL_OPTS=(--silent --show-error --fail-with-body --max-time 120)
 [[ "${PORTAINER_INSECURE:-0}" == "1" ]] && CURL_OPTS+=(--insecure)
 
+# Every call goes through here so that a failure REPORTS WHAT PORTAINER SAID.
+#
+# This used to be a bare `curl` whose output the callers redirected to
+# /dev/null — which also discarded the error body, so a rejected deploy
+# surfaced in CI as `curl: (22) The requested URL returned error: 409` and
+# nothing else. The status code alone does not distinguish "a stack with that
+# name exists", "the stack is in a failed state" and "the compose file is
+# invalid", and all three want different fixes.
+#
+# So the body is captured here and echoed to stderr on failure, no matter what
+# the caller does with stdout.
 api() {
   local method="$1" path="$2"; shift 2
-  curl "${CURL_OPTS[@]}" -X "$method" \
+  local out rc=0
+  out="$(curl "${CURL_OPTS[@]}" -X "$method" \
     -H "X-API-Key: ${PORTAINER_TOKEN}" \
     -H "Content-Type: application/json" \
-    "${PORTAINER_URL}${path}" "$@"
+    "${PORTAINER_URL}${path}" "$@" 2>&1)" || rc=$?
+  if (( rc != 0 )); then
+    {
+      echo "Portainer API ${method} ${path} failed (curl exit ${rc}):"
+      # jq if it parses, raw otherwise — an HTML error page or a curl message
+      # is still worth showing verbatim.
+      jq -r '.message // .details // .' <<<"$out" 2>/dev/null || echo "$out"
+      if [[ "$out" == *409* || "$out" == *"error: 409"* ]]; then
+        echo
+        echo "409 usually means the stack exists but is not in a state Portainer will update"
+        echo "— most often a previous deploy that failed part-way. Inspect and remove it with:"
+        echo "    $0 status  <stack-name>"
+        echo "    $0 destroy <stack-name>"
+        echo "then re-run this workflow; the stack is recreated from scratch."
+      fi
+    } >&2
+    return "$rc"
+  fi
+  printf '%s' "$out"
 }
 
 resolve_endpoint() {

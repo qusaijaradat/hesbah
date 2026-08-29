@@ -1,5 +1,6 @@
 using GreenMarket.Api.DTOs;
 using GreenMarket.Domain.Enums;
+using GreenMarket.Domain.Services;
 using GreenMarket.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
@@ -118,10 +119,19 @@ public class ReportService : IReportService
 
     public async Task<IReadOnlyList<MarketReportRow>> MarketReportAsync(ReportFilterRequest filter)
     {
-        var salesQuery = _db.FarmerTransactions.Where(t => t.Type == FarmerTransactionType.Sale).AsQueryable();
-        if (filter.DateFrom is not null) salesQuery = salesQuery.Where(t => t.Date >= filter.DateFrom);
-        if (filter.DateTo is not null) salesQuery = salesQuery.Where(t => t.Date <= filter.DateTo);
-        var sales = await salesQuery.Select(t => new { t.Date, t.SaleValue, t.Commission }).ToListAsync();
+        // Bug fix: the market earns its commission on every active sale it brokers — whether or
+        // not a specific farmer is tracked on that invoice (a lot of produce is priced and sold
+        // by the market itself without a farmer ever being entered as a separate partner) — but
+        // this used to read from FarmerTransactions, which only ever has a row for invoices that
+        // DO have a farmer attached. That silently dropped every farmer-less sale from the whole
+        // report (and from Daily Closing — see DailyClosingAsync below), showing 0 commission for
+        // days/periods that were entirely farmer-less even with a real commission rate configured.
+        // Reading straight from Invoices (which always carries its own CommissionRateApplied and
+        // TotalValue, farmer or no farmer) fixes that.
+        var salesQuery = _db.Invoices.Where(i => i.Status == InvoiceStatus.Active).AsQueryable();
+        if (filter.DateFrom is not null) salesQuery = salesQuery.Where(i => i.Date >= filter.DateFrom);
+        if (filter.DateTo is not null) salesQuery = salesQuery.Where(i => i.Date <= filter.DateTo);
+        var sales = await salesQuery.Select(i => new { i.Date, i.TotalValue, i.CommissionRateApplied }).ToListAsync();
 
         var expenseQuery = _db.Expenses.AsQueryable();
         if (filter.DateFrom is not null) expenseQuery = expenseQuery.Where(e => e.Date >= filter.DateFrom);
@@ -136,7 +146,9 @@ public class ReportService : IReportService
         };
 
         var salesByPeriod = sales.GroupBy(s => PeriodKey(s.Date))
-            .ToDictionary(g => g.Key, g => (Sales: g.Sum(x => x.SaleValue), Commission: g.Sum(x => x.Commission)));
+            .ToDictionary(g => g.Key, g => (
+                Sales: g.Sum(x => x.TotalValue),
+                Commission: g.Sum(x => CommissionCalculator.Calculate(x.TotalValue, x.CommissionRateApplied).Commission)));
         var expensesByPeriod = expenses.GroupBy(e => PeriodKey(e.Date))
             .ToDictionary(g => g.Key, g => g.Sum(x => x.Amount));
 
@@ -228,15 +240,21 @@ public class ReportService : IReportService
         var dayStart = new DateTimeOffset(date.Year, date.Month, date.Day, 0, 0, 0, date.Offset);
         var dayEnd = dayStart.AddDays(1);
 
-        var invoiceCount = await _db.Invoices.CountAsync(i =>
-            i.Status == InvoiceStatus.Active && i.Date >= dayStart && i.Date < dayEnd);
-        var totalSalesValue = await _db.Invoices
+        // Bug fix: commission used to be summed from FarmerTransactions, which only has a row for
+        // invoices that have a farmer attached — a day where every sale was farmer-less (common:
+        // a lot of produce is priced and sold by the market itself without a farmer ever being
+        // entered as a separate partner) showed "عمولة 0" even with a real commission rate set in
+        // Settings. The commission is the market's own cut on every active sale regardless of
+        // whether a farmer is tracked, so this now reads straight off each invoice's own stored
+        // TotalValue/CommissionRateApplied (see MarketReportAsync above for the same fix).
+        var invoicesToday = await _db.Invoices
             .Where(i => i.Status == InvoiceStatus.Active && i.Date >= dayStart && i.Date < dayEnd)
-            .SumAsync(i => i.TotalValue);
+            .Select(i => new { i.TotalValue, i.CommissionRateApplied })
+            .ToListAsync();
 
-        var totalCommission = await _db.FarmerTransactions
-            .Where(t => t.Type == FarmerTransactionType.Sale && t.Date >= dayStart && t.Date < dayEnd)
-            .SumAsync(t => t.Commission);
+        var invoiceCount = invoicesToday.Count;
+        var totalSalesValue = invoicesToday.Sum(i => i.TotalValue);
+        var totalCommission = invoicesToday.Sum(i => CommissionCalculator.Calculate(i.TotalValue, i.CommissionRateApplied).Commission);
 
         var totalExpenses = await _db.Expenses
             .Where(e => e.Date >= dayStart && e.Date < dayEnd)

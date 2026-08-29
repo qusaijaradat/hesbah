@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>GreenMarket.Infrastructure</RootNamespace>
+  </PropertyGroup>
+
+  <!--
+    NOTE for whoever opens this in a normal environment: this project needs
+    `dotnet restore` (blocked in the sandbox that generated this scaffold — see
+    docs/DEVELOPMENT_NOTES.md). On any machine with normal internet access this
+    just works with `dotnet restore` / `dotnet build`.
+  -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="8.0.10" />
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="8.0.10" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\GreenMarket.Domain\GreenMarket.Domain.csproj" />
+  </ItemGroup>
+
+</Project>

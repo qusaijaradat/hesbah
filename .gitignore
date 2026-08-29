@@ -1,0 +1,19 @@
+# .NET
+backend/**/bin/
+backend/**/obj/
+backend/**/*.user
+
+# Node / frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.env
+frontend/*.local
+
+# Editors / OS
+.vs/
+.vscode/
+.idea/
+*.DS_Store
+
+# Secrets
+**/appsettings.*.local.json

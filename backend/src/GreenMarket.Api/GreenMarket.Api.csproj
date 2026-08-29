@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>GreenMarket.Api</RootNamespace>
+    <UserSecretsId>greenmarket-api-dev</UserSecretsId>
+  </PropertyGroup>
+
+  <!--
+    NOTE: needs `dotnet restore` on a machine with normal internet access — the
+    sandbox that generated this scaffold could not reach nuget.org (see
+    docs/DEVELOPMENT_NOTES.md). Package versions below are pinned to what was current
+    at the time of writing; bump with `dotnet outdated` or the NuGet UI as you like.
+  -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="8.0.10" />
+    <PackageReference Include="Swashbuckle.AspNetCore" Version="6.6.2" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="8.0.10">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <!-- Excel export (requirement doc §7/§8 "export to PDF or Excel") — MIT licensed. -->
+    <PackageReference Include="ClosedXML" Version="0.104.1" />
+    <!-- PDF export + printable invoice/report layout — QuestPDF Community license is free for
+         companies under ~$1M USD annual revenue, which fits a single local market; re-check
+         https://questpdf.com/pricing if this business grows past that. -->
+    <PackageReference Include="QuestPDF" Version="2024.10.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\GreenMarket.Domain\GreenMarket.Domain.csproj" />
+    <ProjectReference Include="..\GreenMarket.Infrastructure\GreenMarket.Infrastructure.csproj" />
+  </ItemGroup>
+
+</Project>

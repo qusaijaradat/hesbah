@@ -1,0 +1,60 @@
+import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { AuthProvider } from "./auth/AuthContext";
+import { ProtectedRoute } from "./auth/ProtectedRoute";
+import { Layout } from "./components/Layout";
+import { LoginPage } from "./pages/LoginPage";
+import { ChangePasswordPage } from "./pages/ChangePasswordPage";
+import { DashboardPage } from "./pages/DashboardPage";
+import { PartnersPage } from "./pages/PartnersPage";
+import { ItemsPage } from "./pages/ItemsPage";
+import { FarmerAccountPage, MerchantAccountPage } from "./pages/PartnerAccountPage";
+import { InvoicesPage } from "./pages/InvoicesPage";
+import { InvoiceNewPage } from "./pages/InvoiceNewPage";
+import { InvoiceEditPage } from "./pages/InvoiceEditPage";
+import { InvoiceDetailPage } from "./pages/InvoiceDetailPage";
+import { BulkPrintPage } from "./pages/BulkPrintPage";
+import { PaymentsPage } from "./pages/PaymentsPage";
+import { ReportsPage } from "./pages/ReportsPage";
+import { DailyClosingPage } from "./pages/DailyClosingPage";
+import { SettingsPage } from "./pages/SettingsPage";
+import { UsersPage } from "./pages/UsersPage";
+import { RolesPage } from "./pages/RolesPage";
+import { AuditLogPage } from "./pages/AuditLogPage";
+
+function Protected({ children, permission }: { children: React.ReactNode; permission?: string }) {
+  return (
+    <ProtectedRoute requirePermission={permission}>
+      <Layout>{children}</Layout>
+    </ProtectedRoute>
+  );
+}
+
+export default function App() {
+  return (
+    <BrowserRouter>
+      <AuthProvider>
+        <Routes>
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/change-password" element={<ProtectedRoute skipPasswordGate><ChangePasswordPage /></ProtectedRoute>} />
+          <Route path="/" element={<Protected><DashboardPage /></Protected>} />
+          <Route path="/invoices" element={<Protected permission="invoices.view"><InvoicesPage /></Protected>} />
+          <Route path="/invoices/new" element={<Protected permission="invoices.create"><InvoiceNewPage /></Protected>} />
+          <Route path="/invoices/print" element={<Protected permission="invoices.view"><BulkPrintPage /></Protected>} />
+          <Route path="/invoices/:id/edit" element={<Protected permission="invoices.edit"><InvoiceEditPage /></Protected>} />
+          <Route path="/invoices/:id" element={<Protected permission="invoices.view"><InvoiceDetailPage /></Protected>} />
+          <Route path="/partners" element={<Protected permission="partners.view"><PartnersPage /></Protected>} />
+          <Route path="/items" element={<Protected permission="invoices.view"><ItemsPage /></Protected>} />
+          <Route path="/partners/:id/farmer-account" element={<Protected permission="partners.view"><FarmerAccountPage /></Protected>} />
+          <Route path="/partners/:id/merchant-account" element={<Protected permission="partners.view"><MerchantAccountPage /></Protected>} />
+          <Route path="/payments" element={<Protected permission="payments.view"><PaymentsPage /></Protected>} />
+          <Route path="/reports" element={<Protected permission="reports.view"><ReportsPage /></Protected>} />
+          <Route path="/daily-closing" element={<Protected permission="reports.view"><DailyClosingPage /></Protected>} />
+          <Route path="/settings" element={<Protected permission="settings.manage"><SettingsPage /></Protected>} />
+          <Route path="/users" element={<Protected permission="users.manage"><UsersPage /></Protected>} />
+          <Route path="/roles" element={<Protected permission="users.manage"><RolesPage /></Protected>} />
+          <Route path="/audit-log" element={<Protected permission="audit.view"><AuditLogPage /></Protected>} />
+        </Routes>
+      </AuthProvider>
+    </BrowserRouter>
+  );
+}

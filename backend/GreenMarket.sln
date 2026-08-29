@@ -1,0 +1,50 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{E6CACBBA-0726-4289-8498-94B0CA67B968}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GreenMarket.Domain", "src\GreenMarket.Domain\GreenMarket.Domain.csproj", "{A6EF1F25-E4BA-400A-B020-0344181B8237}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tools", "tools", "{52C809C6-54F3-46BF-B8BE-7CC0210B0189}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SmokeTests", "tools\SmokeTests\SmokeTests.csproj", "{C1330260-2A5A-4833-B55F-D5B943FBD997}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GreenMarket.Infrastructure", "src\GreenMarket.Infrastructure\GreenMarket.Infrastructure.csproj", "{3EFEB931-2FF2-41FD-9157-0B73944C0F7D}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GreenMarket.Api", "src\GreenMarket.Api\GreenMarket.Api.csproj", "{80909113-6CA0-46BF-A3F5-AEC4261991CD}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{A6EF1F25-E4BA-400A-B020-0344181B8237}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A6EF1F25-E4BA-400A-B020-0344181B8237}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A6EF1F25-E4BA-400A-B020-0344181B8237}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A6EF1F25-E4BA-400A-B020-0344181B8237}.Release|Any CPU.Build.0 = Release|Any CPU
+		{C1330260-2A5A-4833-B55F-D5B943FBD997}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{C1330260-2A5A-4833-B55F-D5B943FBD997}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{C1330260-2A5A-4833-B55F-D5B943FBD997}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{C1330260-2A5A-4833-B55F-D5B943FBD997}.Release|Any CPU.Build.0 = Release|Any CPU
+		{3EFEB931-2FF2-41FD-9157-0B73944C0F7D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{3EFEB931-2FF2-41FD-9157-0B73944C0F7D}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{3EFEB931-2FF2-41FD-9157-0B73944C0F7D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{3EFEB931-2FF2-41FD-9157-0B73944C0F7D}.Release|Any CPU.Build.0 = Release|Any CPU
+		{80909113-6CA0-46BF-A3F5-AEC4261991CD}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{80909113-6CA0-46BF-A3F5-AEC4261991CD}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{80909113-6CA0-46BF-A3F5-AEC4261991CD}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{80909113-6CA0-46BF-A3F5-AEC4261991CD}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{A6EF1F25-E4BA-400A-B020-0344181B8237} = {E6CACBBA-0726-4289-8498-94B0CA67B968}
+		{C1330260-2A5A-4833-B55F-D5B943FBD997} = {52C809C6-54F3-46BF-B8BE-7CC0210B0189}
+		{3EFEB931-2FF2-41FD-9157-0B73944C0F7D} = {E6CACBBA-0726-4289-8498-94B0CA67B968}
+		{80909113-6CA0-46BF-A3F5-AEC4261991CD} = {E6CACBBA-0726-4289-8498-94B0CA67B968}
+	EndGlobalSection
+EndGlobal

@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>GreenMarket.Domain</RootNamespace>
+  </PropertyGroup>
+
+  <!--
+    Intentionally has ZERO PackageReference entries.
+    The domain layer must stay pure C# (no EF Core, no ASP.NET, no third-party
+    packages) so business rules can be unit-tested in total isolation and so
+    this project builds even in network-restricted environments.
+  -->
+
+</Project>

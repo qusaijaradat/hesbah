@@ -1,0 +1,48 @@
+using GreenMarket.Api.Auth;
+using GreenMarket.Api.DTOs;
+using GreenMarket.Api.Services;
+using GreenMarket.Domain.Enums;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+
+namespace GreenMarket.Api.Controllers;
+
+/// <summary>Requirement doc §3: unified farmers/merchants table + name-suggestion lookup. §6: account statements.</summary>
+[ApiController]
+[Authorize]
+[Route("api/partners")]
+public class PartnersController : ControllerBase
+{
+    private readonly IPartnerService _partnerService;
+    public PartnersController(IPartnerService partnerService) => _partnerService = partnerService;
+
+    [HttpGet]
+    [RequirePermission(PermissionKeys.PartnersView)]
+    public async Task<ActionResult> List(string? search, PartnerType? type, int page = 1, int pageSize = 25) =>
+        Ok(await _partnerService.ListAsync(search, type, page, pageSize));
+
+    [HttpGet("suggest")]
+    [RequirePermission(PermissionKeys.PartnersView)]
+    public async Task<ActionResult<IReadOnlyList<PartnerSuggestionDto>>> Suggest([FromQuery] string? q = null) =>
+        Ok(await _partnerService.SuggestAsync(q));
+
+    [HttpGet("{id:int}")]
+    [RequirePermission(PermissionKeys.PartnersView)]
+    public async Task<ActionResult<PartnerDto>> Get(int id) => Ok(await _partnerService.GetAsync(id));
+
+    [HttpPost]
+    [RequirePermission(PermissionKeys.PartnersManage)]
+    public async Task<ActionResult<PartnerDto>> Create(CreatePartnerRequest request) => Ok(await _partnerService.CreateAsync(request));
+
+    [HttpPut("{id:int}")]
+    [RequirePermission(PermissionKeys.PartnersManage)]
+    public async Task<ActionResult<PartnerDto>> Update(int id, UpdatePartnerRequest request) => Ok(await _partnerService.UpdateAsync(id, request));
+
+    [HttpGet("{id:int}/merchant-account")]
+    [RequirePermission(PermissionKeys.PartnersView)]
+    public async Task<ActionResult<MerchantAccountDto>> MerchantAccount(int id) => Ok(await _partnerService.GetMerchantAccountAsync(id));
+
+    [HttpGet("{id:int}/farmer-account")]
+    [RequirePermission(PermissionKeys.PartnersView)]
+    public async Task<ActionResult<FarmerAccountDto>> FarmerAccount(int id) => Ok(await _partnerService.GetFarmerAccountAsync(id));
+}

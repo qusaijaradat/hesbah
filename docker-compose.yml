@@ -1,0 +1,50 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: greenmarket
+      POSTGRES_USER: greenmarket_app
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ChangeMe_DevOnly!}
+    ports:
+      - "5432:5432"
+    volumes:
+      - greenmarket_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U greenmarket_app -d greenmarket"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      ConnectionStrings__Default: "Host=postgres;Port=5432;Database=greenmarket;Username=greenmarket_app;Password=${POSTGRES_PASSWORD:-ChangeMe_DevOnly!}"
+      Jwt__SigningKey: ${JWT_SIGNING_KEY:-CHANGE_ME_TO_A_LONG_RANDOM_SECRET_AT_LEAST_32_BYTES}
+      Jwt__Issuer: GreenMarket
+      Jwt__Audience: GreenMarketClients
+      Cors__AllowedOrigins__0: http://localhost:5173
+      ASPNETCORE_ENVIRONMENT: Production
+    ports:
+      - "5080:8080"
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: http://localhost:5080/api
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - "5173:80"
+
+volumes:
+  greenmarket_pgdata:

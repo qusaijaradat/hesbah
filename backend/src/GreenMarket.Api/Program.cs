@@ -18,10 +18,6 @@ var builder = WebApplication.CreateBuilder(args);
 // QuestPDF Community license — see GreenMarket.Api.csproj comment on the free-tier revenue cap.
 QuestPDF.Settings.License = LicenseType.Community;
 
-// Must run before any PDF is generated — see PdfFontRegistration.cs for why "Tahoma" (used by
-// every ExportService PDF) needs to be backed by a bundled font rather than the OS's own fonts.
-PdfFontRegistration.RegisterBundledFonts();
-
 // ---------- Configuration ----------
 builder.Services.Configure<JwtSettings>(builder.Configuration.GetSection(JwtSettings.SectionName));
 
@@ -146,6 +142,24 @@ builder.Services.AddSwaggerGen(options =>
 
 var app = builder.Build();
 
+// ---------- PDF fonts ----------
+// Must run before any PDF is generated (invoice requests come well after this, so right after
+// the app is built is early enough) — see PdfFontRegistration.cs for why "Tahoma" (used by every
+// ExportService PDF) needs to be backed by a bundled font rather than the OS's own fonts.
+// Wrapped defensively: this is new, unproven-in-production code, and the two most recent
+// production deploys both failed their health check right after changes like this one landed —
+// if bundling the font ever goes wrong for some reason (e.g. a future packaging change strips the
+// embedded resource), the worst outcome should be "invoice PDFs render Arabic incorrectly again",
+// logged clearly, never "the entire site is down".
+try
+{
+    PdfFontRegistration.RegisterBundledFonts();
+}
+catch (Exception ex)
+{
+    app.Logger.LogError(ex, "Failed to register bundled PDF fonts (Amiri) — invoice PDFs may render Arabic text as garbled/missing glyphs until this is fixed.");
+}
+
 // ---------- First-run schema + seed ----------
 // EnsureCreated (not Migrate) deliberately: this scaffold has no EF Core migrations yet
 // because `dotnet ef migrations add` needs the same NuGet-restored `dotnet-ef` tool that
@@ -167,15 +181,25 @@ using (var scope = app.Services.CreateScope())
     // there. Guard for that case explicitly instead of silently 500-ing the first time someone
     // uploads a logo. Safe to run every startup either way — CREATE TABLE IF NOT EXISTS is a no-op
     // once the table exists (including right after EnsureCreatedAsync made it on a fresh install).
-    await db.Database.ExecuteSqlRawAsync("""
-        CREATE TABLE IF NOT EXISTS company_logos (
-            "Id" integer NOT NULL PRIMARY KEY,
-            "Content" bytea NOT NULL,
-            "ContentType" character varying(100) NOT NULL,
-            "UpdatedAt" timestamp with time zone NOT NULL,
-            "UpdatedByUserId" integer NULL
-        );
-        """);
+    // Wrapped defensively for the same reason as the font registration above: if this ever fails
+    // (e.g. the production DB role turns out not to have CREATE TABLE rights), the app should keep
+    // serving everything else with the logo feature degraded, not go down entirely.
+    try
+    {
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE TABLE IF NOT EXISTS company_logos (
+                "Id" integer NOT NULL PRIMARY KEY,
+                "Content" bytea NOT NULL,
+                "ContentType" character varying(100) NOT NULL,
+                "UpdatedAt" timestamp with time zone NOT NULL,
+                "UpdatedByUserId" integer NULL
+            );
+            """);
+    }
+    catch (Exception ex)
+    {
+        app.Logger.LogError(ex, "Failed to ensure the company_logos table exists — logo upload/display will not work until this is fixed.");
+    }
 
     await DbSeeder.SeedAsync(db);
 }

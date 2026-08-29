@@ -57,7 +57,18 @@ public class CompanyLogoService : ICompanyLogoService
 
     public async Task<(byte[] Content, string ContentType)> GetEffectiveLogoAsync()
     {
-        var custom = await GetAsync();
+        CompanyLogo? custom;
+        try
+        {
+            custom = await GetAsync();
+        }
+        catch
+        {
+            // e.g. the company_logos table doesn't exist for some reason (see Program.cs's
+            // defensive CREATE TABLE guard) — fall back to the bundled default rather than
+            // breaking invoice PDF generation over what should be a "nice to have" feature.
+            custom = null;
+        }
         return custom is not null ? (custom.Content, custom.ContentType) : DefaultLogo.Value;
     }
 

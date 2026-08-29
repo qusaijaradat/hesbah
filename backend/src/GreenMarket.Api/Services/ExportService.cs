@@ -185,15 +185,18 @@ public class ExportService : IExportService
                 // first) instead of the leftmost, with the numeric columns proceeding to its left.
                 page.Header().ContentFromRightToLeft().Column(col =>
                 {
-                    CompanyHeaderBlock(col, company, thermalWidth ? 32f : 48f, textCol =>
+                    // Letterhead order requested: logo first (on its own, centered), then name /
+                    // registration number / phone stacked directly under it, each on its own line
+                    // — see CompanyHeaderBlock for the logo-on-top-of-stacked-text layout.
+                    CompanyHeaderBlock(col, company, thermalWidth ? 40f : 64f, textCol =>
                     {
-                        textCol.Item().Text(company.Name).Bold().FontSize(thermalWidth ? 12 : 18);
+                        textCol.Item().AlignCenter().Text(company.Name).Bold().FontSize(thermalWidth ? 12 : 18);
                         if (!thermalWidth && !string.IsNullOrWhiteSpace(company.Address))
-                            textCol.Item().Text(company.Address).FontSize(9).FontColor(Colors.Grey.Darken1);
-                        if (!string.IsNullOrWhiteSpace(company.Phone))
-                            textCol.Item().Text($"هاتف: {company.Phone}").FontSize(thermalWidth ? 8 : 9);
+                            textCol.Item().AlignCenter().Text(company.Address).FontSize(9).FontColor(Colors.Grey.Darken1);
                         if (!thermalWidth && !string.IsNullOrWhiteSpace(company.RegistrationNumber))
-                            textCol.Item().Text($"رقم السجل: {company.RegistrationNumber}").FontSize(9);
+                            textCol.Item().AlignCenter().Text($"رقم السجل: {company.RegistrationNumber}").FontSize(9);
+                        if (!string.IsNullOrWhiteSpace(company.Phone))
+                            textCol.Item().AlignCenter().Text($"هاتف: {company.Phone}").FontSize(thermalWidth ? 8 : 9);
                     });
                     col.Item().PaddingTop(6).LineHorizontal(1).LineColor(Colors.Grey.Darken1);
                     col.Item().PaddingTop(6).Text($"التاريخ: {invoice.Date:yyyy-MM-dd}").FontSize(thermalWidth ? 9 : 11);
@@ -341,7 +344,7 @@ public class ExportService : IExportService
         container.ContentFromRightToLeft()
             .Border(1).BorderColor(Colors.Grey.Lighten1).Padding(8).Column(col =>
         {
-            CompanyHeaderBlock(col, company, 22f, textCol => textCol.Item().Text(company.Name).Bold().FontSize(10));
+            CompanyHeaderBlock(col, company, 28f, textCol => textCol.Item().AlignCenter().Text(company.Name).Bold().FontSize(10));
             col.Item().Text($"التاريخ: {invoice.Date:yyyy-MM-dd}").FontSize(8);
             col.Item().Text($"التاجر: {invoice.MerchantName}").FontSize(8);
             col.Item().PaddingTop(4).LineHorizontal(0.5f).LineColor(Colors.Grey.Lighten1);
@@ -381,21 +384,20 @@ public class ExportService : IExportService
     }
 
     /// <summary>
-    /// Settings → "الشعار": if the market has uploaded a logo, renders it in a fixed-size box
-    /// beside the given text lines (RTL, so the logo ends up on the right and the text runs to
-    /// its left); with no logo uploaded, renders exactly the same text lines with nothing else,
-    /// matching the plain text-only header this app had before the logo-upload feature existed.
-    /// Shared by the single-invoice header and the smaller bulk-print card.
+    /// Settings → "الشعار": if the market has uploaded a logo, renders it centered on its own
+    /// line FIRST, with the given text lines (name / registration number / phone, etc.) stacked
+    /// directly underneath it — a classic letterhead layout, logo on top, everything else below
+    /// it. With no logo uploaded, renders exactly the same text lines with nothing else, matching
+    /// the plain text-only header this app had before the logo-upload feature existed. Shared by
+    /// the single-invoice header and the smaller bulk-print card.
     /// </summary>
     private static void CompanyHeaderBlock(ColumnDescriptor col, CompanyInfo company, float logoSize, Action<ColumnDescriptor> textLines)
     {
         if (company.LogoContent is { Length: > 0 })
         {
-            col.Item().Row(row =>
-            {
-                row.ConstantItem(logoSize).Height(logoSize).Image(company.LogoContent).FitArea();
-                row.RelativeItem().PaddingRight(8).Column(textLines);
-            });
+            col.Item().PaddingBottom(4).AlignCenter().Width(logoSize).Height(logoSize)
+                .Image(company.LogoContent).FitArea();
+            textLines(col);
         }
         else
         {

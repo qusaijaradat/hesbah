@@ -1,4 +1,5 @@
 import axios from "axios";
+import { loadingStore } from "../lib/loadingStore";
 
 const AUTH_STORAGE_KEY = "gm_auth";
 
@@ -7,7 +8,7 @@ const AUTH_STORAGE_KEY = "gm_auth";
 // app is opened as http://localhost:5173 on the laptop or http://<laptop-LAN-IP>:5173 from
 // a phone on the same Wi-Fi, without anyone having to edit .env per device. VITE_API_URL
 // still wins if someone sets it explicitly (e.g. pointing at a deployed API).
-const inferredApiUrl = `${window.location.protocol}//${window.location.hostname}:5000/api`;
+const inferredApiUrl = `${window.location.protocol}//${window.location.hostname}:5080/api`;
 
 export const apiClient = axios.create({
   baseURL: import.meta.env.VITE_API_URL || inferredApiUrl,
@@ -17,22 +18,37 @@ export const apiClient = axios.create({
 // running as a hosted artifact; here we DO use localStorage since this is a real,
 // installed web app the market's staff will bookmark and reopen — token persistence
 // across page reloads is expected). See auth/AuthContext.tsx for the read/write side.
-apiClient.interceptors.request.use((config) => {
-  const raw = localStorage.getItem(AUTH_STORAGE_KEY);
-  if (raw) {
-    try {
-      const { token } = JSON.parse(raw);
-      if (token) config.headers.Authorization = `Bearer ${token}`;
-    } catch {
-      // ignore malformed storage
+// Every request through this client bumps the global loading counter (see lib/loadingStore.ts +
+// components/GlobalLoadingBar.tsx) so the whole app shows the same "something is loading" cue —
+// no page has to wire up its own spinner just to get that. finish() is called exactly once per
+// start(), whether the request ultimately succeeds or fails, from the matching branch below.
+apiClient.interceptors.request.use(
+  (config) => {
+    loadingStore.start();
+    const raw = localStorage.getItem(AUTH_STORAGE_KEY);
+    if (raw) {
+      try {
+        const { token } = JSON.parse(raw);
+        if (token) config.headers.Authorization = `Bearer ${token}`;
+      } catch {
+        // ignore malformed storage
+      }
     }
+    return config;
+  },
+  (error) => {
+    loadingStore.finish();
+    return Promise.reject(error);
   }
-  return config;
-});
+);
 
 apiClient.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    loadingStore.finish();
+    return response;
+  },
   (error) => {
+    loadingStore.finish();
     if (error?.response?.status === 401) {
       localStorage.removeItem(AUTH_STORAGE_KEY);
       if (!window.location.pathname.startsWith("/login")) {

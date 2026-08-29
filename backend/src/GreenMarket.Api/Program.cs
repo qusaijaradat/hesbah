@@ -18,6 +18,10 @@ var builder = WebApplication.CreateBuilder(args);
 // QuestPDF Community license — see GreenMarket.Api.csproj comment on the free-tier revenue cap.
 QuestPDF.Settings.License = LicenseType.Community;
 
+// Must run before any PDF is generated — see PdfFontRegistration.cs for why "Tahoma" (used by
+// every ExportService PDF) needs to be backed by a bundled font rather than the OS's own fonts.
+PdfFontRegistration.RegisterBundledFonts();
+
 // ---------- Configuration ----------
 builder.Services.Configure<JwtSettings>(builder.Configuration.GetSection(JwtSettings.SectionName));
 

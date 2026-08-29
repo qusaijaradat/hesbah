@@ -56,3 +56,14 @@ body {
 .table-base td {
   @apply px-3 py-2 border-b border-gray-100;
 }
+
+/* Global request loading bar (components/GlobalLoadingBar.tsx) — an indeterminate strip that
+   sweeps left-to-right while at least one API request is in flight, anywhere in the app. */
+@keyframes global-loading-bar {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(300%); }
+}
+
+.global-loading-bar {
+  animation: global-loading-bar 1s ease-in-out infinite;
+}

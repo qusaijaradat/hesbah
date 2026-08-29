@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "./auth/AuthContext";
 import { ProtectedRoute } from "./auth/ProtectedRoute";
 import { Layout } from "./components/Layout";
+import { GlobalLoadingBar } from "./components/GlobalLoadingBar";
 import { LoginPage } from "./pages/LoginPage";
 import { ChangePasswordPage } from "./pages/ChangePasswordPage";
 import { DashboardPage } from "./pages/DashboardPage";
@@ -32,6 +33,9 @@ function Protected({ children, permission }: { children: React.ReactNode; permis
 export default function App() {
   return (
     <BrowserRouter>
+      {/* Above AuthProvider/Routes so it's visible on every screen (including /login) — see
+          lib/loadingStore.ts + api/client.ts for how it tracks in-flight requests. */}
+      <GlobalLoadingBar />
       <AuthProvider>
         <Routes>
           <Route path="/login" element={<LoginPage />} />

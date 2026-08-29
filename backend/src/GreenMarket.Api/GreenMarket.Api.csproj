@@ -41,4 +41,15 @@
     <EmbeddedResource Include="Assets\default-logo.png" />
   </ItemGroup>
 
+  <!-- Arabic-capable fonts, embedded in the DLL and registered under the name "Tahoma" at startup
+       (see PdfFontRegistration.cs). Fixes invoice PDFs rendering Arabic as "؟؟؟" in production:
+       "Tahoma" is a Windows font that isn't installed on the Linux container the API actually
+       runs on, so QuestPDF/SkiaSharp silently fell back to a font with no Arabic glyphs — it only
+       ever looked right on a developer's Windows machine, which does have real Tahoma installed.
+       Bundling the font removes the dependency on whatever fonts happen to exist on the host. -->
+  <ItemGroup>
+    <EmbeddedResource Include="Assets\Fonts\Amiri-Regular.ttf" />
+    <EmbeddedResource Include="Assets\Fonts\Amiri-Bold.ttf" />
+  </ItemGroup>
+
 </Project>

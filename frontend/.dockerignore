@@ -1,0 +1,10 @@
+# node_modules must never enter the build context: the image runs `npm ci`
+# itself, and copying a host-built tree over it ships macOS/Windows binaries
+# into a linux image (and adds hundreds of MB to every build).
+node_modules
+dist
+.env
+.env.*
+*.local
+.git
+.DS_Store

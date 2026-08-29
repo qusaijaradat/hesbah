@@ -1,0 +1,115 @@
+name: Preview teardown
+
+# Closing a pull request destroys its preview: first the containers, then the
+# database it left on the shared Postgres, then the images it was built from.
+#
+# All three matter, and the second and third are the ones that get forgotten.
+# Without the database drop, the shared Postgres accumulates a dead database
+# per merged PR. Without the image prune, every PUSH — not every PR — strands
+# another api+web pair on the host's disk, which surfaces weeks later as a
+# deploy failing to pull rather than as anything that points at previews.
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [main, develop]
+
+concurrency:
+  # Shares the group with preview.yml so a teardown cannot race a deploy of
+  # the same PR, and is never cancelled: a half-finished teardown is what
+  # leaves an orphaned database behind.
+  group: preview-${{ github.event.number }}
+  cancel-in-progress: false
+
+jobs:
+  teardown:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    # Without pull-requests:write the closing comment fails with "Resource not
+    # accessible by integration". The teardown itself still succeeds, so the
+    # failure is cosmetic — which is exactly why it is worth declaring rather
+    # than leaving to be rediscovered from a red X on an otherwise correct run.
+    permissions:
+      contents: read
+      pull-requests: write
+    environment:
+      name: preview
+    env:
+      PORTAINER_URL: ${{ secrets.PORTAINER_URL }}
+      PORTAINER_TOKEN: ${{ secrets.PORTAINER_TOKEN }}
+      PORTAINER_INSECURE: ${{ vars.PORTAINER_INSECURE || '0' }}
+      PORTAINER_ENDPOINT_ID: ${{ vars.PORTAINER_ENDPOINT_ID }}
+      PR: ${{ github.event.number }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Remove the preview containers
+        run: |
+          chmod +x deploy/scripts/portainer.sh
+          # `destroy` is a no-op when the stack does not exist, so re-running a
+          # teardown — or closing a PR that never got a preview — is harmless.
+          deploy/scripts/portainer.sh destroy "hesbah-pr-${PR}"
+
+      - name: Reclaim the database
+        env:
+          NONPROD_POSTGRES_USER: ${{ secrets.NONPROD_POSTGRES_USER }}
+          NONPROD_POSTGRES_PASSWORD: ${{ secrets.NONPROD_POSTGRES_PASSWORD }}
+        run: |
+          set -euo pipefail
+          umask 077
+          cat > reap.env <<EOF
+          ENV_ID=pr-${PR}
+          ENV_DB_NAME=hesbah_pr_${PR}
+          NONPROD_POSTGRES_USER=${NONPROD_POSTGRES_USER}
+          NONPROD_POSTGRES_PASSWORD=${NONPROD_POSTGRES_PASSWORD}
+          EOF
+          # A one-shot container with no service to health-check, so no health
+          # URL is passed; the script just submits the stack. The container
+          # itself refuses any database name that is not hesbah_pr_*, so a
+          # mistyped PR number cannot drop dev.
+          deploy/scripts/portainer.sh deploy \
+            "hesbah-pr-${PR}-reap" deploy/compose/env-reap.yml reap.env
+          # Give the one-shot container time to finish before the stack that
+          # owns it is deleted.
+          sleep 30
+          deploy/scripts/portainer.sh destroy "hesbah-pr-${PR}-reap"
+
+      # Now that the preview's containers are gone, its images reference
+      # nothing and can go too. This is where the pipeline creates the most
+      # garbage: every push to an open PR builds another pr-<n>-<sha> pair, and
+      # none of them is ever deployed again once the PR closes.
+      #
+      # The prune is host-wide in scope but narrow in what it deletes — only
+      # this project's images that NO container references (running or
+      # stopped), plus dangling layers. The live dev and production containers
+      # keep their own images off the list by being containers, and another
+      # project's images are never candidates at all.
+      #
+      # continue-on-error because a teardown that reclaimed the containers and
+      # the database but not the images has still done the part that matters.
+      - name: Prune the preview's images from the host
+        continue-on-error: true
+        run: |
+          chmod +x deploy/scripts/portainer.sh
+          deploy/scripts/portainer.sh prune \
+            "ghcr.io/$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')"
+
+      - name: Note the teardown on the PR
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const marker = '<!-- hesbah-preview -->';
+            const { data: comments } = await github.rest.issues.listComments({
+              ...context.repo, issue_number: context.issue.number, per_page: 100,
+            });
+            const existing = comments.find(c => c.body?.startsWith(marker));
+            // Only ever edits the comment preview.yml wrote. A PR that never
+            // had a preview gets no new comment out of its teardown.
+            if (existing) {
+              await github.rest.issues.updateComment({
+                ...context.repo,
+                comment_id: existing.id,
+                body: `${marker}\n### Preview environment\n\nDestroyed — this pull request is closed. Containers, database and images have been reclaimed.`,
+              });
+            }

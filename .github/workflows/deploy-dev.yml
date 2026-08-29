@@ -1,0 +1,180 @@
+name: Deploy — development
+
+# develop → https://dev.<base-domain>
+#
+# Review, publish, deploy, verify. The deploy names an exact image tag — never
+# `latest` — and waits for the public health endpoint to answer before
+# reporting success, so a crash-looping rollout turns this workflow red instead
+# of quietly leaving dev broken.
+#
+# Dev is deployed from the SAME compose file as a PR preview
+# (deploy/compose/env.yml), differing only in its ENV_* values. That is the
+# point: every preview is a rehearsal of this deploy, and this deploy is a
+# rehearsal of production's.
+#
+# Rolling back is running this workflow again with `image_tag` set to an older
+# short SHA. That path skips review entirely and rebuilds nothing — build.yml
+# just resolves the tag — because that image already exists and already passed
+# review on its way in.
+
+on:
+  push:
+    branches: [develop]
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Existing image tag to deploy (rollback). Blank builds this commit."
+        required: false
+        type: string
+
+# A called workflow can never hold MORE permission than its caller, so
+# packages:write has to be granted here as well as inside build.yml —
+# without it the image push fails with a 403 that reads like a bad token.
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  # Never let two dev deploys interleave, and never cancel one in flight —
+  # killing a half-applied stack update is worse than letting it finish.
+  group: deploy-development
+  cancel-in-progress: false
+
+env:
+  # The one setting with no sensible default. Credentials fall back to the
+  # values docker-compose.yml uses locally, but a domain cannot be guessed —
+  # and a deploy to a hostname nobody can reach is worse than a deploy that
+  # refuses to start, so the guard step below fails loudly instead.
+  BASE_DOMAIN: ${{ vars.HESBAH_BASE_DOMAIN }}
+
+jobs:
+  review:
+    # Skipped for a rollback: re-checking today's source says nothing about an
+    # older image.
+    if: ${{ !inputs.image_tag }}
+    uses: ./.github/workflows/review.yml
+
+  build:
+    needs: review
+    if: ${{ always() && (needs.review.result == 'success' || needs.review.result == 'skipped') }}
+    uses: ./.github/workflows/build.yml
+    with:
+      image_tag: ${{ inputs.image_tag || '' }}
+
+  deploy:
+    needs: build
+    if: ${{ always() && needs.build.result == 'success' }}
+    runs-on: ubuntu-latest
+    environment:
+      name: development
+      url: https://dev.${{ vars.HESBAH_BASE_DOMAIN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Require the base domain
+        # HESBAH_BASE_DOMAIN is a repository VARIABLE, not a secret — set it at
+        # Settings → Secrets and variables → Actions → Variables. It is the
+        # only value the pipeline cannot default, and failing here costs
+        # seconds; failing later means a stack deployed to a hostname the edge
+        # does not route and a health gate that can never pass.
+        run: |
+          if [[ -z "${BASE_DOMAIN}" ]]; then
+            echo "::error::Set the repository variable HESBAH_BASE_DOMAIN (e.g. hesbah.example.com)."
+            exit 1
+          fi
+          echo "base domain: ${BASE_DOMAIN}"
+
+      - name: Compose stack environment
+        env:
+          # Unset secrets are written as empty values on purpose. Compose reads
+          # `${VAR:-default}` as "use the default when empty OR unset", so an
+          # environment with nothing configured comes up on the same
+          # credentials docker-compose.yml uses locally instead of failing.
+          NONPROD_POSTGRES_USER: ${{ secrets.NONPROD_POSTGRES_USER }}
+          NONPROD_POSTGRES_PASSWORD: ${{ secrets.NONPROD_POSTGRES_PASSWORD }}
+          DEV_JWT_SIGNING_KEY: ${{ secrets.DEV_JWT_SIGNING_KEY }}
+          PREVIEW_SECRET_SEED: ${{ secrets.PREVIEW_SECRET_SEED }}
+          API_IMAGE: ${{ needs.build.outputs.api_image }}
+          WEB_IMAGE: ${{ needs.build.outputs.web_image }}
+        run: |
+          set -euo pipefail
+          # 077 because this file holds whatever credentials ARE configured for
+          # the life of the job.
+          umask 077
+
+          # The signing key is the one value that cannot fall back to
+          # docker-compose.yml: Program.cs refuses to start outside Development
+          # on a key containing "CHANGE_ME", which is what that file defaults
+          # to. So derive one instead — sha256 is 64 hex characters, well over
+          # the 32 the API requires.
+          #
+          # Derived rather than random so a redeploy does not sign every tester
+          # out of dev, and distinct from production's either way. With no seed
+          # configured the derived key is guessable by anyone reading this
+          # repository; that is acceptable for dev and NOT for production,
+          # which is why deploy-prod.yml refuses to derive one.
+          jwt="${DEV_JWT_SIGNING_KEY}"
+          if [[ -z "$jwt" ]]; then
+            seed="${PREVIEW_SECRET_SEED:-hesbah-nonprod-unconfigured-seed}"
+            jwt="$(printf '%s:dev:jwt' "$seed" | sha256sum | cut -d' ' -f1)"
+            echo "::notice::DEV_JWT_SIGNING_KEY is not set — using a key derived for the dev environment."
+          fi
+
+          cat > stack.env <<EOF
+          API_IMAGE=${API_IMAGE}
+          WEB_IMAGE=${WEB_IMAGE}
+          ENV_ID=dev
+          ENV_HOST=dev.${BASE_DOMAIN}
+          ENV_DB_NAME=hesbah_dev
+          NONPROD_POSTGRES_USER=${NONPROD_POSTGRES_USER}
+          NONPROD_POSTGRES_PASSWORD=${NONPROD_POSTGRES_PASSWORD}
+          ENV_JWT_SIGNING_KEY=${jwt}
+          API_MEM=512m
+          EOF
+
+      - name: Deploy
+        env:
+          PORTAINER_URL: ${{ secrets.PORTAINER_URL }}
+          PORTAINER_TOKEN: ${{ secrets.PORTAINER_TOKEN }}
+          PORTAINER_INSECURE: ${{ vars.PORTAINER_INSECURE || '0' }}
+          PORTAINER_ENDPOINT_ID: ${{ vars.PORTAINER_ENDPOINT_ID }}
+          # The API creates its schema and seeds on first boot, so a fresh dev
+          # stack legitimately takes longer than a redeploy of an existing one.
+          HEALTH_TIMEOUT: "300"
+        run: |
+          chmod +x deploy/scripts/portainer.sh
+          deploy/scripts/portainer.sh deploy \
+            hesbah-dev deploy/compose/env.yml stack.env \
+            "https://dev.${BASE_DOMAIN}/health"
+
+      # Runs only when the deploy above succeeded — a step after a failed one
+      # is skipped, and that ordering is the point: if a rollout goes bad the
+      # very next move is redeploying an older tag, and that is the worst
+      # possible moment to be clearing images off the host.
+      #
+      # Janitorial, so it never turns a healthy release red. A host that did
+      # not get tidied is a disk-space problem for later; a red deploy job is
+      # noise now, about a rollout that actually worked.
+      - name: Prune superseded images from the host
+        continue-on-error: true
+        env:
+          PORTAINER_URL: ${{ secrets.PORTAINER_URL }}
+          PORTAINER_TOKEN: ${{ secrets.PORTAINER_TOKEN }}
+          PORTAINER_INSECURE: ${{ vars.PORTAINER_INSECURE || '0' }}
+          PORTAINER_ENDPOINT_ID: ${{ vars.PORTAINER_ENDPOINT_ID }}
+        run: |
+          chmod +x deploy/scripts/portainer.sh
+          deploy/scripts/portainer.sh prune \
+            "ghcr.io/$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')"
+
+      - name: Report
+        if: always()
+        run: |
+          {
+            echo "### Development deploy"
+            echo "| | |"
+            echo "|---|---|"
+            echo "| Result | ${{ job.status }} |"
+            echo "| Tag | \`${{ needs.build.outputs.tag }}\` |"
+            echo "| URL | https://dev.${BASE_DOMAIN} |"
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -19,9 +19,22 @@ RUN dotnet publish GreenMarket.Api/GreenMarket.Api.csproj -c Release -o /app/pub
 
 FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS runtime
 WORKDIR /app
+
+# curl is here for the container healthcheck, nothing else. The aspnet base
+# image ships neither curl nor wget, so without it a compose healthcheck has no
+# way to probe /health and `depends_on: condition: service_healthy` can never
+# be satisfied. ~1MB, and it is not in the build stage, so it never reaches a
+# layer that handles source.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY --from=build /app/publish .
 
 ENV ASPNETCORE_URLS=http://+:8080
 EXPOSE 8080
+
+HEALTHCHECK --interval=10s --timeout=5s --start-period=40s --retries=12 \
+    CMD curl -fsS http://127.0.0.1:8080/health >/dev/null || exit 1
 
 ENTRYPOINT ["dotnet", "GreenMarket.Api.dll"]

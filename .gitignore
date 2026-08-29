@@ -17,3 +17,9 @@ frontend/*.local
 
 # Secrets
 **/appsettings.*.local.json
+
+# Deploy
+# The stack environment the deploy workflows generate. It holds the database
+# password and JWT signing key, and is written into the runner's workspace —
+# never into a commit.
+stack.env

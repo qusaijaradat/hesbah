@@ -1,0 +1,192 @@
+name: Preview environment
+
+# Every pull request gets its own live URL at pr-<n>.<base-domain>, with its
+# own database — so two people can demo unrelated branches at the same time
+# without either touching dev or production.
+#
+# The preview is deployed from deploy/compose/env.yml, the same file the dev
+# environment uses. Only the ENV_* values differ, which is what makes a preview
+# a faithful rehearsal rather than a different shape of deployment.
+#
+# Routing needs nothing per-PR: preview-router in the shared `hesbah-nonprod`
+# stack turns the hostname into a container name (`pr-123.hesbah…` →
+# `hesbah-pr-123-web-1`) over Docker's embedded DNS, and the edge already
+# points the *.<base-domain> wildcard at it. Bringing a preview up or down
+# changes no configuration anywhere.
+#
+# Preview images are linux/amd64 only. Production images can go multi-arch;
+# the preview host is a single amd64 box, and dropping the emulated arm64 half
+# is the difference between a preview appearing in ~2 minutes and in ~10.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [main, develop]
+
+concurrency:
+  # A new push to the PR supersedes an in-flight preview build.
+  group: preview-${{ github.event.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  packages: write
+  pull-requests: write
+
+env:
+  BASE_DOMAIN: ${{ vars.HESBAH_BASE_DOMAIN }}
+
+jobs:
+  preview:
+    # Forks must never reach this job: it holds infrastructure credentials, and
+    # a fork PR can change the code that runs here.
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    environment:
+      name: preview
+      url: https://pr-${{ github.event.number }}.${{ vars.HESBAH_BASE_DOMAIN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Require the base domain
+        # HESBAH_BASE_DOMAIN is a repository VARIABLE, not a secret — set it at
+        # Settings → Secrets and variables → Actions → Variables. It is the
+        # only value the pipeline cannot default, and failing here costs
+        # seconds; failing later means a stack deployed to a hostname the edge
+        # does not route and a health gate that can never pass.
+        run: |
+          if [[ -z "${BASE_DOMAIN}" ]]; then
+            echo "::error::Set the repository variable HESBAH_BASE_DOMAIN (e.g. hesbah.example.com)."
+            exit 1
+          fi
+          echo "base domain: ${BASE_DOMAIN}"
+
+      - name: Resolve image references
+        id: img
+        run: |
+          set -euo pipefail
+          prefix="ghcr.io/$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')"
+          tag="pr-${{ github.event.number }}-${GITHUB_SHA::7}"
+          {
+            echo "prefix=${prefix}"
+            echo "tag=${tag}"
+            echo "api=${prefix}-api:${tag}"
+            echo "web=${prefix}-web:${tag}"
+          } >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push the API image
+        uses: docker/build-push-action@v6
+        with:
+          context: backend
+          file: backend/Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.img.outputs.api }}
+          # Its own cache scope: a preview build must never evict the cache the
+          # release build depends on.
+          cache-from: type=gha,scope=preview-api
+          cache-to: type=gha,mode=max,scope=preview-api
+
+      - name: Build and push the web image
+        uses: docker/build-push-action@v6
+        with:
+          context: frontend
+          file: frontend/Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.img.outputs.web }}
+          cache-from: type=gha,scope=preview-web
+          cache-to: type=gha,mode=max,scope=preview-web
+
+      - name: Compose stack environment
+        env:
+          NONPROD_POSTGRES_USER: ${{ secrets.NONPROD_POSTGRES_USER }}
+          NONPROD_POSTGRES_PASSWORD: ${{ secrets.NONPROD_POSTGRES_PASSWORD }}
+          PREVIEW_SECRET_SEED: ${{ secrets.PREVIEW_SECRET_SEED }}
+          API_IMAGE: ${{ steps.img.outputs.api }}
+          WEB_IMAGE: ${{ steps.img.outputs.web }}
+          PR: ${{ github.event.number }}
+        run: |
+          set -euo pipefail
+          umask 077
+          # A per-PR signing key, DERIVED rather than random, so that pushing a
+          # new commit to the PR does not sign every tester out of the preview.
+          # Derived from a seed, so a preview key tells you nothing about
+          # production's — and if no seed is configured the fallback below
+          # still gives each PR a different key, which is the property that
+          # matters. sha256 is 64 hex chars, comfortably over the 32 bytes the
+          # API requires.
+          seed="${PREVIEW_SECRET_SEED:-hesbah-preview-unconfigured-seed}"
+          jwt="$(printf '%s:%s:jwt' "$seed" "$PR" | sha256sum | cut -d' ' -f1)"
+          cat > stack.env <<EOF
+          API_IMAGE=${API_IMAGE}
+          WEB_IMAGE=${WEB_IMAGE}
+          ENV_ID=pr-${PR}
+          ENV_HOST=pr-${PR}.${BASE_DOMAIN}
+          ENV_DB_NAME=hesbah_pr_${PR}
+          NONPROD_POSTGRES_USER=${NONPROD_POSTGRES_USER}
+          NONPROD_POSTGRES_PASSWORD=${NONPROD_POSTGRES_PASSWORD}
+          ENV_JWT_SIGNING_KEY=${jwt}
+          API_MEM=512m
+          EOF
+
+      - name: Deploy preview
+        env:
+          PORTAINER_URL: ${{ secrets.PORTAINER_URL }}
+          PORTAINER_TOKEN: ${{ secrets.PORTAINER_TOKEN }}
+          PORTAINER_INSECURE: ${{ vars.PORTAINER_INSECURE || '0' }}
+          PORTAINER_ENDPOINT_ID: ${{ vars.PORTAINER_ENDPOINT_ID }}
+          HEALTH_TIMEOUT: "300"
+          PR: ${{ github.event.number }}
+        run: |
+          chmod +x deploy/scripts/portainer.sh
+          # The stack name is load-bearing: preview-router resolves
+          # `hesbah-pr-<n>-web-1`, which is what Portainer names this stack's
+          # web container. Renaming the stack silently breaks routing.
+          deploy/scripts/portainer.sh deploy \
+            "hesbah-pr-${PR}" deploy/compose/env.yml stack.env \
+            "https://pr-${PR}.${BASE_DOMAIN}/health"
+
+      - name: Comment the preview URL on the PR
+        if: always()
+        uses: actions/github-script@v7
+        env:
+          PREVIEW_URL: https://pr-${{ github.event.number }}.${{ vars.HESBAH_BASE_DOMAIN }}
+          IMAGE_TAG: ${{ steps.img.outputs.tag }}
+          OUTCOME: ${{ job.status }}
+        with:
+          script: |
+            const marker = '<!-- hesbah-preview -->';
+            const ok = process.env.OUTCOME === 'success';
+            const body = [
+              marker,
+              '### Preview environment',
+              '',
+              '| | |',
+              '|---|---|',
+              `| Status | ${ok ? 'live' : 'failed to deploy — see the run log'} |`,
+              `| URL | ${process.env.PREVIEW_URL} |`,
+              `| Image tag | \`${process.env.IMAGE_TAG}\` |`,
+              `| Database | \`hesbah_pr_${context.issue.number}\` (schema created and seeded on first boot) |`,
+              '',
+              'Sign in with the seeded `admin` account from the README. This',
+              'environment and its database are destroyed automatically when the',
+              'pull request is closed.',
+            ].join('\n');
+
+            const { data: comments } = await github.rest.issues.listComments({
+              ...context.repo, issue_number: context.issue.number, per_page: 100,
+            });
+            const existing = comments.find(c => c.body?.startsWith(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({ ...context.repo, comment_id: existing.id, body });
+            } else {
+              await github.rest.issues.createComment({ ...context.repo, issue_number: context.issue.number, body });
+            }

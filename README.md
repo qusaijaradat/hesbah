@@ -52,6 +52,13 @@ GreenMarket/
 │   ├── schema.sql                       # hand-authored DDL bootstrap (see docs/DEVELOPMENT_NOTES.md)
 │   └── seed.sql
 ├── frontend/                            # React + TypeScript (Vite), Arabic RTL
+├── deploy/                              # Portainer stacks + deploy scripts (see deploy/README.md)
+│   ├── compose/nonprod-shared.yml       # preview router + shared Postgres
+│   ├── compose/env.yml                  # one non-prod environment: dev, or a PR preview
+│   ├── compose/env-reap.yml             # drops a closed PR's database
+│   ├── compose/prod.yml                 # the production stack
+│   └── scripts/                         # portainer.sh + one-time bootstrap
+├── .github/workflows/                   # review, build, deploy-dev, deploy-prod, preview, teardown
 ├── docker-compose.yml                   # Postgres + API + frontend, one command
 └── docs/DEVELOPMENT_NOTES.md            # what was/wasn't build-verified, and why
 ```
@@ -91,6 +98,35 @@ npm install
 cp .env.example .env   # point VITE_API_URL at your running API
 npm run dev
 ```
+
+## CI/CD
+
+| Trigger | Workflow | What happens |
+|---|---|---|
+| Pull request | `review.yml` | Backend builds and its domain smoke tests run; frontend lints, typechecks and builds; both Docker images build (nothing is pushed). |
+| Pull request | `preview.yml` | A live preview at `https://pr-<n>.<base-domain>`, with its own database. The URL is posted as a PR comment. |
+| PR closed | `preview-teardown.yml` | Destroys the preview's containers, drops its database, and prunes the images it left on the host. |
+| Push to `develop` | `deploy-dev.yml` | Review → publish → deploy `hesbah-dev` → wait for `https://dev.<base-domain>/health` → prune. |
+| Push to `main` | `deploy-prod.yml` | The same, against the production stack and `https://<base-domain>/health`. |
+| Push of a `v*` tag | `build.yml` | Publishes an immutable release image. Deploys nothing. |
+
+Dev and PR previews are deployed from the **same compose file**, so every
+preview is a rehearsal of the dev deploy. A shared nginx router turns the
+subdomain (`dev.`, `pr-<n>.`) into a container name over Docker's embedded
+DNS, so bringing a preview up or down needs no configuration change anywhere —
+and the domain itself lives only in the `HESBAH_BASE_DOMAIN` GitHub variable,
+never in this repository.
+
+A deploy always names an exact image tag (the 7-character commit SHA), never
+`latest`, and only goes green once the public health endpoint has answered
+`200` three times in a row — so a crash-looping rollout fails the run instead
+of quietly leaving the environment down.
+
+**Rolling back** is running the deploy workflow again from the Actions tab with
+`image_tag` set to an older short SHA. No revert commit, no rebuild.
+
+Setup — the GitHub variables and secrets, the edge proxy vhosts, and the
+one-time `bootstrap-nonprod.sh` run — is in [deploy/README.md](deploy/README.md).
 
 ## Feature checklist against the requirement document
 

@@ -1,0 +1,161 @@
+name: Build
+
+# Publishes the two images this service is made of:
+#   ghcr.io/<owner>/hesbah-api   — the ASP.NET Core API
+#   ghcr.io/<owner>/hesbah-web   — the Vite/React SPA behind nginx
+#
+# Called by deploy-dev.yml and deploy-prod.yml, and runnable on its own for a
+# v* release tag. It resolves the image tag in ONE place and hands it back to
+# the caller, so a build and the deploy that follows it can never disagree
+# about which image is being shipped.
+#
+# A deploy that passes `image_tag` (a rollback) still calls this workflow — it
+# just resolves the tag and builds nothing, because that image already exists
+# in the registry.
+
+on:
+  workflow_call:
+    inputs:
+      image_tag:
+        description: "Existing tag to deploy instead of building this commit."
+        required: false
+        type: string
+        default: ""
+      platforms:
+        description: "Buildx target platforms."
+        required: false
+        type: string
+        default: linux/amd64
+    outputs:
+      tag:
+        description: "The image tag callers should deploy."
+        value: ${{ jobs.resolve.outputs.tag }}
+      api_image:
+        description: "Fully qualified API image reference."
+        value: ${{ jobs.resolve.outputs.api_image }}
+      web_image:
+        description: "Fully qualified web image reference."
+        value: ${{ jobs.resolve.outputs.web_image }}
+  push:
+    # An immutable release image. Publish only — tags never deploy on their
+    # own; shipping one is a workflow_dispatch on deploy-prod.yml with that tag.
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      platforms:
+        description: "Buildx target platforms."
+        required: false
+        type: string
+        default: linux/amd64
+
+concurrency:
+  group: build-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  resolve:
+    name: Resolve tag and image names
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.t.outputs.tag }}
+      prefix: ${{ steps.t.outputs.prefix }}
+      api_image: ${{ steps.t.outputs.api_image }}
+      web_image: ${{ steps.t.outputs.web_image }}
+      build_needed: ${{ steps.t.outputs.build_needed }}
+    steps:
+      - id: t
+        env:
+          REQUESTED_TAG: ${{ inputs.image_tag }}
+        run: |
+          set -euo pipefail
+          # GHCR rejects uppercase in a repository path, and a GitHub owner may
+          # legitimately contain it — so normalise rather than assume.
+          prefix="ghcr.io/$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')"
+
+          if [[ -n "${REQUESTED_TAG}" ]]; then
+            # Rollback: deploy something already in the registry.
+            tag="${REQUESTED_TAG}"
+            build_needed=false
+          elif [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            tag="${GITHUB_REF#refs/tags/}"
+            build_needed=true
+          else
+            # Short SHA — the one tag that is unambiguous about what is running
+            # and is trivially mapped back to a commit when something breaks.
+            tag="${GITHUB_SHA::7}"
+            build_needed=true
+          fi
+
+          {
+            echo "tag=${tag}"
+            echo "prefix=${prefix}"
+            echo "api_image=${prefix}-api:${tag}"
+            echo "web_image=${prefix}-web:${tag}"
+            echo "build_needed=${build_needed}"
+          } >> "$GITHUB_OUTPUT"
+
+          {
+            echo "### Build"
+            echo "| | |"
+            echo "|---|---|"
+            echo "| Tag | \`${tag}\` |"
+            echo "| Build needed | ${build_needed} |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  images:
+    name: ${{ matrix.name }} image
+    needs: resolve
+    if: needs.resolve.outputs.build_needed == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      # One broken image should not hide whether the other one builds.
+      fail-fast: false
+      matrix:
+        include:
+          - name: api
+            context: backend
+            dockerfile: backend/Dockerfile
+          - name: web
+            context: frontend
+            dockerfile: frontend/Dockerfile
+            # No VITE_API_URL build-arg on purpose. The Dockerfile's default is
+            # the relative "/api", which is what makes a deployed environment
+            # single-origin: the SPA calls its own host and nginx proxies to
+            # the api container. Baking an absolute URL in here would tie an
+            # image to one hostname and reintroduce CORS.
+    steps:
+      - uses: actions/checkout@v4
+      # Only registered when a non-native platform is actually requested:
+      # emulated builds are several times slower, and the deploy target is a
+      # single amd64 host. Add linux/arm64 to `platforms` when that changes.
+      - if: contains(inputs.platforms || 'linux/amd64', 'arm')
+        uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ needs.resolve.outputs.prefix }}-${{ matrix.name }}
+          tags: |
+            type=raw,value=${{ needs.resolve.outputs.tag }}
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+            type=ref,event=tag
+      - uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          platforms: ${{ inputs.platforms || 'linux/amd64' }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # Same scope review.yml warms, so a merge of an already-reviewed
+          # commit mostly reuses layers instead of rebuilding them.
+          cache-from: type=gha,scope=${{ matrix.name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.name }}

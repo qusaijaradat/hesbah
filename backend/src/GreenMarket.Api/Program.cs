@@ -171,4 +171,14 @@ app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
 
+// ---------- Health ----------
+// Anonymous and dependency-free on purpose. The deploy pipeline polls this
+// through the public hostname to decide whether a rollout succeeded
+// (deploy/scripts/portainer.sh), and the container healthcheck polls it
+// locally — so it must answer 200 as soon as the app can serve requests, and
+// must not depend on anything that could make a healthy API look unhealthy.
+// The database is not probed here: schema creation and seeding already ran
+// above, so reaching this line at all means the connection worked.
+app.MapGet("/health", () => Results.Ok(new { status = "ok" })).AllowAnonymous();
+
 app.Run();

@@ -1,25 +1,43 @@
-# .NET
+# .NET build output
 backend/**/bin/
 backend/**/obj/
 backend/**/*.user
+backend/**/*.suo
+backend/**/*.userosscache
+backend/**/*.sln.docstates
+backend/**/[Dd]ebug/
+backend/**/[Rr]elease/
+backend/**/publish/
+backend/**/TestResults/
+backend/**/*.dotCover
+backend/**/*.DotSettings.user
 
 # Node / frontend
 frontend/node_modules/
 frontend/dist/
+frontend/build/
+frontend/coverage/
 frontend/.env
+frontend/.env.local
+frontend/.env.*.local
 frontend/*.local
+frontend/npm-debug.log*
+frontend/yarn-error.log*
+frontend/pnpm-debug.log*
 
-# Editors / OS
+# Editors / IDEs
 .vs/
 .vscode/
 .idea/
+*.iml
+*.swp
+*.swo
+
+# OS junk
 *.DS_Store
+Thumbs.db
+desktop.ini
 
-# Secrets
+# Secrets — real per-machine/local overrides only; the checked-in appsettings.json and
+# appsettings.Development.json stay tracked since the app needs them to run out of the box.
 **/appsettings.*.local.json
-
-# Deploy
-# The stack environment the deploy workflows generate. It holds the database
-# password and JWT signing key, and is written into the runner's workspace —
-# never into a commit.
-stack.env

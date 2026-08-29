@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { downloadInvoicesExcel, getInvoice, listInvoices, triggerBlobDownload } from "../api/invoices";
+import { downloadInvoicePdf, downloadInvoicesExcel, getInvoice, listInvoices, triggerBlobDownload } from "../api/invoices";
 import { listSettings } from "../api/settings";
 import type { InvoiceFilter, InvoiceListItemDto } from "../types";
 import { buildStatementMessage, buildWhatsAppLink, formatCurrency, formatDate, formatQuantity, formatWeight } from "../lib/format";
+import { shareFile } from "../lib/share";
 import { useAuth } from "../auth/AuthContext";
 
 const STATUS_LABELS: Record<string, string> = { Active: "فعّالة", Cancelled: "ملغاة" };
@@ -21,6 +22,8 @@ export function InvoicesPage() {
   // Tracks which row's button is mid-send ("<invoiceId>-merchant" / "<invoiceId>-farmer") so only
   // that one button shows a busy state while its invoice detail is being fetched.
   const [sendingKey, setSendingKey] = useState<string | null>(null);
+  // Informational (not an error) — e.g. "your browser can't share files, downloaded it instead".
+  const [notice, setNotice] = useState<string | null>(null);
 
   useEffect(() => {
     listSettings().then((settings) => {
@@ -64,8 +67,30 @@ export function InvoicesPage() {
     }
   }
 
+  // Shares the actual PDF as a FILE through the OS/browser's native share sheet — see
+  // lib/share.ts for why there's no way to also pre-pick the recipient automatically. Falls back
+  // to a plain download when the browser/OS can't share files at all. Doesn't need a known
+  // WhatsApp number (unlike the text-send buttons below) since the person picks who to send it to
+  // themselves in the share sheet.
+  async function handleShareFile(inv: InvoiceListItemDto) {
+    setSendingKey(`${inv.id}-share`);
+    setNotice(null);
+    try {
+      const blob = await downloadInvoicePdf(inv.id, false);
+      const fileName = `${inv.invoiceNumber}.pdf`;
+      const result = await shareFile(blob, fileName, "application/pdf", `فاتورة ${inv.invoiceNumber}`);
+      if (result === "unsupported") {
+        triggerBlobDownload(blob, fileName);
+        setNotice("متصفحك ما بيدعم المشاركة المباشرة — تم تنزيل ملف الفاتورة، ترفقه يدويًا بمحادثة واتساب.");
+      }
+    } finally {
+      setSendingKey(null);
+    }
+  }
+
   return (
     <div>
+      {notice && <div className="text-sm text-blue-700 bg-blue-50 rounded-md p-3 mb-4">{notice}</div>}
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold">الفواتير</h1>
         <div className="flex gap-2">
@@ -166,6 +191,14 @@ export function InvoicesPage() {
                           📤 مزارع
                         </button>
                       )}
+                      <button
+                        className="text-xs text-brand-700 hover:underline disabled:opacity-50"
+                        title="مشاركة ملف الفاتورة (يفتح قائمة مشاركة النظام، فيها واتساب لو مثبت)"
+                        disabled={sendingKey === `${inv.id}-share`}
+                        onClick={() => handleShareFile(inv)}
+                      >
+                        📎 ملف
+                      </button>
                     </div>
                   </td>
                 </tr>

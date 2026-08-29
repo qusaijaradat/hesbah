@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { cancelInvoice, downloadInvoicePdf, getInvoice } from "../api/invoices";
+import { cancelInvoice, downloadInvoicePdf, getInvoice, triggerBlobDownload } from "../api/invoices";
 import { listSettings } from "../api/settings";
 import type { InvoiceDto } from "../types";
 import { buildStatementMessage, buildWhatsAppLink, formatCurrency, formatDate, formatQuantity, formatWeight } from "../lib/format";
+import { shareFile } from "../lib/share";
 import { useAuth } from "../auth/AuthContext";
 import { apiErrorMessage } from "../api/client";
 
@@ -19,6 +20,9 @@ export function InvoiceDetailPage() {
   const [companyName, setCompanyName] = useState("Green Market");
   const [companyPhone, setCompanyPhone] = useState<string | null>(null);
   const [printing, setPrinting] = useState(false);
+  const [sharing, setSharing] = useState(false);
+  // Informational (not an error) — e.g. "your browser can't share files, downloaded it instead".
+  const [notice, setNotice] = useState<string | null>(null);
 
   useEffect(() => {
     if (id) getInvoice(Number(id)).then(setInvoice);
@@ -50,6 +54,31 @@ export function InvoiceDetailPage() {
       window.open(url, "_blank");
     } finally {
       setPrinting(false);
+    }
+  }
+
+  // Shares the actual PDF as a FILE (not just typed-out text) through the OS/browser's native
+  // share sheet — WhatsApp shows up there on most phones and on Windows 10/11 if it's installed —
+  // see lib/share.ts for why there's no way to also pre-pick the recipient automatically. Falls
+  // back to a plain download on browsers/OSes that can't share files at all (canShareFiles/
+  // shareFile handle that feature-detection).
+  async function handleShareFile() {
+    if (!invoice) return;
+    setSharing(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const blob = await downloadInvoicePdf(invoice.id, false);
+      const fileName = `${invoice.invoiceNumber}.pdf`;
+      const result = await shareFile(blob, fileName, "application/pdf", `فاتورة ${invoice.invoiceNumber}`);
+      if (result === "unsupported") {
+        triggerBlobDownload(blob, fileName);
+        setNotice("متصفحك ما بيدعم المشاركة المباشرة — تم تنزيل ملف الفاتورة، ترفقه يدويًا بمحادثة واتساب.");
+      }
+    } catch (err) {
+      setError(apiErrorMessage(err, "فشل مشاركة الفاتورة"));
+    } finally {
+      setSharing(false);
     }
   }
 
@@ -126,6 +155,7 @@ export function InvoiceDetailPage() {
             appears on the merchant-facing invoice. */}
 
         {error && <div className="text-sm text-red-600 bg-red-50 rounded-md p-3 mt-4">{error}</div>}
+        {notice && <div className="text-sm text-blue-700 bg-blue-50 rounded-md p-3 mt-4">{notice}</div>}
 
         <div className="flex justify-end gap-2 mt-6 flex-wrap">
           <button className="btn-secondary" disabled={printing} onClick={() => handlePrint(false)}>
@@ -133,6 +163,9 @@ export function InvoiceDetailPage() {
           </button>
           <button className="btn-secondary" disabled={printing} onClick={() => handlePrint(true)}>
             {printing ? "جاري التجهيز..." : "🖨️ طباعة (طابعة حرارية 80mm)"}
+          </button>
+          <button className="btn-secondary" disabled={sharing} onClick={handleShareFile} title="يفتح قائمة مشاركة النظام (واتساب وغيره) مع ملف الفاتورة مرفق">
+            {sharing ? "جاري التجهيز..." : "📎 مشاركة الفاتورة (ملف)"}
           </button>
           {invoice.merchantWhatsApp && (
             <button className="btn-primary" onClick={() => handleSendWhatsApp(invoice.merchantWhatsApp!, invoice.merchantName)}>

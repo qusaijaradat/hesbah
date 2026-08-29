@@ -13,7 +13,7 @@ namespace GreenMarket.Api.Services;
 /// the market can fill them in themselves without a code change. Everything but Name is optional
 /// and simply omitted from the header when blank.
 /// </summary>
-public record CompanyInfo(string Name, string? Address, string? Phone, string? RegistrationNumber);
+public record CompanyInfo(string Name, string? Address, string? Phone, string? RegistrationNumber, byte[]? LogoContent = null);
 
 /// <summary>
 /// Requirement doc §7/§8: every filtered report/list must be exportable to PDF or Excel.
@@ -185,13 +185,16 @@ public class ExportService : IExportService
                 // first) instead of the leftmost, with the numeric columns proceeding to its left.
                 page.Header().ContentFromRightToLeft().Column(col =>
                 {
-                    col.Item().Text(company.Name).Bold().FontSize(thermalWidth ? 12 : 18);
-                    if (!thermalWidth && !string.IsNullOrWhiteSpace(company.Address))
-                        col.Item().Text(company.Address).FontSize(9).FontColor(Colors.Grey.Darken1);
-                    if (!string.IsNullOrWhiteSpace(company.Phone))
-                        col.Item().Text($"هاتف: {company.Phone}").FontSize(thermalWidth ? 8 : 9);
-                    if (!thermalWidth && !string.IsNullOrWhiteSpace(company.RegistrationNumber))
-                        col.Item().Text($"رقم السجل: {company.RegistrationNumber}").FontSize(9);
+                    CompanyHeaderBlock(col, company, thermalWidth ? 32f : 48f, textCol =>
+                    {
+                        textCol.Item().Text(company.Name).Bold().FontSize(thermalWidth ? 12 : 18);
+                        if (!thermalWidth && !string.IsNullOrWhiteSpace(company.Address))
+                            textCol.Item().Text(company.Address).FontSize(9).FontColor(Colors.Grey.Darken1);
+                        if (!string.IsNullOrWhiteSpace(company.Phone))
+                            textCol.Item().Text($"هاتف: {company.Phone}").FontSize(thermalWidth ? 8 : 9);
+                        if (!thermalWidth && !string.IsNullOrWhiteSpace(company.RegistrationNumber))
+                            textCol.Item().Text($"رقم السجل: {company.RegistrationNumber}").FontSize(9);
+                    });
                     col.Item().PaddingTop(6).LineHorizontal(1).LineColor(Colors.Grey.Darken1);
                     col.Item().PaddingTop(6).Text($"التاريخ: {invoice.Date:yyyy-MM-dd}").FontSize(thermalWidth ? 9 : 11);
                     col.Item().Text($"التاجر: {invoice.MerchantName}").FontSize(thermalWidth ? 9 : 11);
@@ -338,7 +341,7 @@ public class ExportService : IExportService
         container.ContentFromRightToLeft()
             .Border(1).BorderColor(Colors.Grey.Lighten1).Padding(8).Column(col =>
         {
-            col.Item().Text(company.Name).Bold().FontSize(10);
+            CompanyHeaderBlock(col, company, 22f, textCol => textCol.Item().Text(company.Name).Bold().FontSize(10));
             col.Item().Text($"التاريخ: {invoice.Date:yyyy-MM-dd}").FontSize(8);
             col.Item().Text($"التاجر: {invoice.MerchantName}").FontSize(8);
             col.Item().PaddingTop(4).LineHorizontal(0.5f).LineColor(Colors.Grey.Lighten1);
@@ -375,6 +378,29 @@ public class ExportService : IExportService
             col.Item().PaddingTop(4).LineHorizontal(0.5f).LineColor(Colors.Grey.Lighten1);
             col.Item().PaddingTop(2).AlignRight().Text($"الإجمالي: ₪ {invoice.TotalValue:0.##}").Bold().FontSize(10);
         });
+    }
+
+    /// <summary>
+    /// Settings → "الشعار": if the market has uploaded a logo, renders it in a fixed-size box
+    /// beside the given text lines (RTL, so the logo ends up on the right and the text runs to
+    /// its left); with no logo uploaded, renders exactly the same text lines with nothing else,
+    /// matching the plain text-only header this app had before the logo-upload feature existed.
+    /// Shared by the single-invoice header and the smaller bulk-print card.
+    /// </summary>
+    private static void CompanyHeaderBlock(ColumnDescriptor col, CompanyInfo company, float logoSize, Action<ColumnDescriptor> textLines)
+    {
+        if (company.LogoContent is { Length: > 0 })
+        {
+            col.Item().Row(row =>
+            {
+                row.ConstantItem(logoSize).Height(logoSize).Image(company.LogoContent).FitArea();
+                row.RelativeItem().PaddingRight(8).Column(textLines);
+            });
+        }
+        else
+        {
+            textLines(col);
+        }
     }
 
     /// <summary>Shaded header cell for the shrunk-down invoice-card table used in the 4-per-page

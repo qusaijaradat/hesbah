@@ -43,6 +43,7 @@ builder.Services.AddScoped<IPaymentService, PaymentService>();
 builder.Services.AddScoped<IExpenseService, ExpenseService>();
 builder.Services.AddScoped<IReportService, ReportService>();
 builder.Services.AddScoped<ISettingsService, SettingsService>();
+builder.Services.AddScoped<ICompanyLogoService, CompanyLogoService>();
 builder.Services.AddScoped<IAuditLogService, AuditLogService>();
 builder.Services.AddScoped<IRoleService, RoleService>();
 builder.Services.AddSingleton<IExportService, ExportService>();
@@ -154,6 +155,24 @@ using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
     await db.Database.EnsureCreatedAsync();
+
+    // EnsureCreated only builds the schema on a brand-new (tableless) database — on an
+    // already-running installation (e.g. production, which already has "settings", "invoices",
+    // etc.) it sees existing tables and does nothing at all, so a table added to the C# model
+    // later (like CompanyLogo, added for the logo-upload feature) never actually gets created
+    // there. Guard for that case explicitly instead of silently 500-ing the first time someone
+    // uploads a logo. Safe to run every startup either way — CREATE TABLE IF NOT EXISTS is a no-op
+    // once the table exists (including right after EnsureCreatedAsync made it on a fresh install).
+    await db.Database.ExecuteSqlRawAsync("""
+        CREATE TABLE IF NOT EXISTS company_logos (
+            "Id" integer NOT NULL PRIMARY KEY,
+            "Content" bytea NOT NULL,
+            "ContentType" character varying(100) NOT NULL,
+            "UpdatedAt" timestamp with time zone NOT NULL,
+            "UpdatedByUserId" integer NULL
+        );
+        """);
+
     await DbSeeder.SeedAsync(db);
 }
 
@@ -170,15 +189,5 @@ app.UseCors();
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
-
-// ---------- Health ----------
-// Anonymous and dependency-free on purpose. The deploy pipeline polls this
-// through the public hostname to decide whether a rollout succeeded
-// (deploy/scripts/portainer.sh), and the container healthcheck polls it
-// locally — so it must answer 200 as soon as the app can serve requests, and
-// must not depend on anything that could make a healthy API look unhealthy.
-// The database is not probed here: schema creation and seeding already ran
-// above, so reaching this line at all means the connection worked.
-app.MapGet("/health", () => Results.Ok(new { status = "ok" })).AllowAnonymous();
 
 app.Run();

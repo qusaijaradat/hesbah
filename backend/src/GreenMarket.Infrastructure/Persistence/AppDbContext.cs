@@ -27,6 +27,7 @@ public class AppDbContext : DbContext
     public DbSet<Expense> Expenses => Set<Expense>();
     public DbSet<Setting> Settings => Set<Setting>();
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
+    public DbSet<CompanyLogo> CompanyLogos => Set<CompanyLogo>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

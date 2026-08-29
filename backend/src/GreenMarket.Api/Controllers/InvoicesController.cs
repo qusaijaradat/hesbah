@@ -17,12 +17,14 @@ public class InvoicesController : ControllerBase
     private readonly IInvoiceService _invoiceService;
     private readonly IExportService _exportService;
     private readonly ISettingsService _settingsService;
+    private readonly ICompanyLogoService _logoService;
 
-    public InvoicesController(IInvoiceService invoiceService, IExportService exportService, ISettingsService settingsService)
+    public InvoicesController(IInvoiceService invoiceService, IExportService exportService, ISettingsService settingsService, ICompanyLogoService logoService)
     {
         _invoiceService = invoiceService;
         _exportService = exportService;
         _settingsService = settingsService;
+        _logoService = logoService;
     }
 
     [HttpGet]
@@ -100,11 +102,16 @@ public class InvoicesController : ControllerBase
             return string.IsNullOrWhiteSpace(value) ? null : value;
         }
 
+        // Falls back to the bundled "أرديس" logo when the market hasn't uploaded their own yet —
+        // see CompanyLogoService.GetEffectiveLogoAsync.
+        var (logoContent, _) = await _logoService.GetEffectiveLogoAsync();
+
         return new CompanyInfo(
             Get(Setting.Keys.MarketName) ?? "Green Market",
             Get(Setting.Keys.Address),
             Get(Setting.Keys.Phone),
-            Get(Setting.Keys.RegistrationNumber));
+            Get(Setting.Keys.RegistrationNumber),
+            logoContent);
     }
 
     [HttpGet("export/excel")]

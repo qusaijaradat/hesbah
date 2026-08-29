@@ -28,3 +28,14 @@ public class AuditLogConfiguration : IEntityTypeConfiguration<AuditLog>
         builder.HasIndex(x => x.At);
     }
 }
+
+public class CompanyLogoConfiguration : IEntityTypeConfiguration<CompanyLogo>
+{
+    public void Configure(EntityTypeBuilder<CompanyLogo> builder)
+    {
+        builder.ToTable("company_logos");
+        builder.HasKey(x => x.Id);
+        builder.Property(x => x.Content).IsRequired();
+        builder.Property(x => x.ContentType).HasMaxLength(100).IsRequired();
+    }
+}

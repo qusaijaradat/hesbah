@@ -87,8 +87,35 @@ resolve_endpoint() {
   jq -r '.[0].Id' <<<"$eps"
 }
 
+# Find a stack by name ON A GIVEN ENDPOINT.
+#
+# The endpoint filter is not optional. Portainer scopes stack NAMES per
+# endpoint, so the same name can exist on two hosts at once — which is exactly
+# what happens while moving environments between hosts. Matching on name alone
+# finds the stack on the host you are moving AWAY from and then updates it with
+# the new host's endpointId, so the deploy either fails with a mismatch or
+# silently rewrites the old host's stack while reporting success against the
+# new one.
 stack_id_by_name() {
-  api GET /api/stacks | jq -r --arg n "$1" '.[] | select(.Name == $n) | .Id' | head -1
+  local name="$1" eid="$2"
+  api GET /api/stacks \
+    | jq -r --arg n "$name" --argjson e "$eid" \
+        '.[] | select(.Name == $n and .EndpointId == $e) | .Id' \
+    | head -1
+}
+
+# Warn when the same stack name exists on OTHER endpoints. That is not an
+# error — it is the normal, temporary state of a migration — but it is worth
+# saying out loud, because the leftover keeps running, keeps its published
+# ports, and keeps answering requests that the edge may still be sending it.
+warn_other_endpoints() {
+  local name="$1" eid="$2" others
+  others="$(api GET /api/stacks \
+    | jq -r --arg n "$name" --argjson e "$eid" \
+        '[.[] | select(.Name == $n and .EndpointId != $e) | .EndpointId] | join(", ")')"
+  [[ -n "$others" ]] && \
+    echo "note: a stack named '${name}' also exists on endpoint(s) ${others}; it is still running there" >&2
+  return 0
 }
 
 # Build the JSON `env` array Portainer expects from a KEY=VALUE file. Values
@@ -148,7 +175,8 @@ cmd_deploy() {
   local name="$1" compose="$2" envfile="$3" health="${4:-}"
   local eid sid body
   eid="$(resolve_endpoint)"
-  sid="$(stack_id_by_name "$name")"
+  sid="$(stack_id_by_name "$name" "$eid")"
+  warn_other_endpoints "$name" "$eid"
 
   body="$(jq -n \
     --arg name "$name" \
@@ -177,7 +205,7 @@ cmd_deploy() {
 cmd_destroy() {
   local name="$1" eid sid
   eid="$(resolve_endpoint)"
-  sid="$(stack_id_by_name "$name")"
+  sid="$(stack_id_by_name "$name" "$eid")"
   if [[ -z "$sid" ]]; then
     echo "stack '${name}' does not exist — nothing to destroy"
     return 0
@@ -268,10 +296,12 @@ cmd_prune() {
   jq -r '"dangling layers reclaimed: \(((.SpaceReclaimed // 0) / 1048576) | floor) MB"' <<<"$resp"
 }
 
+# Deliberately NOT endpoint-filtered: when you are asking where a stack is,
+# the copy on the other host is the answer you are looking for.
 cmd_status() {
   local name="$1"
   api GET /api/stacks \
-    | jq -r --arg n "$name" '.[] | select(.Name == $n) | "Id=\(.Id) Name=\(.Name) Status=\(.Status)"'
+    | jq -r --arg n "$name" '.[] | select(.Name == $n) | "Id=\(.Id) Name=\(.Name) EndpointId=\(.EndpointId) Status=\(.Status)"'
 }
 
 case "${1:-}" in

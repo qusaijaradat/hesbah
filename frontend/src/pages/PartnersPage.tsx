@@ -157,7 +157,6 @@ function PartnerEditModal({ partner, onClose, onSaved }: {
               <option value="Farmer">بائع</option>
               <option value="Driver">سائق</option>
               <option value="Merchant">تاجر</option>
-              <option value="Both">بائع وتاجر</option>
             </select>
           </div>
           <div>

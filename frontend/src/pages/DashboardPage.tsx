@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { StatCard } from "../components/StatCard";
 import { listInvoices } from "../api/invoices";
-import { marketReport, merchantReport } from "../api/reports";
+import { marketReport } from "../api/reports";
 import { formatCurrency } from "../lib/format";
 import { useAuth } from "../auth/AuthContext";
 
@@ -17,7 +17,6 @@ export function DashboardPage() {
   const [todayCount, setTodayCount] = useState(0);
   const [todayValue, setTodayValue] = useState(0);
   const [todayCommission, setTodayCommission] = useState(0);
-  const [merchantsRemaining, setMerchantsRemaining] = useState(0);
 
   useEffect(() => {
     if (!hasPermission("invoices.view")) {
@@ -26,19 +25,19 @@ export function DashboardPage() {
     }
     (async () => {
       const dateFrom = startOfToday();
-      // Note: no "مستحقات الباعة والسواق" (farmers'/drivers' remaining) card here on
-      // purpose — most invoices in this market never have a seller/driver attached
-      // (goods just show up and get priced/sold), so that total was near-meaningless
-      // and confusing on the dashboard. Removed per explicit request.
-      const [invoicesToday, market, merchants] = await Promise.all([
+      // Note: no "مستحقات الباعة والسواق" or "مستحقات التجار" cards here on purpose —
+      // both were removed per explicit request. The farmers/drivers one was near-always
+      // zero/irrelevant since most invoices never have one attached; the merchants one
+      // was an all-time (not daily) outstanding-balance total that read as confusing on
+      // a dashboard otherwise full of "today" figures. Per-merchant balances are still
+      // available on each merchant's own "كشف حساب" (account) page.
+      const [invoicesToday, market] = await Promise.all([
         listInvoices({ dateFrom, pageSize: 1 }),
         marketReport({ dateFrom, grouping: "daily" }),
-        merchantReport({}),
       ]);
       setTodayCount(invoicesToday.totalCount);
       setTodayCommission(market.reduce((sum, r) => sum + r.totalCommission, 0));
       setTodayValue(market.reduce((sum, r) => sum + r.totalSalesValue, 0));
-      setMerchantsRemaining(merchants.reduce((sum, r) => sum + r.remaining, 0));
       setLoading(false);
     })();
   }, [hasPermission]);
@@ -52,7 +51,6 @@ export function DashboardPage() {
         <StatCard label="فواتير اليوم" value={String(todayCount)} />
         <StatCard label="مبيعات اليوم" value={formatCurrency(todayValue)} />
         <StatCard label="عمولة الحسبة اليوم" value={formatCurrency(todayCommission)} tone="positive" />
-        <StatCard label="مستحقات التجار (إجمالي)" value={formatCurrency(merchantsRemaining)} hint="ما يدين به التجار للحسبة" />
       </div>
     </div>
   );

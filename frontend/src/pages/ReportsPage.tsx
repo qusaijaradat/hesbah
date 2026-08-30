@@ -41,7 +41,7 @@ export function ReportsPage() {
       <h1 className="text-2xl font-bold mb-6">التقارير</h1>
 
       <div className="flex gap-2 mb-4">
-        <button className={tab === "farmers" ? "btn-primary" : "btn-secondary"} onClick={() => setTab("farmers")}>تقرير المزارعين</button>
+        <button className={tab === "farmers" ? "btn-primary" : "btn-secondary"} onClick={() => setTab("farmers")}>تقرير الباعة والسواق</button>
         <button className={tab === "merchants" ? "btn-primary" : "btn-secondary"} onClick={() => setTab("merchants")}>تقرير التجار</button>
         <button className={tab === "market" ? "btn-primary" : "btn-secondary"} onClick={() => setTab("market")}>تقرير الحسبة</button>
         <button className={tab === "aging" ? "btn-primary" : "btn-secondary"} onClick={() => setTab("aging")}>أعمار الديون</button>
@@ -99,7 +99,7 @@ function FarmersTable({ rows }: { rows: FarmerReportRow[] }) {
     <div className="card overflow-x-auto">
       <table className="table-base">
         <thead>
-          <tr><th>المزارع</th><th>عدد الفواتير</th><th>الوزن</th><th>المبيعات</th><th>العمولة</th><th>المدفوع</th><th>المتبقي</th></tr>
+          <tr><th>البائع/السائق</th><th>عدد الفواتير</th><th>الوزن</th><th>المبيعات</th><th>العمولة</th><th>المدفوع</th><th>المتبقي</th></tr>
         </thead>
         <tbody>
           {rows.length === 0 ? (

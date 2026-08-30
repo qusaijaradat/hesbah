@@ -4,11 +4,21 @@ namespace GreenMarket.Domain.Enums;
 /// A person in the system. Requirement doc §3: a unified "Partners" table is used
 /// for both farmers and merchants; a person can optionally be both at once.
 /// </summary>
+/// <remarks>
+/// The UI no longer shows "Farmer" — it displays this value as "بائع" (Seller). <see cref="Driver"/>
+/// ("سائق") was added as a peer option for the same optional invoice slot: a "بائع / سائق" picker
+/// lets the user attach either a Farmer(Seller)-typed or a Driver-typed partner to an invoice, and
+/// whichever one is attached goes through the exact same FarmerId/FarmerTransaction/commission
+/// wiring as before — there is no separate ledger or report path for Driver. Kept as its own
+/// identifier (not renamed) to avoid touching every C# reference to Farmer/FarmerId/FarmerTransaction
+/// across the codebase for what is purely a display-label change.
+/// </remarks>
 public enum PartnerType
 {
     Farmer = 1,
     Merchant = 2,
-    Both = 3
+    Both = 3,
+    Driver = 4
 }
 
 /// <summary>

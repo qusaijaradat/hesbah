@@ -2,7 +2,9 @@
 // don't share code generation here; if you add a request/response shape on the API,
 // add its matching type here too.
 
-export type PartnerType = "Farmer" | "Merchant" | "Both";
+// "Farmer" displays in the UI as "بائع" (Seller); "Driver" ("سائق") is a peer type that shares
+// the same optional invoice slot and ledger wiring — see the remarks on PartnerType in the backend.
+export type PartnerType = "Farmer" | "Merchant" | "Both" | "Driver";
 export type InvoiceStatus = "Active" | "Cancelled";
 export type PaymentDirection = "FromMerchant" | "ToFarmer";
 export type UnitOfMeasure = "Kg" | "Box";

@@ -132,7 +132,7 @@ export function InvoicesPage() {
               <th>رقم الفاتورة</th>
               <th>التاريخ</th>
               <th>التاجر</th>
-              <th>المزارع</th>
+              <th>البائع/السائق</th>
               <th>الكمية</th>
               <th>القيمة</th>
               <th>الحالة</th>
@@ -184,11 +184,11 @@ export function InvoicesPage() {
                       {inv.farmerWhatsApp && (
                         <button
                           className="text-xs text-green-700 hover:underline disabled:opacity-50"
-                          title={`إرسال للمزارع ${inv.farmerName} عبر واتساب`}
+                          title={`إرسال للبائع/السائق ${inv.farmerName} عبر واتساب`}
                           disabled={sendingKey === `${inv.id}-farmer`}
                           onClick={() => handleSendWhatsApp(inv, "farmer")}
                         >
-                          📤 مزارع
+                          📤 بائع/سائق
                         </button>
                       )}
                       <button

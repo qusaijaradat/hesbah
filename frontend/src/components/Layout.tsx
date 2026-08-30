@@ -8,7 +8,7 @@ const NAV_ITEMS = [
   { to: "/invoices/print", label: "طباعة الفواتير", permission: "invoices.view" },
   { to: "/items", label: "الأصناف", permission: "invoices.view" },
   { to: "/daily-closing", label: "الإغلاق اليومي", permission: "reports.view" },
-  { to: "/partners", label: "المزارعون والتجار", permission: "partners.view" },
+  { to: "/partners", label: "الباعة والسواق والتجار", permission: "partners.view" },
   { to: "/payments", label: "الدفعات والمصاريف", permission: "payments.view" },
   { to: "/reports", label: "التقارير", permission: "reports.view" },
   { to: "/settings", label: "الإعدادات", permission: "settings.manage" },

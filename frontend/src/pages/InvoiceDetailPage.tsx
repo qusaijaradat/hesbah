@@ -119,7 +119,7 @@ export function InvoiceDetailPage() {
         <div className="grid grid-cols-2 gap-4 mb-4 text-sm">
           <div><span className="text-gray-500">التاجر:</span> <span className="font-medium">{invoice.merchantName}</span></div>
           {invoice.farmerName && (
-            <div><span className="text-gray-500">المزارع:</span> <span className="font-medium">{invoice.farmerName}</span></div>
+            <div><span className="text-gray-500">البائع/السائق:</span> <span className="font-medium">{invoice.farmerName}</span></div>
           )}
         </div>
 
@@ -174,7 +174,7 @@ export function InvoiceDetailPage() {
           )}
           {invoice.farmerWhatsApp && invoice.farmerName && (
             <button className="btn-primary" onClick={() => handleSendWhatsApp(invoice.farmerWhatsApp!, invoice.farmerName!)}>
-              📤 إرسال للمزارع عبر واتساب
+              📤 إرسال للبائع/السائق عبر واتساب
             </button>
           )}
           {invoice.status === "Active" && hasPermission("invoices.edit") && (

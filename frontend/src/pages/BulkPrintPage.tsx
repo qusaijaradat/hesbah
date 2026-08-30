@@ -239,7 +239,7 @@ export function BulkPrintPage() {
               <th>رقم الفاتورة</th>
               <th>التاريخ</th>
               <th>التاجر</th>
-              <th>المزارع</th>
+              <th>البائع/السائق</th>
               <th>الكمية</th>
               <th>القيمة</th>
             </tr>

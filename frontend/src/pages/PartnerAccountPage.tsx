@@ -18,7 +18,7 @@ export function FarmerAccountPage() {
   return (
     <div>
       <Link to="/partners" className="text-sm text-brand-700 hover:underline">← رجوع إلى القائمة</Link>
-      <h1 className="text-2xl font-bold mt-2 mb-6">كشف حساب مزارع: {account.name}</h1>
+      <h1 className="text-2xl font-bold mt-2 mb-6">كشف حساب بائع/سائق: {account.name}</h1>
 
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-4 mb-6">
         <StatCard label="إجمالي المبيعات" value={formatCurrency(account.totalSalesValue)} />

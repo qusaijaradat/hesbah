@@ -16,7 +16,7 @@ const ACTION_LABELS: Record<string, string> = {
 const ENTITY_LABELS: Record<string, string> = {
   Invoice: "فاتورة",
   InvoiceItem: "بند فاتورة",
-  Partner: "شخص (مزارع/تاجر)",
+  Partner: "شخص (بائع/سائق/تاجر)",
   Payment: "دفعة",
   Expense: "مصروف",
   User: "مستخدم",

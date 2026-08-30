@@ -344,7 +344,21 @@ public class ExportService : IExportService
         container.ContentFromRightToLeft()
             .Border(1).BorderColor(Colors.Grey.Lighten1).Padding(8).Column(col =>
         {
-            CompanyHeaderBlock(col, company, 28f, textCol => textCol.Item().AlignCenter().Text(company.Name).Bold().FontSize(10));
+            // Bug fix: this card used to show only the company name — Address/RegistrationNumber/
+            // Phone were never included at all (unlike the single-invoice A4 header, which does
+            // show them), so filling those in under Settings had no visible effect on the 4-per-
+            // page bulk print. Small font since it's a quarter-page card, but all four fields now
+            // match the single-invoice header's set.
+            CompanyHeaderBlock(col, company, 28f, textCol =>
+            {
+                textCol.Item().AlignCenter().Text(company.Name).Bold().FontSize(10);
+                if (!string.IsNullOrWhiteSpace(company.Address))
+                    textCol.Item().AlignCenter().Text(company.Address).FontSize(7).FontColor(Colors.Grey.Darken1);
+                if (!string.IsNullOrWhiteSpace(company.RegistrationNumber))
+                    textCol.Item().AlignCenter().Text($"رقم السجل: {company.RegistrationNumber}").FontSize(7);
+                if (!string.IsNullOrWhiteSpace(company.Phone))
+                    textCol.Item().AlignCenter().Text($"هاتف: {company.Phone}").FontSize(7);
+            });
             col.Item().Text($"التاريخ: {invoice.Date:yyyy-MM-dd}").FontSize(8);
             col.Item().Text($"التاجر: {invoice.MerchantName}").FontSize(8);
             col.Item().PaddingTop(4).LineHorizontal(0.5f).LineColor(Colors.Grey.Lighten1);

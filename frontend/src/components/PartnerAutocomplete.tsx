@@ -104,7 +104,8 @@ export function PartnerAutocomplete({
 }
 
 function typeLabel(type: string) {
-  if (type === "Farmer") return "مزارع";
+  if (type === "Farmer") return "بائع";
+  if (type === "Driver") return "سائق";
   if (type === "Merchant") return "تاجر";
-  return "مزارع/تاجر";
+  return "بائع/تاجر";
 }

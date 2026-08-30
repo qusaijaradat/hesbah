@@ -182,7 +182,7 @@ export function InvoiceEditPage() {
             placeholder="اكتب اسم التاجر أو اختره من القائمة..."
           />
           <PartnerAutocomplete
-            label="المزارع (اختياري)" value={farmer} onChange={setFarmer}
+            label="البائع / السائق (اختياري)" value={farmer} onChange={setFarmer}
             allowNew onFreeTextChange={setFarmerText}
             placeholder="اتركه فارغًا إن لم يكن معروفًا..."
           />

@@ -6,7 +6,7 @@ import { apiErrorMessage } from "../api/client";
 import { formatCurrency } from "../lib/format";
 import { useAuth } from "../auth/AuthContext";
 
-const TYPE_LABELS: Record<string, string> = { Farmer: "مزارع", Merchant: "تاجر", Both: "مزارع/تاجر" };
+const TYPE_LABELS: Record<string, string> = { Farmer: "بائع", Driver: "سائق", Merchant: "تاجر", Both: "بائع/تاجر" };
 
 export function PartnersPage() {
   const { hasPermission } = useAuth();
@@ -31,7 +31,7 @@ export function PartnersPage() {
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold">المزارعون والتجار</h1>
+        <h1 className="text-2xl font-bold">الباعة والسواق والتجار</h1>
         {hasPermission("partners.manage") && (
           <button className="btn-primary" onClick={() => setEditing("new")}>+ إضافة شخص</button>
         )}
@@ -70,8 +70,8 @@ export function PartnersPage() {
                   <td>{p.creditLimit != null ? formatCurrency(p.creditLimit) : "—"}</td>
                   <td className="text-gray-500">{p.notes || "—"}</td>
                   <td className="whitespace-nowrap">
-                    {(p.type === "Farmer" || p.type === "Both") && (
-                      <Link to={`/partners/${p.id}/farmer-account`} className="text-brand-700 text-sm hover:underline ms-2">كشف حساب (مزارع)</Link>
+                    {(p.type === "Farmer" || p.type === "Driver" || p.type === "Both") && (
+                      <Link to={`/partners/${p.id}/farmer-account`} className="text-brand-700 text-sm hover:underline ms-2">كشف حساب (بائع/سائق)</Link>
                     )}
                     {(p.type === "Merchant" || p.type === "Both") && (
                       <Link to={`/partners/${p.id}/merchant-account`} className="text-brand-700 text-sm hover:underline ms-2">كشف حساب (تاجر)</Link>
@@ -154,9 +154,10 @@ function PartnerEditModal({ partner, onClose, onSaved }: {
             <label className="label">النوع (اختياري)</label>
             <select className="input" value={type} onChange={(e) => setType(e.target.value as PartnerType | "")}>
               <option value="">غير محدد</option>
-              <option value="Farmer">مزارع</option>
+              <option value="Farmer">بائع</option>
+              <option value="Driver">سائق</option>
               <option value="Merchant">تاجر</option>
-              <option value="Both">مزارع وتاجر</option>
+              <option value="Both">بائع وتاجر</option>
             </select>
           </div>
           <div>

@@ -23,8 +23,21 @@ public class PartnersController : ControllerBase
 
     [HttpGet("suggest")]
     [RequirePermission(PermissionKeys.PartnersView)]
-    public async Task<ActionResult<IReadOnlyList<PartnerSuggestionDto>>> Suggest([FromQuery] string? q = null) =>
-        Ok(await _partnerService.SuggestAsync(q));
+    public async Task<ActionResult<IReadOnlyList<PartnerSuggestionDto>>> Suggest([FromQuery] string? q = null, [FromQuery] string? types = null) =>
+        Ok(await _partnerService.SuggestAsync(q, ParseTypes(types)));
+
+    /// <summary>Parses a comma-separated list like "Farmer,Driver" from the query string into enum
+    /// values, ignoring anything that doesn't match a known <see cref="PartnerType"/> name.</summary>
+    private static IReadOnlyCollection<PartnerType>? ParseTypes(string? types)
+    {
+        if (string.IsNullOrWhiteSpace(types)) return null;
+        var parsed = types.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(t => Enum.TryParse<PartnerType>(t, ignoreCase: true, out var value) ? value : (PartnerType?)null)
+            .Where(v => v is not null)
+            .Select(v => v!.Value)
+            .ToList();
+        return parsed.Count > 0 ? parsed : null;
+    }
 
     [HttpGet("{id:int}")]
     [RequirePermission(PermissionKeys.PartnersView)]

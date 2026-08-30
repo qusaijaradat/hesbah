@@ -11,7 +11,13 @@ namespace GreenMarket.Api.Services;
 public interface IPartnerService
 {
     Task<PagedResult<PartnerDto>> ListAsync(string? search, PartnerType? type, int page, int pageSize);
-    Task<IReadOnlyList<PartnerSuggestionDto>> SuggestAsync(string? query);
+
+    /// <summary>
+    /// <paramref name="types"/> optionally restricts suggestions to specific partner types (e.g. the
+    /// invoice's "بائع / سائق" field only wants Farmer/Driver/Both, not Merchant) — null/empty means
+    /// no restriction, matching the previous behavior.
+    /// </summary>
+    Task<IReadOnlyList<PartnerSuggestionDto>> SuggestAsync(string? query, IReadOnlyCollection<PartnerType>? types = null);
     Task<PartnerDto> GetAsync(int id);
     Task<PartnerDto> CreateAsync(CreatePartnerRequest request);
     Task<PartnerDto> UpdateAsync(int id, UpdatePartnerRequest request);
@@ -57,12 +63,14 @@ public class PartnerService : IPartnerService
     /// the moment it's focused (click it and see everyone), not just a typeahead you must start typing
     /// into first.
     /// </summary>
-    public async Task<IReadOnlyList<PartnerSuggestionDto>> SuggestAsync(string? query)
+    public async Task<IReadOnlyList<PartnerSuggestionDto>> SuggestAsync(string? query, IReadOnlyCollection<PartnerType>? types = null)
     {
         var trimmed = query?.Trim() ?? string.Empty;
         var q = _db.Partners.AsQueryable();
         if (!string.IsNullOrEmpty(trimmed))
             q = q.Where(p => p.Name.Contains(trimmed));
+        if (types is { Count: > 0 })
+            q = q.Where(p => p.Type != null && types.Contains(p.Type.Value));
 
         return await q
             .OrderBy(p => p.Name)

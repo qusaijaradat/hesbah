@@ -180,11 +180,13 @@ export function InvoiceEditPage() {
             label="التاجر" value={merchant} onChange={setMerchant}
             allowNew onFreeTextChange={setMerchantText}
             placeholder="اكتب اسم التاجر أو اختره من القائمة..."
+            types={["Merchant", "Both"]}
           />
           <PartnerAutocomplete
             label="البائع / السائق (اختياري)" value={farmer} onChange={setFarmer}
             allowNew onFreeTextChange={setFarmerText}
             placeholder="اتركه فارغًا إن لم يكن معروفًا..."
+            types={["Farmer", "Driver", "Both"]}
           />
         </div>
         {wouldExceedCreditLimit && (

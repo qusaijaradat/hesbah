@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { suggestPartners } from "../api/partners";
-import type { PartnerSuggestionDto } from "../types";
+import type { PartnerSuggestionDto, PartnerType } from "../types";
 
 /**
  * Requirement doc §3: "while typing a name, suggestions of existing names appear,
@@ -14,7 +14,7 @@ import type { PartnerSuggestionDto } from "../types";
  * a matching existing partner by name or create a new one automatically.
  */
 export function PartnerAutocomplete({
-  label, value, onChange, placeholder, allowNew, onFreeTextChange,
+  label, value, onChange, placeholder, allowNew, onFreeTextChange, types,
 }: {
   label: string;
   value: { id: number; name: string } | null;
@@ -22,6 +22,8 @@ export function PartnerAutocomplete({
   placeholder?: string;
   allowNew?: boolean;
   onFreeTextChange?: (text: string) => void;
+  /** Restrict suggestions to these partner types (e.g. ["Farmer", "Driver", "Both"]) — omit for no restriction. */
+  types?: PartnerType[];
 }) {
   const [query, setQuery] = useState(value?.name ?? "");
   const [suggestions, setSuggestions] = useState<PartnerSuggestionDto[]>([]);
@@ -38,7 +40,7 @@ export function PartnerAutocomplete({
     setOpen(true);
     if (debounceRef.current) window.clearTimeout(debounceRef.current);
     debounceRef.current = window.setTimeout(async () => {
-      const results = await suggestPartners(text);
+      const results = await suggestPartners(text, types);
       setSuggestions(results);
       setLoaded(true);
     }, 200);

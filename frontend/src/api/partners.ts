@@ -12,8 +12,12 @@ export async function listPartners(params: { search?: string; type?: PartnerType
 // A blank query is intentionally still sent (not short-circuited to []) — the backend
 // returns a full pick-list in that case, which is what lets the field behave like a real
 // dropdown as soon as it's focused, before anything has been typed.
-export async function suggestPartners(query: string) {
-  const { data } = await apiClient.get<PartnerSuggestionDto[]>("/partners/suggest", { params: { q: query || undefined } });
+// `types` optionally restricts the list to specific partner types (e.g. the invoice's
+// "بائع / سائق" field only wants Farmer/Driver/Both, not Merchant).
+export async function suggestPartners(query: string, types?: PartnerType[]) {
+  const { data } = await apiClient.get<PartnerSuggestionDto[]>("/partners/suggest", {
+    params: { q: query || undefined, types: types && types.length > 0 ? types.join(",") : undefined },
+  });
   return data;
 }
 

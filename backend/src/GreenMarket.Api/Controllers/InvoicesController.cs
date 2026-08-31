@@ -91,6 +91,24 @@ public class InvoicesController : ControllerBase
         return File(bytes, "application/pdf", "invoices-bulk.pdf");
     }
 
+    /// <summary>Bulk-print page's "طباعة فواتير السائق" section: the caller has already grouped
+    /// the selected invoices by driver client-side (see BulkPrintPage.tsx driverGroups) and passes
+    /// one driver's invoice ids at a time — this collects every item across all of them into one
+    /// consolidated hand-over sheet grouped by farmer/seller, instead of one printout per invoice.</summary>
+    [HttpGet("print/driver-manifest/pdf")]
+    [RequirePermission(PermissionKeys.InvoicesView)]
+    public async Task<IActionResult> PrintDriverManifestPdf([FromQuery] List<int> ids)
+    {
+        if (ids is null || ids.Count == 0)
+            return BadRequest(new { error = "يرجى اختيار فاتورة واحدة على الأقل." });
+
+        var invoices = await _invoiceService.GetManyAsync(ids);
+        var driverName = invoices.Select(i => i.DriverName).FirstOrDefault(n => !string.IsNullOrWhiteSpace(n)) ?? "غير محدد";
+        var company = await GetCompanyInfoAsync();
+        var bytes = _exportService.GenerateDriverManifestPdf(driverName, invoices, company);
+        return File(bytes, "application/pdf", "driver-manifest.pdf");
+    }
+
     /// <summary>Builds the printed header's company-identity block entirely from Settings, so the
     /// market can fill in its own name/address/phone/registration number without a code change.</summary>
     private async Task<CompanyInfo> GetCompanyInfoAsync()

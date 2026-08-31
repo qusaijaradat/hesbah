@@ -18,8 +18,10 @@ public record UpdatePaymentRequest(decimal Amount, DateTimeOffset Date, string? 
 
 public record PaymentDto(int Id, int PartnerId, string PartnerName, PaymentDirection Direction, decimal Amount, DateTimeOffset Date, string? Method, string? Notes, int? InvoiceId, string? InvoiceNumber);
 
-public record CreateExpenseRequest(DateTimeOffset Date, string Description, decimal Amount, string? Category);
+/// <summary>EmployeeId optionally attributes this expense (or withdrawal — see Employee.cs) to a
+/// specific employee; null means it isn't tied to anyone, same as before this field existed.</summary>
+public record CreateExpenseRequest(DateTimeOffset Date, string Description, decimal Amount, string? Category, int? EmployeeId = null);
 
-public record UpdateExpenseRequest(DateTimeOffset Date, string Description, decimal Amount, string? Category);
+public record UpdateExpenseRequest(DateTimeOffset Date, string Description, decimal Amount, string? Category, int? EmployeeId = null);
 
-public record ExpenseDto(int Id, DateTimeOffset Date, string Description, decimal Amount, string? Category);
+public record ExpenseDto(int Id, DateTimeOffset Date, string Description, decimal Amount, string? Category, int? EmployeeId, string? EmployeeName);

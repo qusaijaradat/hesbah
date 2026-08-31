@@ -10,4 +10,8 @@ public class Expense : AuditableEntity
     public decimal Amount { get; set; }
     public string? Category { get; set; }
     public int RecordedByUserId { get; set; }
+
+    /// <summary>Optional link to the employee this expense/withdrawal was given to (see Employee.cs).</summary>
+    public int? EmployeeId { get; set; }
+    public Employee? Employee { get; set; }
 }

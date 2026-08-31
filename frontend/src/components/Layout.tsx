@@ -10,6 +10,7 @@ const NAV_ITEMS = [
   { to: "/daily-closing", label: "الإغلاق اليومي", permission: "reports.view" },
   { to: "/partners", label: "الباعة والسواق والتجار", permission: "partners.view" },
   { to: "/payments", label: "الدفعات والمصاريف", permission: "payments.view" },
+  { to: "/employees", label: "الموظفون", permission: "employees.manage" },
   { to: "/reports", label: "التقارير", permission: "reports.view" },
   { to: "/settings", label: "الإعدادات", permission: "settings.manage" },
   { to: "/users", label: "المستخدمون", permission: "users.manage" },

@@ -29,12 +29,12 @@ export async function listExpenses(params: { from?: string; to?: string; page?: 
   return data;
 }
 
-export async function createExpense(payload: { date: string; description: string; amount: number; category?: string }) {
+export async function createExpense(payload: { date: string; description: string; amount: number; category?: string; employeeId?: number | null }) {
   const { data } = await apiClient.post<ExpenseDto>("/expenses", payload);
   return data;
 }
 
-export async function updateExpense(id: number, payload: { date: string; description: string; amount: number; category?: string }) {
+export async function updateExpense(id: number, payload: { date: string; description: string; amount: number; category?: string; employeeId?: number | null }) {
   const { data } = await apiClient.put<ExpenseDto>(`/expenses/${id}`, payload);
   return data;
 }

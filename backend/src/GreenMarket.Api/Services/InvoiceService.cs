@@ -45,8 +45,10 @@ public class InvoiceService : IInvoiceService
             throw new ValidationAppException("An invoice must have at least one item.");
 
         var merchant = await ResolvePartnerAsync(request.MerchantId, request.MerchantName, PartnerType.Merchant, "merchant");
-        // Farmer is optional — an invoice can be entered for the trader alone.
-        var farmer = await ResolveOptionalPartnerAsync(request.FarmerId, request.FarmerName, PartnerType.Farmer);
+        // Seller (Farmer) and Driver are both optional and independent of each other — an invoice
+        // can have either, both, or neither attached.
+        var farmer = await ResolveOptionalPartnerAsync(request.FarmerId, request.FarmerName, PartnerType.Farmer, "farmer");
+        var driver = await ResolveOptionalPartnerAsync(request.DriverId, request.DriverName, PartnerType.Driver, "driver");
 
         // Grow the item-name catalog with anything new, same "type it once, pick it from a
         // list every time after" pattern already used for partners.
@@ -55,7 +57,7 @@ public class InvoiceService : IInvoiceService
 
         // Pure business math lives in GreenMarket.Domain — this service is just wiring.
         var totals = InvoiceCalculator.Calculate(
-            request.Items.Select(i => new InvoiceCalculator.LineInput(i.ItemName, i.Quantity, i.Unit, i.PricePerUnit)));
+            request.Items.Select(i => new InvoiceCalculator.LineInput(i.ItemName, i.Quantity, i.Unit, i.PricePerUnit, i.WoodPrice)));
 
         var commissionRate = await _settings.GetDecimalAsync(Setting.Keys.DefaultCommissionRate, 0.07m);
         var commissionResult = CommissionCalculator.Calculate(totals.TotalValue, commissionRate);
@@ -66,6 +68,8 @@ public class InvoiceService : IInvoiceService
             Date = request.Date,
             MerchantId = merchant.Id,
             FarmerId = farmer?.Id,
+            DriverId = driver?.Id,
+            TransportFee = request.TransportFee,
             Status = InvoiceStatus.Active,
             TotalWeightKg = totals.TotalWeightKg,
             TotalValue = totals.TotalValue,
@@ -76,6 +80,7 @@ public class InvoiceService : IInvoiceService
                 Quantity = l.Quantity,
                 Unit = l.Unit,
                 PricePerUnit = l.PricePerUnit,
+                WoodPrice = l.WoodPrice,
                 LineTotal = l.LineTotal
             }).ToList()
         };
@@ -126,13 +131,14 @@ public class InvoiceService : IInvoiceService
             throw new ConflictAppException("Cannot edit a cancelled invoice.");
 
         var merchant = await ResolvePartnerAsync(request.MerchantId, request.MerchantName, PartnerType.Merchant, "merchant");
-        var farmer = await ResolveOptionalPartnerAsync(request.FarmerId, request.FarmerName, PartnerType.Farmer);
+        var farmer = await ResolveOptionalPartnerAsync(request.FarmerId, request.FarmerName, PartnerType.Farmer, "farmer");
+        var driver = await ResolveOptionalPartnerAsync(request.DriverId, request.DriverName, PartnerType.Driver, "driver");
 
         foreach (var name in request.Items.Select(i => i.ItemName).Distinct(StringComparer.OrdinalIgnoreCase))
             await _items.FindOrCreateAsync(name);
 
         var totals = InvoiceCalculator.Calculate(
-            request.Items.Select(i => new InvoiceCalculator.LineInput(i.ItemName, i.Quantity, i.Unit, i.PricePerUnit)));
+            request.Items.Select(i => new InvoiceCalculator.LineInput(i.ItemName, i.Quantity, i.Unit, i.PricePerUnit, i.WoodPrice)));
 
         var commissionRate = await _settings.GetDecimalAsync(Setting.Keys.DefaultCommissionRate, 0.07m);
         var commissionResult = CommissionCalculator.Calculate(totals.TotalValue, commissionRate);
@@ -142,6 +148,8 @@ public class InvoiceService : IInvoiceService
         invoice.Date = request.Date;
         invoice.MerchantId = merchant.Id;
         invoice.FarmerId = farmer?.Id;
+        invoice.DriverId = driver?.Id;
+        invoice.TransportFee = request.TransportFee;
         invoice.TotalWeightKg = totals.TotalWeightKg;
         invoice.TotalValue = totals.TotalValue;
         invoice.CommissionRateApplied = commissionRate;
@@ -157,6 +165,7 @@ public class InvoiceService : IInvoiceService
                 Quantity = l.Quantity,
                 Unit = l.Unit,
                 PricePerUnit = l.PricePerUnit,
+                WoodPrice = l.WoodPrice,
                 LineTotal = l.LineTotal
             });
         }
@@ -207,6 +216,7 @@ public class InvoiceService : IInvoiceService
             .Include(i => i.Items)
             .Include(i => i.Merchant)
             .Include(i => i.Farmer)
+            .Include(i => i.Driver)
             .SingleOrDefaultAsync(i => i.Id == id)
             ?? throw new NotFoundAppException("Invoice", id);
 
@@ -219,6 +229,7 @@ public class InvoiceService : IInvoiceService
             .Include(i => i.Items)
             .Include(i => i.Merchant)
             .Include(i => i.Farmer)
+            .Include(i => i.Driver)
             .Where(i => ids.Contains(i.Id))
             .ToListAsync();
 
@@ -230,12 +241,13 @@ public class InvoiceService : IInvoiceService
 
     public async Task<PagedResult<InvoiceListItemDto>> ListAsync(InvoiceFilterRequest filter)
     {
-        var query = _db.Invoices.Include(i => i.Merchant).Include(i => i.Farmer).AsQueryable();
+        var query = _db.Invoices.Include(i => i.Merchant).Include(i => i.Farmer).Include(i => i.Driver).AsQueryable();
 
         if (filter.DateFrom is not null) query = query.Where(i => i.Date >= filter.DateFrom);
         if (filter.DateTo is not null) query = query.Where(i => i.Date <= filter.DateTo);
         if (filter.MerchantId is not null) query = query.Where(i => i.MerchantId == filter.MerchantId);
         if (filter.FarmerId is not null) query = query.Where(i => i.FarmerId == filter.FarmerId);
+        if (filter.DriverId is not null) query = query.Where(i => i.DriverId == filter.DriverId);
         if (filter.Status is not null) query = query.Where(i => i.Status == filter.Status);
         if (!string.IsNullOrWhiteSpace(filter.InvoiceNumber)) query = query.Where(i => i.InvoiceNumber.Contains(filter.InvoiceNumber));
         if (!string.IsNullOrWhiteSpace(filter.InvoiceNumberFrom)) query = query.Where(i => i.InvoiceNumber.CompareTo(filter.InvoiceNumberFrom) >= 0);
@@ -255,9 +267,13 @@ public class InvoiceService : IInvoiceService
                 i.Id, i.InvoiceNumber, i.Date, i.MerchantId, i.Merchant.Name, i.Merchant.WhatsAppNumber,
                 i.Farmer != null ? i.Farmer.Name : null,
                 i.Farmer != null ? i.Farmer.WhatsAppNumber : null,
+                i.DriverId,
+                i.Driver != null ? i.Driver.Name : null,
+                i.Driver != null ? i.Driver.WhatsAppNumber : null,
                 i.Status, i.TotalWeightKg,
                 i.Items.Where(it => it.Unit == UnitOfMeasure.Box).Sum(it => (decimal?)it.Quantity) ?? 0,
-                i.TotalValue))
+                i.TotalValue, i.TransportFee,
+                i.TotalValue + i.TransportFee + (i.Items.Sum(it => (decimal?)it.WoodPrice) ?? 0)))
             .ToListAsync();
 
         return new PagedResult<InvoiceListItemDto> { Items = items, TotalCount = total, Page = filter.Page, PageSize = filter.PageSize };
@@ -270,7 +286,7 @@ public class InvoiceService : IInvoiceService
     /// </summary>
     public async Task<InvoiceDto> CancelAsync(int id, CancelInvoiceRequest request, int cancelledByUserId)
     {
-        var invoice = await _db.Invoices.Include(i => i.Items).Include(i => i.Merchant).Include(i => i.Farmer)
+        var invoice = await _db.Invoices.Include(i => i.Items).Include(i => i.Merchant).Include(i => i.Farmer).Include(i => i.Driver)
             .SingleOrDefaultAsync(i => i.Id == id) ?? throw new NotFoundAppException("Invoice", id);
 
         if (invoice.Status == InvoiceStatus.Cancelled)
@@ -316,12 +332,12 @@ public class InvoiceService : IInvoiceService
     }
 
     /// <summary>Same resolution as <see cref="ResolvePartnerAsync"/>, but returns null instead of
-    /// throwing when neither an Id nor a name is supplied — used for the farmer side, which is
-    /// optional (an invoice can be entered for the trader alone).</summary>
-    private async Task<Partner?> ResolveOptionalPartnerAsync(int? id, string? name, PartnerType type)
+    /// throwing when neither an Id nor a name is supplied — used for the seller/driver sides, which
+    /// are both optional (an invoice can be entered for the trader alone).</summary>
+    private async Task<Partner?> ResolveOptionalPartnerAsync(int? id, string? name, PartnerType type, string role)
     {
         if (id is not null)
-            return await _db.Partners.FindAsync(id) ?? throw new NotFoundAppException("Partner (farmer)", id);
+            return await _db.Partners.FindAsync(id) ?? throw new NotFoundAppException($"Partner ({role})", id);
 
         if (!string.IsNullOrWhiteSpace(name))
             return await _partners.FindOrCreateAsync(name, type);
@@ -338,11 +354,20 @@ public class InvoiceService : IInvoiceService
         return $"INV-{year}-{(countThisYear + 1):D6}";
     }
 
-    private static InvoiceDto ToDto(Invoice i) => new(
-        i.Id, i.InvoiceNumber, i.Date,
-        i.MerchantId, i.Merchant.Name, i.Merchant.WhatsAppNumber,
-        i.FarmerId, i.Farmer?.Name, i.Farmer?.WhatsAppNumber,
-        i.Status,
-        i.TotalWeightKg, i.TotalValue,
-        i.Items.Select(it => new InvoiceItemDto(it.Id, it.ItemName, it.Quantity, it.Unit, it.PricePerUnit, it.LineTotal)).ToList());
+    private static InvoiceDto ToDto(Invoice i)
+    {
+        // Sum() on an empty in-memory List<decimal> is fine (returns 0, doesn't throw) — this is
+        // LINQ-to-Objects over an already-materialized navigation, not a translated SQL query.
+        var woodTotal = i.Items.Sum(it => it.WoodPrice);
+        var grandTotal = i.TotalValue + i.TransportFee + woodTotal;
+
+        return new(
+            i.Id, i.InvoiceNumber, i.Date,
+            i.MerchantId, i.Merchant.Name, i.Merchant.WhatsAppNumber,
+            i.FarmerId, i.Farmer?.Name, i.Farmer?.WhatsAppNumber,
+            i.DriverId, i.Driver?.Name, i.Driver?.WhatsAppNumber,
+            i.Status,
+            i.TotalWeightKg, i.TotalValue, i.TransportFee, woodTotal, grandTotal,
+            i.Items.Select(it => new InvoiceItemDto(it.Id, it.ItemName, it.Quantity, it.Unit, it.PricePerUnit, it.WoodPrice, it.LineTotal)).ToList());
+    }
 }

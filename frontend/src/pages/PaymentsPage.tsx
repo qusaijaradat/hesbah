@@ -3,8 +3,9 @@ import {
   createExpense, createPayment, deleteExpense, deletePayment,
   listExpenses, listPayments, updateExpense, updatePayment,
 } from "../api/payments";
+import { listEmployees } from "../api/employees";
 import { listInvoices } from "../api/invoices";
-import type { ExpenseDto, InvoiceListItemDto, PaymentDirection, PaymentDto } from "../types";
+import type { EmployeeDto, ExpenseDto, InvoiceListItemDto, PaymentDirection, PaymentDto } from "../types";
 import { PartnerAutocomplete } from "../components/PartnerAutocomplete";
 import { formatCurrency, formatDate, todayLocalDateString } from "../lib/format";
 import { apiErrorMessage } from "../api/client";
@@ -266,6 +267,40 @@ function PaymentEditModal({ payment, onClose, onSaved }: { payment: PaymentDto; 
   );
 }
 
+/** Simple dropdown of active employees for "attribute this expense/withdrawal to" — a plain
+ * <select> rather than an autocomplete since the employee list is a short, internal staff
+ * roster (unlike partners, which can run into the hundreds). Only active employees are offered
+ * for NEW entries; an edit modal also injects the currently-linked employee even if since made
+ * inactive, so switching away from them isn't forced just to save an unrelated edit. */
+function EmployeeSelect({ employeeId, onChange, currentName }: {
+  employeeId: number | null;
+  onChange: (id: number | null) => void;
+  currentName?: string | null;
+}) {
+  const [employees, setEmployees] = useState<EmployeeDto[]>([]);
+
+  useEffect(() => {
+    listEmployees({ activeOnly: true }).then(setEmployees);
+  }, []);
+
+  const hasCurrentInList = employeeId != null && employees.some((e) => e.id === employeeId);
+
+  return (
+    <div>
+      <label className="label">الموظف (اختياري — لتتبع كم أُعطي له)</label>
+      <select className="input" value={employeeId ?? ""} onChange={(e) => onChange(e.target.value ? Number(e.target.value) : null)}>
+        <option value="">بدون موظف</option>
+        {!hasCurrentInList && employeeId != null && (
+          <option value={employeeId}>{currentName ?? `#${employeeId}`} (غير نشط)</option>
+        )}
+        {employees.map((emp) => (
+          <option key={emp.id} value={emp.id}>{emp.name}</option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
 function ExpensesTab({ canManage }: { canManage: boolean }) {
   const [expenses, setExpenses] = useState<ExpenseDto[]>([]);
   const [showForm, setShowForm] = useState(false);
@@ -293,15 +328,16 @@ function ExpensesTab({ canManage }: { canManage: boolean }) {
       {canManage && <button className="btn-primary mb-4" onClick={() => setShowForm(true)}>+ إضافة مصروف</button>}
       <div className="card overflow-x-auto">
         <table className="table-base">
-          <thead><tr><th>التاريخ</th><th>الوصف</th><th>الفئة</th><th>المبلغ</th>{canManage && <th></th>}</tr></thead>
+          <thead><tr><th>التاريخ</th><th>الوصف</th><th>الفئة</th><th>الموظف</th><th>المبلغ</th>{canManage && <th></th>}</tr></thead>
           <tbody>
             {expenses.length === 0 ? (
-              <tr><td colSpan={canManage ? 5 : 4} className="text-center text-gray-400 py-6">لا توجد مصاريف</td></tr>
+              <tr><td colSpan={canManage ? 6 : 5} className="text-center text-gray-400 py-6">لا توجد مصاريف</td></tr>
             ) : expenses.map((e) => (
               <tr key={e.id}>
                 <td>{formatDate(e.date)}</td>
                 <td>{e.description}</td>
                 <td>{e.category || "—"}</td>
+                <td>{e.employeeName || "—"}</td>
                 <td className="font-medium">{formatCurrency(e.amount)}</td>
                 {canManage && (
                   <td className="whitespace-nowrap">
@@ -325,6 +361,7 @@ function ExpenseFormModal({ onClose, onSaved }: { onClose: () => void; onSaved: 
   const [amount, setAmount] = useState("");
   const [category, setCategory] = useState("");
   const [date, setDate] = useState(() => todayLocalDateString());
+  const [employeeId, setEmployeeId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [justAdded, setJustAdded] = useState(false);
@@ -338,9 +375,9 @@ function ExpenseFormModal({ onClose, onSaved }: { onClose: () => void; onSaved: 
     setBusy(true);
     setError(null);
     try {
-      await createExpense({ date: new Date(date).toISOString(), description, amount: amountValue, category: category || undefined });
+      await createExpense({ date: new Date(date).toISOString(), description, amount: amountValue, category: category || undefined, employeeId });
       onSaved();
-      // Stay open for the next expense (category/date carried over, description/amount reset).
+      // Stay open for the next expense (category/date/employee carried over, description/amount reset).
       setDescription(""); setAmount("");
       setJustAdded(true);
       setSavedOnce(true);
@@ -360,8 +397,9 @@ function ExpenseFormModal({ onClose, onSaved }: { onClose: () => void; onSaved: 
         <div className="space-y-3">
           <div><label className="label">الوصف</label><input ref={descRef} className="input" value={description} onChange={(e) => setDescription(e.target.value)} autoFocus /></div>
           <div><label className="label">المبلغ (₪)</label><input className="input" type="number" min="0" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} /></div>
-          <div><label className="label">الفئة</label><input className="input" value={category} onChange={(e) => setCategory(e.target.value)} placeholder="كهرباء / إيجار / صيانة..." /></div>
+          <div><label className="label">الفئة</label><input className="input" value={category} onChange={(e) => setCategory(e.target.value)} placeholder="كهرباء / إيجار / صيانة / سحب..." /></div>
           <div><label className="label">التاريخ</label><input className="input" type="date" value={date} onChange={(e) => setDate(e.target.value)} /></div>
+          <EmployeeSelect employeeId={employeeId} onChange={setEmployeeId} />
           {justAdded && <div className="text-sm text-brand-700">✅ تم حفظ المصروف — تابع بمصروف جديد أو اضغط "تم"</div>}
           {error && <div className="text-sm text-red-600 bg-red-50 rounded-md p-2">{error}</div>}
         </div>
@@ -379,6 +417,7 @@ function ExpenseEditModal({ expense, onClose, onSaved }: { expense: ExpenseDto; 
   const [amount, setAmount] = useState(String(expense.amount));
   const [category, setCategory] = useState(expense.category ?? "");
   const [date, setDate] = useState(expense.date.slice(0, 10));
+  const [employeeId, setEmployeeId] = useState<number | null>(expense.employeeId ?? null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -389,7 +428,7 @@ function ExpenseEditModal({ expense, onClose, onSaved }: { expense: ExpenseDto; 
     setBusy(true);
     setError(null);
     try {
-      await updateExpense(expense.id, { date: new Date(date).toISOString(), description, amount: amountValue, category: category || undefined });
+      await updateExpense(expense.id, { date: new Date(date).toISOString(), description, amount: amountValue, category: category || undefined, employeeId });
       onSaved();
     } catch (err) {
       setError(apiErrorMessage(err, "فشل الحفظ"));
@@ -405,8 +444,9 @@ function ExpenseEditModal({ expense, onClose, onSaved }: { expense: ExpenseDto; 
         <div className="space-y-3">
           <div><label className="label">الوصف</label><input className="input" value={description} onChange={(e) => setDescription(e.target.value)} autoFocus /></div>
           <div><label className="label">المبلغ (₪)</label><input className="input" type="number" min="0" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} /></div>
-          <div><label className="label">الفئة</label><input className="input" value={category} onChange={(e) => setCategory(e.target.value)} placeholder="كهرباء / إيجار / صيانة..." /></div>
+          <div><label className="label">الفئة</label><input className="input" value={category} onChange={(e) => setCategory(e.target.value)} placeholder="كهرباء / إيجار / صيانة / سحب..." /></div>
           <div><label className="label">التاريخ</label><input className="input" type="date" value={date} onChange={(e) => setDate(e.target.value)} /></div>
+          <EmployeeSelect employeeId={employeeId} onChange={setEmployeeId} currentName={expense.employeeName} />
           {error && <div className="text-sm text-red-600 bg-red-50 rounded-md p-2">{error}</div>}
         </div>
         <div className="flex justify-end gap-2 mt-6">

@@ -41,5 +41,13 @@ public class ExpenseConfiguration : IEntityTypeConfiguration<Expense>
         builder.Property(x => x.Amount).HasColumnType("numeric(14,2)");
         builder.Property(x => x.Category).HasMaxLength(100);
         builder.HasIndex(x => x.Date);
+
+        // Optional attribution to an employee (the Employees feature) — no navigation collection
+        // is exposed the other way except Employee.Expenses, mirroring Payment/Invoice above.
+        builder.HasOne(x => x.Employee)
+            .WithMany(e => e.Expenses)
+            .HasForeignKey(x => x.EmployeeId)
+            .OnDelete(DeleteBehavior.Restrict);
+        builder.HasIndex(x => x.EmployeeId);
     }
 }

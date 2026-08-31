@@ -119,13 +119,16 @@ export function InvoiceDetailPage() {
         <div className="grid grid-cols-2 gap-4 mb-4 text-sm">
           <div><span className="text-gray-500">التاجر:</span> <span className="font-medium">{invoice.merchantName}</span></div>
           {invoice.farmerName && (
-            <div><span className="text-gray-500">البائع/السائق:</span> <span className="font-medium">{invoice.farmerName}</span></div>
+            <div><span className="text-gray-500">البائع:</span> <span className="font-medium">{invoice.farmerName}</span></div>
+          )}
+          {invoice.driverName && (
+            <div><span className="text-gray-500">السائق:</span> <span className="font-medium">{invoice.driverName}</span></div>
           )}
         </div>
 
         <table className="table-base mb-4">
           <thead>
-            <tr><th>الصنف</th><th>الكمية</th><th>السعر</th><th>الإجمالي</th></tr>
+            <tr><th>الصنف</th><th>الكمية</th><th>السعر</th><th>سعر الخشب</th><th>الإجمالي</th></tr>
           </thead>
           <tbody>
             {invoice.items.map((item) => (
@@ -133,6 +136,7 @@ export function InvoiceDetailPage() {
                 <td>{item.itemName}</td>
                 <td>{formatQuantity(item.quantity, item.unit)}</td>
                 <td>{formatCurrency(item.pricePerUnit)}</td>
+                <td>{item.woodPrice > 0 ? formatCurrency(item.woodPrice) : "—"}</td>
                 <td className="font-medium">{formatCurrency(item.lineTotal)}</td>
               </tr>
             ))}
@@ -147,8 +151,14 @@ export function InvoiceDetailPage() {
             {totalBoxes > 0 && (
               <div className="text-gray-500">إجمالي الصناديق: <span className="font-semibold text-gray-900">{formatQuantity(totalBoxes, "Box")}</span></div>
             )}
+            {invoice.woodTotal > 0 && (
+              <div className="text-gray-500">إجمالي الخشب: <span className="font-semibold text-gray-900">{formatCurrency(invoice.woodTotal)}</span></div>
+            )}
+            {invoice.transportFee > 0 && (
+              <div className="text-gray-500">أجرة النقل: <span className="font-semibold text-gray-900">{formatCurrency(invoice.transportFee)}</span></div>
+            )}
           </div>
-          <div className="text-lg font-bold text-brand-700">{formatCurrency(invoice.totalValue)}</div>
+          <div className="text-lg font-bold text-brand-700">{formatCurrency(invoice.grandTotal)}</div>
         </div>
 
         {/* Note: no commission line here — requirement doc §5, the market's commission never
@@ -174,7 +184,12 @@ export function InvoiceDetailPage() {
           )}
           {invoice.farmerWhatsApp && invoice.farmerName && (
             <button className="btn-primary" onClick={() => handleSendWhatsApp(invoice.farmerWhatsApp!, invoice.farmerName!)}>
-              📤 إرسال للبائع/السائق عبر واتساب
+              📤 إرسال للبائع عبر واتساب
+            </button>
+          )}
+          {invoice.driverWhatsApp && invoice.driverName && (
+            <button className="btn-primary" onClick={() => handleSendWhatsApp(invoice.driverWhatsApp!, invoice.driverName!)}>
+              📤 إرسال للسائق عبر واتساب
             </button>
           )}
           {invoice.status === "Active" && hasPermission("invoices.edit") && (

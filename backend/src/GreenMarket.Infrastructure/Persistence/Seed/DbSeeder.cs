@@ -76,7 +76,7 @@ public static class DbSeeder
             {
                 PermissionKeys.InvoicesView, PermissionKeys.PartnersView,
                 PermissionKeys.PaymentsCreate, PermissionKeys.PaymentsView,
-                PermissionKeys.ExpensesManage,
+                PermissionKeys.ExpensesManage, PermissionKeys.EmployeesManage,
                 PermissionKeys.ReportsView, PermissionKeys.ReportsExport
             },
             [SeedRoleNames.Viewer] = new[]

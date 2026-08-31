@@ -21,6 +21,14 @@ public class InvoiceItem
     public UnitOfMeasure Unit { get; set; } = UnitOfMeasure.Kg;
     public decimal PricePerUnit { get; set; }
 
+    /// <summary>
+    /// Optional per-line wood/crate cost ("سعر الخشب") — a flat add-on for this line (not
+    /// multiplied by Quantity), one of a small fixed set of preset values (3/5/6/7/8), 0 when left
+    /// unset. Deliberately excluded from LineTotal/PricePerUnit math for the same reason as
+    /// Invoice.TransportFee: it must never inflate the commission base.
+    /// </summary>
+    public decimal WoodPrice { get; set; }
+
     /// <summary>= Quantity * PricePerUnit, kept as a stored column (not computed-in-SQL) so historical
     /// invoices remain correct even if rounding rules change later.</summary>
     public decimal LineTotal { get; set; }

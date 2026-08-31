@@ -30,6 +30,7 @@ public interface IExportService
 
     byte[] GenerateInvoicePdf(InvoiceDto invoice, CompanyInfo company, bool thermalWidth);
     byte[] GenerateInvoicesBulkPdf(IReadOnlyList<InvoiceDto> invoices, CompanyInfo company);
+    byte[] GenerateDriverManifestPdf(string driverName, IReadOnlyList<InvoiceDto> invoices, CompanyInfo company);
     byte[] SimpleReportToPdf(string title, string[] headers, IEnumerable<string[]> rows);
     byte[] DailyClosingToPdf(DailyClosingDto closing, string marketName);
 }
@@ -45,7 +46,7 @@ public class ExportService : IExportService
     {
         using var workbook = new XLWorkbook();
         var sheet = workbook.Worksheets.Add("Invoices");
-        var headers = new[] { "Invoice #", "Date", "Merchant", "Farmer", "Status", "Weight (kg)", "Boxes", "Total (₪)" };
+        var headers = new[] { "Invoice #", "Date", "Merchant", "Seller", "Driver", "Status", "Weight (kg)", "Boxes", "Total (₪)", "Transport Fee (₪)", "Grand Total (₪)" };
         for (var c = 0; c < headers.Length; c++) sheet.Cell(1, c + 1).Value = headers[c];
         sheet.Row(1).Style.Font.Bold = true;
 
@@ -56,10 +57,13 @@ public class ExportService : IExportService
             sheet.Cell(row, 2).Value = inv.Date.ToLocalTime().DateTime;
             sheet.Cell(row, 3).Value = inv.MerchantName;
             sheet.Cell(row, 4).Value = inv.FarmerName;
-            sheet.Cell(row, 5).Value = inv.Status.ToString();
-            sheet.Cell(row, 6).Value = (double)inv.TotalWeightKg;
-            sheet.Cell(row, 7).Value = (double)inv.TotalBoxes;
-            sheet.Cell(row, 8).Value = (double)inv.TotalValue;
+            sheet.Cell(row, 5).Value = inv.DriverName;
+            sheet.Cell(row, 6).Value = inv.Status.ToString();
+            sheet.Cell(row, 7).Value = (double)inv.TotalWeightKg;
+            sheet.Cell(row, 8).Value = (double)inv.TotalBoxes;
+            sheet.Cell(row, 9).Value = (double)inv.TotalValue;
+            sheet.Cell(row, 10).Value = (double)inv.TransportFee;
+            sheet.Cell(row, 11).Value = (double)inv.GrandTotal;
             row++;
         }
         sheet.Columns().AdjustToContents();
@@ -201,6 +205,10 @@ public class ExportService : IExportService
                     col.Item().PaddingTop(6).LineHorizontal(1).LineColor(Colors.Grey.Darken1);
                     col.Item().PaddingTop(6).Text($"التاريخ: {invoice.Date:yyyy-MM-dd}").FontSize(thermalWidth ? 9 : 11);
                     col.Item().Text($"التاجر: {invoice.MerchantName}").FontSize(thermalWidth ? 9 : 11);
+                    if (!string.IsNullOrWhiteSpace(invoice.FarmerName))
+                        col.Item().Text($"البائع: {invoice.FarmerName}").FontSize(thermalWidth ? 9 : 11);
+                    if (!string.IsNullOrWhiteSpace(invoice.DriverName))
+                        col.Item().Text($"السائق: {invoice.DriverName}").FontSize(thermalWidth ? 9 : 11);
                 });
 
                 page.Content().ContentFromRightToLeft().PaddingVertical(10).Table(table =>
@@ -243,7 +251,11 @@ public class ExportService : IExportService
                         col.Item().AlignRight().Text($"إجمالي الوزن: {invoice.TotalWeightKg:0.###} كغم");
                     if (totalBoxes > 0)
                         col.Item().AlignRight().Text($"إجمالي الصناديق: {totalBoxes:0.###}");
-                    col.Item().PaddingTop(4).AlignRight().Text($"الإجمالي: ₪ {invoice.TotalValue:0.##}").Bold().FontSize(13);
+                    if (invoice.WoodTotal > 0)
+                        col.Item().AlignRight().Text($"إجمالي الخشب: ₪ {invoice.WoodTotal:0.##}").FontSize(thermalWidth ? 8 : 10);
+                    if (invoice.TransportFee > 0)
+                        col.Item().AlignRight().Text($"أجرة النقل: ₪ {invoice.TransportFee:0.##}").FontSize(thermalWidth ? 8 : 10);
+                    col.Item().PaddingTop(4).AlignRight().Text($"الإجمالي: ₪ {invoice.GrandTotal:0.##}").Bold().FontSize(13);
                 });
             });
         });
@@ -333,6 +345,126 @@ public class ExportService : IExportService
         return document.GeneratePdf();
     }
 
+    /// <summary>
+    /// طباعة فواتير السائق (bulk-print page, driver section): when one driver picked up items from
+    /// several different farmers/sellers across several separate invoices, printing each invoice
+    /// on its own is exactly what the driver does NOT want to carry around — this collects every
+    /// item from every one of that driver's selected invoices into ONE sheet, grouped by farmer,
+    /// so the driver (and whoever hands the goods over) can see at a glance who each item came
+    /// from. Deliberately no prices/commission and no invoice numbers, matching the same
+    /// no-internal-numbering convention as GenerateInvoicePdf/GenerateInvoicesBulkPdf above — this
+    /// is a hand-over receipt, not a financial document.
+    /// </summary>
+    public byte[] GenerateDriverManifestPdf(string driverName, IReadOnlyList<InvoiceDto> invoices, CompanyInfo company)
+    {
+        // Arabic-aware ordering so farmer names group/sort the way an Arabic reader expects
+        // rather than falling back to ordinal/byte order.
+        var arabicComparer = StringComparer.Create(new System.Globalization.CultureInfo("ar"), ignoreCase: false);
+        var farmerGroups = invoices
+            .GroupBy(i => string.IsNullOrWhiteSpace(i.FarmerName) ? "بدون بائع محدد" : i.FarmerName!)
+            .OrderBy(g => g.Key, arabicComparer)
+            .ToList();
+
+        var allItems = invoices.SelectMany(i => i.Items).ToList();
+        var totalWeight = allItems.Where(x => x.Unit == UnitOfMeasure.Kg).Sum(x => x.Quantity);
+        var totalBoxes = allItems.Where(x => x.Unit == UnitOfMeasure.Box).Sum(x => x.Quantity);
+
+        var document = Document.Create(container =>
+        {
+            container.Page(page =>
+            {
+                page.Size(PageSizes.A4);
+                page.Margin(30);
+                page.DefaultTextStyle(x => x.FontSize(10).FontFamily(PdfFontFamily));
+
+                page.Header().ContentFromRightToLeft().Column(col =>
+                {
+                    CompanyHeaderBlock(col, company, 50f, textCol =>
+                    {
+                        textCol.Item().AlignCenter().Text(company.Name).Bold().FontSize(15);
+                        if (!string.IsNullOrWhiteSpace(company.Phone))
+                            textCol.Item().AlignCenter().Text($"هاتف: {company.Phone}").FontSize(9);
+                    });
+                    col.Item().PaddingTop(6).LineHorizontal(1).LineColor(Colors.Grey.Darken1);
+                    col.Item().PaddingTop(6).AlignCenter().Text("كشف استلام سائق").Bold().FontSize(14);
+                    col.Item().Text($"السائق: {driverName}").FontSize(12);
+                    col.Item().Text($"تاريخ الطباعة: {DateTimeOffset.Now:yyyy-MM-dd}").FontSize(9).FontColor(Colors.Grey.Darken1);
+                });
+
+                page.Content().ContentFromRightToLeft().PaddingVertical(10).Column(col =>
+                {
+                    col.Spacing(12);
+                    foreach (var group in farmerGroups)
+                        col.Item().Element(c => DriverManifestFarmerSection(c, group.Key, group.ToList()));
+                });
+
+                page.Footer().ContentFromRightToLeft().Column(col =>
+                {
+                    col.Item().LineHorizontal(1).LineColor(Colors.Grey.Darken1);
+                    if (totalWeight > 0)
+                        col.Item().AlignRight().Text($"إجمالي الوزن: {totalWeight:0.###} كغم").Bold();
+                    if (totalBoxes > 0)
+                        col.Item().AlignRight().Text($"إجمالي الصناديق: {totalBoxes:0.###}").Bold();
+                    col.Item().PaddingTop(20).Row(row =>
+                    {
+                        row.RelativeItem().AlignCenter().Text("توقيع السائق").FontSize(9);
+                        row.RelativeItem().AlignCenter().Text("توقيع المستلم").FontSize(9);
+                    });
+                });
+            });
+        });
+
+        return document.GeneratePdf();
+    }
+
+    /// <summary>One farmer's block inside GenerateDriverManifestPdf — a shaded name header
+    /// followed by every item from every one of that farmer's invoices in this manifest (no
+    /// per-invoice separation, since the driver only cares "what came from this farmer").</summary>
+    private void DriverManifestFarmerSection(IContainer container, string farmerName, List<InvoiceDto> invoices)
+    {
+        container.ContentFromRightToLeft().Column(col =>
+        {
+            col.Item().Background(Colors.Grey.Lighten3).Padding(5).Text(farmerName).Bold().FontSize(11);
+            col.Item().Table(table =>
+            {
+                table.ColumnsDefinition(columns =>
+                {
+                    columns.RelativeColumn(5);
+                    columns.RelativeColumn(2);
+                });
+
+                table.Header(header =>
+                {
+                    header.Cell().Element(HeaderCell).AlignRight().Text("الصنف");
+                    header.Cell().Element(HeaderCell).AlignRight().Text("الكمية");
+                });
+
+                var rowIndex = 0;
+                foreach (var invoice in invoices.OrderBy(i => i.Date))
+                {
+                    foreach (var item in invoice.Items)
+                    {
+                        var shaded = rowIndex % 2 == 1;
+                        table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(item.ItemName);
+                        table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text($"{item.Quantity:0.###} {ArabicUnitLabel(item.Unit)}");
+                        rowIndex++;
+                    }
+                }
+            });
+
+            var farmerWeight = invoices.SelectMany(i => i.Items).Where(x => x.Unit == UnitOfMeasure.Kg).Sum(x => x.Quantity);
+            var farmerBoxes = invoices.SelectMany(i => i.Items).Where(x => x.Unit == UnitOfMeasure.Box).Sum(x => x.Quantity);
+            if (farmerWeight > 0 || farmerBoxes > 0)
+            {
+                col.Item().PaddingTop(2).AlignRight().Text(text =>
+                {
+                    if (farmerWeight > 0) text.Span($"إجمالي: {farmerWeight:0.###} كغم   ").Bold().FontSize(9);
+                    if (farmerBoxes > 0) text.Span($"{farmerBoxes:0.###} صندوق").Bold().FontSize(9);
+                });
+            }
+        });
+    }
+
     /// <summary>One quarter-page "card" for GenerateInvoicesBulkPdf — the same content as the
     /// single-invoice PDF (company header, date, merchant, items, total) just shrunk down and
     /// boxed so four of them read as four distinct invoices on one sheet rather than one blob.</summary>
@@ -361,6 +493,10 @@ public class ExportService : IExportService
             });
             col.Item().Text($"التاريخ: {invoice.Date:yyyy-MM-dd}").FontSize(8);
             col.Item().Text($"التاجر: {invoice.MerchantName}").FontSize(8);
+            if (!string.IsNullOrWhiteSpace(invoice.FarmerName))
+                col.Item().Text($"البائع: {invoice.FarmerName}").FontSize(8);
+            if (!string.IsNullOrWhiteSpace(invoice.DriverName))
+                col.Item().Text($"السائق: {invoice.DriverName}").FontSize(8);
             col.Item().PaddingTop(4).LineHorizontal(0.5f).LineColor(Colors.Grey.Lighten1);
 
             col.Item().PaddingTop(4).Table(table =>
@@ -393,7 +529,10 @@ public class ExportService : IExportService
             });
 
             col.Item().PaddingTop(4).LineHorizontal(0.5f).LineColor(Colors.Grey.Lighten1);
-            col.Item().PaddingTop(2).AlignRight().Text($"الإجمالي: ₪ {invoice.TotalValue:0.##}").Bold().FontSize(10);
+            // Card is a quarter-page — a per-line wood/transport breakdown doesn't fit, so this
+            // shows GrandTotal directly (product + wood + transport) rather than the sub-total
+            // breakdown the full single-invoice PDF shows above.
+            col.Item().PaddingTop(2).AlignRight().Text($"الإجمالي: ₪ {invoice.GrandTotal:0.##}").Bold().FontSize(10);
         });
     }
 

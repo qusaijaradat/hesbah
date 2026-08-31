@@ -86,10 +86,13 @@ export interface InvoiceItemInput {
   quantity: number;
   unit: UnitOfMeasure;
   pricePerUnit: number;
+  /** Optional per-line "سعر الخشب" (wood/crate price) — a flat add-on, not multiplied by quantity, 0 when unset. */
+  woodPrice?: number;
 }
 
 export interface InvoiceItemDto extends InvoiceItemInput {
   id: number;
+  woodPrice: number;
   lineTotal: number;
 }
 
@@ -103,9 +106,18 @@ export interface InvoiceDto {
   farmerId?: number | null;
   farmerName?: string | null;
   farmerWhatsApp?: string | null;
+  driverId?: number | null;
+  driverName?: string | null;
+  driverWhatsApp?: string | null;
   status: InvoiceStatus;
   totalWeightKg: number;
   totalValue: number;
+  /** Optional "أجرة النقل" (transport fee) for this invoice, 0 when unset. */
+  transportFee: number;
+  /** Sum of every item's woodPrice. */
+  woodTotal: number;
+  /** totalValue + transportFee + woodTotal — the actual amount charged to the merchant. */
+  grandTotal: number;
   items: InvoiceItemDto[];
 }
 
@@ -118,10 +130,15 @@ export interface InvoiceListItemDto {
   merchantWhatsApp?: string | null;
   farmerName?: string | null;
   farmerWhatsApp?: string | null;
+  driverId?: number | null;
+  driverName?: string | null;
+  driverWhatsApp?: string | null;
   status: InvoiceStatus;
   totalWeightKg: number;
   totalBoxes: number;
   totalValue: number;
+  transportFee: number;
+  grandTotal: number;
 }
 
 export interface InvoiceFilter {
@@ -129,6 +146,7 @@ export interface InvoiceFilter {
   dateTo?: string;
   merchantId?: number;
   farmerId?: number;
+  driverId?: number;
   itemName?: string;
   invoiceNumber?: string;
   invoiceNumberFrom?: string;
@@ -169,6 +187,17 @@ export interface ExpenseDto {
   description: string;
   amount: number;
   category?: string | null;
+  employeeId?: number | null;
+  employeeName?: string | null;
+}
+
+export interface EmployeeDto {
+  id: number;
+  name: string;
+  phone?: string | null;
+  notes?: string | null;
+  isActive: boolean;
+  totalExpenses: number;
 }
 
 export interface FarmerReportRow {

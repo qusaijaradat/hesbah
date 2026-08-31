@@ -25,6 +25,7 @@ public class AppDbContext : DbContext
     public DbSet<FarmerTransaction> FarmerTransactions => Set<FarmerTransaction>();
     public DbSet<Payment> Payments => Set<Payment>();
     public DbSet<Expense> Expenses => Set<Expense>();
+    public DbSet<Employee> Employees => Set<Employee>();
     public DbSet<Setting> Settings => Set<Setting>();
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
     public DbSet<CompanyLogo> CompanyLogos => Set<CompanyLogo>();

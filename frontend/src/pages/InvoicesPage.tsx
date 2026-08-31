@@ -53,9 +53,9 @@ export function InvoicesPage() {
   // One click, straight from the list — no need to open the invoice's detail page first.
   // Fetches the full item-level invoice (the list rows don't carry items) then sends the same
   // template used everywhere else.
-  async function handleSendWhatsApp(inv: InvoiceListItemDto, role: "merchant" | "farmer") {
-    const phone = role === "merchant" ? inv.merchantWhatsApp : inv.farmerWhatsApp;
-    const name = role === "merchant" ? inv.merchantName : inv.farmerName;
+  async function handleSendWhatsApp(inv: InvoiceListItemDto, role: "merchant" | "farmer" | "driver") {
+    const phone = role === "merchant" ? inv.merchantWhatsApp : role === "farmer" ? inv.farmerWhatsApp : inv.driverWhatsApp;
+    const name = role === "merchant" ? inv.merchantName : role === "farmer" ? inv.farmerName : inv.driverName;
     if (!phone || !name) return;
     setSendingKey(`${inv.id}-${role}`);
     try {
@@ -132,7 +132,8 @@ export function InvoicesPage() {
               <th>رقم الفاتورة</th>
               <th>التاريخ</th>
               <th>التاجر</th>
-              <th>البائع/السائق</th>
+              <th>البائع</th>
+              <th>السائق</th>
               <th>الكمية</th>
               <th>القيمة</th>
               <th>الحالة</th>
@@ -141,9 +142,9 @@ export function InvoicesPage() {
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={8} className="text-center text-gray-400 py-6">جاري التحميل...</td></tr>
+              <tr><td colSpan={9} className="text-center text-gray-400 py-6">جاري التحميل...</td></tr>
             ) : !result || result.items.length === 0 ? (
-              <tr><td colSpan={8} className="text-center text-gray-400 py-6">لا توجد فواتير</td></tr>
+              <tr><td colSpan={9} className="text-center text-gray-400 py-6">لا توجد فواتير</td></tr>
             ) : (
               result.items.map((inv) => (
                 <tr key={inv.id}>
@@ -151,6 +152,7 @@ export function InvoicesPage() {
                   <td>{formatDate(inv.date)}</td>
                   <td>{inv.merchantName}</td>
                   <td>{inv.farmerName ?? "—"}</td>
+                  <td>{inv.driverName ?? "—"}</td>
                   <td>
                     {/* Not everything is sold by weight — a box-only invoice has totalWeightKg
                         === 0, which on its own looks like an empty/broken row, so show whichever
@@ -184,11 +186,21 @@ export function InvoicesPage() {
                       {inv.farmerWhatsApp && (
                         <button
                           className="text-xs text-green-700 hover:underline disabled:opacity-50"
-                          title={`إرسال للبائع/السائق ${inv.farmerName} عبر واتساب`}
+                          title={`إرسال للبائع ${inv.farmerName} عبر واتساب`}
                           disabled={sendingKey === `${inv.id}-farmer`}
                           onClick={() => handleSendWhatsApp(inv, "farmer")}
                         >
-                          📤 بائع/سائق
+                          📤 بائع
+                        </button>
+                      )}
+                      {inv.driverWhatsApp && (
+                        <button
+                          className="text-xs text-green-700 hover:underline disabled:opacity-50"
+                          title={`إرسال للسائق ${inv.driverName} عبر واتساب`}
+                          disabled={sendingKey === `${inv.id}-driver`}
+                          onClick={() => handleSendWhatsApp(inv, "driver")}
+                        >
+                          📤 سائق
                         </button>
                       )}
                       <button

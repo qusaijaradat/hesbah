@@ -26,6 +26,15 @@ public class Invoice : AuditableEntity
     public int? FarmerId { get; set; }
     public Partner? Farmer { get; set; }
 
+    /// <summary>
+    /// Optional: the driver who transported this shipment, tracked separately from the seller
+    /// (<see cref="Farmer"/>) — an invoice can have either, both, or neither attached. Unlike
+    /// Farmer, attaching a driver does NOT create a <see cref="FarmerTransaction"/>/commission
+    /// ledger row; the driver's compensation for this invoice is <see cref="TransportFee"/> below.
+    /// </summary>
+    public int? DriverId { get; set; }
+    public Partner? Driver { get; set; }
+
     public InvoiceStatus Status { get; set; } = InvoiceStatus.Active;
 
     /// <summary>
@@ -39,6 +48,14 @@ public class Invoice : AuditableEntity
 
     /// <summary>Commission rate actually applied (copied from Settings at creation time so later rate changes don't retroactively alter old invoices).</summary>
     public decimal CommissionRateApplied { get; set; }
+
+    /// <summary>
+    /// Optional flat transport/delivery fee for this invoice ("أجرة النقل"), defaulting to 0.
+    /// Deliberately kept OUT of <see cref="TotalValue"/> so it never inflates the commission base
+    /// (commission is always computed off the product value alone) — it's added back in only for
+    /// the merchant-facing grand total (see InvoiceDto.GrandTotal).
+    /// </summary>
+    public decimal TransportFee { get; set; }
 
     public int? CancelledByUserId { get; set; }
     public DateTimeOffset? CancelledAt { get; set; }

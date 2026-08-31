@@ -176,6 +176,23 @@ ALTER TABLE farmer_transactions
     ADD CONSTRAINT fk_farmer_transactions_payment
     FOREIGN KEY (payment_id) REFERENCES payments(id);
 
+-- Internal staff (separate from partners/farmers/merchants) — added so expenses/withdrawals can
+-- be attributed to a specific employee and tallied. A withdrawal ("سحب") is just an expense row
+-- with employee_id set and, by convention, category='سحب' — no separate table for it.
+CREATE TABLE employees (
+    id                     SERIAL PRIMARY KEY,
+    name                   VARCHAR(200) NOT NULL,
+    phone                  VARCHAR(30),
+    notes                  VARCHAR(500),
+    is_active              BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at             TIMESTAMPTZ NOT NULL DEFAULT now(),
+    created_by_user_id     INTEGER REFERENCES users(id),
+    updated_at             TIMESTAMPTZ,
+    updated_by_user_id     INTEGER REFERENCES users(id),
+    is_deleted             BOOLEAN NOT NULL DEFAULT FALSE
+);
+CREATE INDEX ix_employees_name ON employees(name);
+
 CREATE TABLE expenses (
     id                     SERIAL PRIMARY KEY,
     date                   TIMESTAMPTZ NOT NULL,
@@ -183,6 +200,7 @@ CREATE TABLE expenses (
     amount                 NUMERIC(14,2) NOT NULL CHECK (amount >= 0),
     category               VARCHAR(100),
     recorded_by_user_id    INTEGER NOT NULL REFERENCES users(id),
+    employee_id            INTEGER REFERENCES employees(id),
     created_at             TIMESTAMPTZ NOT NULL DEFAULT now(),
     created_by_user_id     INTEGER REFERENCES users(id),
     updated_at             TIMESTAMPTZ,
@@ -190,6 +208,7 @@ CREATE TABLE expenses (
     is_deleted             BOOLEAN NOT NULL DEFAULT FALSE
 );
 CREATE INDEX ix_expenses_date ON expenses(date);
+CREATE INDEX ix_expenses_employee_id ON expenses(employee_id);
 
 -- requirement doc §5: commission rate must be a configurable setting, not hard-coded.
 CREATE TABLE settings (

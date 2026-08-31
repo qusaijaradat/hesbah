@@ -15,6 +15,7 @@ public class InvoiceConfiguration : IEntityTypeConfiguration<Invoice>
         builder.Property(x => x.TotalWeightKg).HasColumnType("numeric(14,3)");
         builder.Property(x => x.TotalValue).HasColumnType("numeric(14,2)");
         builder.Property(x => x.CommissionRateApplied).HasColumnType("numeric(6,4)");
+        builder.Property(x => x.TransportFee).HasColumnType("numeric(12,2)");
         builder.Property(x => x.CancellationReason).HasMaxLength(500);
 
         builder.HasOne(x => x.Merchant)
@@ -31,9 +32,19 @@ public class InvoiceConfiguration : IEntityTypeConfiguration<Invoice>
             .OnDelete(DeleteBehavior.Restrict)
             .IsRequired(false);
 
+        // A third FK from Invoice to Partner (as Driver) — same "explicit navigation on one side
+        // only" pattern as Farmer above. Optional, independent of Farmer (either, both, or neither
+        // can be attached to a given invoice).
+        builder.HasOne(x => x.Driver)
+            .WithMany()
+            .HasForeignKey(x => x.DriverId)
+            .OnDelete(DeleteBehavior.Restrict)
+            .IsRequired(false);
+
         builder.HasIndex(x => x.Date);
         builder.HasIndex(x => x.MerchantId);
         builder.HasIndex(x => x.FarmerId);
+        builder.HasIndex(x => x.DriverId);
         builder.HasIndex(x => x.Status);
 
         builder.HasMany(x => x.Items)
@@ -52,6 +63,7 @@ public class InvoiceItemConfiguration : IEntityTypeConfiguration<InvoiceItem>
         builder.Property(x => x.Quantity).HasColumnType("numeric(14,3)");
         builder.Property(x => x.Unit).HasConversion<int>();
         builder.Property(x => x.PricePerUnit).HasColumnType("numeric(14,2)");
+        builder.Property(x => x.WoodPrice).HasColumnType("numeric(6,2)");
         builder.Property(x => x.LineTotal).HasColumnType("numeric(14,2)");
         builder.HasIndex(x => x.ItemName);
     }

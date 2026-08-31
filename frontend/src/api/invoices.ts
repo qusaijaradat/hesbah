@@ -15,6 +15,8 @@ export async function createInvoice(payload: {
   date: string;
   merchantId?: number; merchantName?: string;
   farmerId?: number; farmerName?: string;
+  driverId?: number; driverName?: string;
+  transportFee?: number;
   items: InvoiceItemInput[];
 }) {
   const { data } = await apiClient.post<InvoiceDto>("/invoices", payload);
@@ -25,6 +27,8 @@ export async function updateInvoice(id: number, payload: {
   date: string;
   merchantId?: number; merchantName?: string;
   farmerId?: number; farmerName?: string;
+  driverId?: number; driverName?: string;
+  transportFee?: number;
   items: InvoiceItemInput[];
 }) {
   const { data } = await apiClient.put<InvoiceDto>(`/invoices/${id}`, payload);
@@ -51,6 +55,15 @@ export async function downloadInvoicesExcel(filter: InvoiceFilter) {
 export async function printInvoicesBulkPdf(ids: number[]) {
   const query = ids.map((id) => `ids=${id}`).join("&");
   const { data } = await apiClient.get(`/invoices/print/pdf?${query}`, { responseType: "blob" });
+  return data as Blob;
+}
+
+// Bulk-print page's "طباعة فواتير السائق" section: pass one driver's selected invoice ids at a
+// time — the backend collects every item across all of them into one consolidated hand-over
+// sheet grouped by farmer/seller (same repeated-key query-string reasoning as printInvoicesBulkPdf).
+export async function printDriverManifestPdf(ids: number[]) {
+  const query = ids.map((id) => `ids=${id}`).join("&");
+  const { data } = await apiClient.get(`/invoices/print/driver-manifest/pdf?${query}`, { responseType: "blob" });
   return data as Blob;
 }
 

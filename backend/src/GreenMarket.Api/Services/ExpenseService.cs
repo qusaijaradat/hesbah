@@ -23,13 +23,17 @@ public class ExpenseService : IExpenseService
     {
         if (request.Amount < 0) throw new ValidationAppException("Expense amount cannot be negative.");
 
+        var employee = await ResolveEmployeeAsync(request.EmployeeId);
+
         var expense = new Expense
         {
             Date = request.Date,
             Description = request.Description,
             Amount = request.Amount,
             Category = request.Category,
-            RecordedByUserId = recordedByUserId
+            RecordedByUserId = recordedByUserId,
+            EmployeeId = employee?.Id,
+            Employee = employee
         };
         _db.Expenses.Add(expense);
         await _db.SaveChangesAsync();
@@ -38,14 +42,14 @@ public class ExpenseService : IExpenseService
 
     public async Task<PagedResult<ExpenseDto>> ListAsync(DateTimeOffset? from, DateTimeOffset? to, int page, int pageSize)
     {
-        var query = _db.Expenses.AsQueryable();
+        var query = _db.Expenses.Include(e => e.Employee).AsQueryable();
         if (from is not null) query = query.Where(e => e.Date >= from);
         if (to is not null) query = query.Where(e => e.Date <= to);
 
         var total = await query.CountAsync();
         var items = await query.OrderByDescending(e => e.Date)
             .Skip((page - 1) * pageSize).Take(pageSize)
-            .Select(e => ToDto(e))
+            .Select(e => new ExpenseDto(e.Id, e.Date, e.Description, e.Amount, e.Category, e.EmployeeId, e.Employee != null ? e.Employee.Name : null))
             .ToListAsync();
 
         return new PagedResult<ExpenseDto> { Items = items, TotalCount = total, Page = page, PageSize = pageSize };
@@ -57,10 +61,14 @@ public class ExpenseService : IExpenseService
         if (string.IsNullOrWhiteSpace(request.Description)) throw new ValidationAppException("Description is required.");
 
         var expense = await _db.Expenses.FindAsync(id) ?? throw new NotFoundAppException("Expense", id);
+        var employee = await ResolveEmployeeAsync(request.EmployeeId);
+
         expense.Date = request.Date;
         expense.Description = request.Description;
         expense.Amount = request.Amount;
         expense.Category = request.Category;
+        expense.EmployeeId = employee?.Id;
+        expense.Employee = employee;
         await _db.SaveChangesAsync();
         return ToDto(expense);
     }
@@ -72,5 +80,11 @@ public class ExpenseService : IExpenseService
         await _db.SaveChangesAsync();
     }
 
-    private static ExpenseDto ToDto(Expense e) => new(e.Id, e.Date, e.Description, e.Amount, e.Category);
+    private async Task<Employee?> ResolveEmployeeAsync(int? employeeId)
+    {
+        if (employeeId is null) return null;
+        return await _db.Employees.FindAsync(employeeId.Value) ?? throw new NotFoundAppException("Employee", employeeId.Value);
+    }
+
+    private static ExpenseDto ToDto(Expense e) => new(e.Id, e.Date, e.Description, e.Amount, e.Category, e.EmployeeId, e.Employee?.Name);
 }

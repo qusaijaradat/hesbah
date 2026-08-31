@@ -83,6 +83,9 @@ public static class PermissionKeys
 
     public const string ExpensesManage = "expenses.manage";
 
+    /// <summary>Managing the Employees list (add/edit staff names) and viewing per-employee expense totals.</summary>
+    public const string EmployeesManage = "employees.manage";
+
     public const string ReportsView = "reports.view";
     public const string ReportsExport = "reports.export";
 
@@ -99,7 +102,7 @@ public static class PermissionKeys
         InvoicesCreate, InvoicesEdit, InvoicesCancel, InvoicesView,
         PartnersManage, PartnersView,
         PaymentsCreate, PaymentsView,
-        ExpensesManage,
+        ExpensesManage, EmployeesManage,
         ReportsView, ReportsExport,
         SettingsManage, UsersManage,
         AuditView

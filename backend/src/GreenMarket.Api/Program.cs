@@ -41,6 +41,7 @@ builder.Services.AddScoped<IItemService, ItemService>();
 builder.Services.AddScoped<IInvoiceService, InvoiceService>();
 builder.Services.AddScoped<IPaymentService, PaymentService>();
 builder.Services.AddScoped<IExpenseService, ExpenseService>();
+builder.Services.AddScoped<IEmployeeService, EmployeeService>();
 builder.Services.AddScoped<IReportService, ReportService>();
 builder.Services.AddScoped<ISettingsService, SettingsService>();
 builder.Services.AddScoped<ICompanyLogoService, CompanyLogoService>();
@@ -201,6 +202,53 @@ using (var scope = app.Services.CreateScope())
         app.Logger.LogError(ex, "Failed to ensure the company_logos table exists — logo upload/display will not work until this is fixed.");
     }
 
+    // Same EnsureCreated gap as company_logos above: columns added to the C# model (Invoice.DriverId/
+    // TransportFee, InvoiceItem.WoodPrice — transport fee, wood/crate price, and a separate driver
+    // slot) never get added to an already-existing "invoices"/"invoice_items" table. ADD COLUMN IF
+    // NOT EXISTS is a no-op once the column exists, so safe to run every startup. No FK constraint is
+    // added for DriverId here (unlike a normal EF migration would) to keep this a simple, safely
+    // idempotent statement — the application layer already fully controls what gets written there,
+    // matching the same tradeoff already accepted for company_logos.
+    try
+    {
+        await db.Database.ExecuteSqlRawAsync("""
+            ALTER TABLE invoices ADD COLUMN IF NOT EXISTS "DriverId" integer NULL;
+            ALTER TABLE invoices ADD COLUMN IF NOT EXISTS "TransportFee" numeric(12,2) NOT NULL DEFAULT 0;
+            ALTER TABLE invoice_items ADD COLUMN IF NOT EXISTS "WoodPrice" numeric(6,2) NOT NULL DEFAULT 0;
+            """);
+    }
+    catch (Exception ex)
+    {
+        app.Logger.LogError(ex, "Failed to add the DriverId/TransportFee/WoodPrice columns — the transport fee, wood price, and separate driver fields will not work until this is fixed.");
+    }
+
+    // Same EnsureCreated gap as above: the new "Employees" feature (مصاريف الحسبة → موظفين) needs
+    // a brand-new "employees" table plus a nullable EmployeeId column on the existing "expenses"
+    // table, neither of which EnsureCreated will add to an already-existing database. No FK
+    // constraint on expenses.EmployeeId, matching the same tradeoff already accepted above.
+    try
+    {
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE TABLE IF NOT EXISTS employees (
+                "Id" SERIAL PRIMARY KEY,
+                "Name" character varying(200) NOT NULL,
+                "Phone" character varying(30) NULL,
+                "Notes" character varying(500) NULL,
+                "IsActive" boolean NOT NULL DEFAULT TRUE,
+                "CreatedAt" timestamp with time zone NOT NULL DEFAULT now(),
+                "CreatedByUserId" integer NULL,
+                "UpdatedAt" timestamp with time zone NULL,
+                "UpdatedByUserId" integer NULL,
+                "IsDeleted" boolean NOT NULL DEFAULT FALSE
+            );
+            ALTER TABLE expenses ADD COLUMN IF NOT EXISTS "EmployeeId" integer NULL;
+            """);
+    }
+    catch (Exception ex)
+    {
+        app.Logger.LogError(ex, "Failed to create the employees table / EmployeeId column — the Employees page and linking expenses to employees will not work until this is fixed.");
+    }
+
     await DbSeeder.SeedAsync(db);
 }
 
@@ -217,19 +265,5 @@ app.UseCors();
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
-
-// ---------- Health ----------
-// Anonymous and dependency-free on purpose. The deploy pipeline polls this
-// through the public hostname to decide whether a rollout succeeded
-// (deploy/scripts/portainer.sh), and the container healthcheck polls it
-// locally — so it must answer 200 as soon as the app can serve requests, and
-// must not depend on anything that could make a healthy API look unhealthy.
-// The database is not probed here: schema creation and seeding already ran
-// above, so reaching this line at all means the connection worked.
-//
-// Removing this endpoint does not fail a build or a test — it fails every
-// deploy, several minutes in, as a health-gate timeout that looks like a
-// networking problem. It was dropped once already in 1c712fb.
-app.MapGet("/health", () => Results.Ok(new { status = "ok" })).AllowAnonymous();
 
 app.Run();

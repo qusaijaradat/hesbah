@@ -42,14 +42,14 @@ export function ReportsPage() {
 
       <div className="flex gap-2 mb-4">
         <button className={tab === "farmers" ? "btn-primary" : "btn-secondary"} onClick={() => setTab("farmers")}>تقرير الباعة والسواق</button>
-        <button className={tab === "merchants" ? "btn-primary" : "btn-secondary"} onClick={() => setTab("merchants")}>تقرير التجار</button>
+        <button className={tab === "merchants" ? "btn-primary" : "btn-secondary"} onClick={() => setTab("merchants")}>تقرير المشترين</button>
         <button className={tab === "market" ? "btn-primary" : "btn-secondary"} onClick={() => setTab("market")}>تقرير الحسبة</button>
         <button className={tab === "aging" ? "btn-primary" : "btn-secondary"} onClick={() => setTab("aging")}>أعمار الديون</button>
       </div>
 
       <div className="card p-4 mb-4 flex flex-wrap items-end gap-3">
         {tab === "aging" ? (
-          <div className="text-sm text-gray-500">تعرض هذه الشاشة الأرصدة المتأخرة الحالية للتجار فقط (لحظة العرض، وليست محصورة بفترة).</div>
+          <div className="text-sm text-gray-500">تعرض هذه الشاشة الأرصدة المتأخرة الحالية للمشترين فقط (لحظة العرض، وليست محصورة بفترة).</div>
         ) : (
           <>
             <div>
@@ -125,7 +125,7 @@ function MerchantsTable({ rows }: { rows: MerchantReportRow[] }) {
   return (
     <div className="card overflow-x-auto">
       <table className="table-base">
-        <thead><tr><th>التاجر</th><th>عدد الفواتير</th><th>المشتريات</th><th>المدفوع</th><th>المتبقي</th></tr></thead>
+        <thead><tr><th>المشتري</th><th>عدد الفواتير</th><th>المشتريات</th><th>المدفوع</th><th>المتبقي</th></tr></thead>
         <tbody>
           {rows.length === 0 ? (
             <tr><td colSpan={5} className="text-center text-gray-400 py-6">لا توجد بيانات</td></tr>
@@ -149,7 +149,7 @@ function AgingTable({ rows }: { rows: AgingReportRow[] }) {
     <div className="card overflow-x-auto">
       <table className="table-base">
         <thead>
-          <tr><th>التاجر</th><th>حالي (أقل من 30 يوم)</th><th>30-59 يوم</th><th>60-89 يوم</th><th>90 يوم فأكثر</th><th>الإجمالي</th></tr>
+          <tr><th>المشتري</th><th>حالي (أقل من 30 يوم)</th><th>30-59 يوم</th><th>60-89 يوم</th><th>90 يوم فأكثر</th><th>الإجمالي</th></tr>
         </thead>
         <tbody>
           {rows.length === 0 ? (

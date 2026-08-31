@@ -46,11 +46,11 @@ export function MerchantAccountPage() {
   return (
     <div>
       <Link to="/partners" className="text-sm text-brand-700 hover:underline">← رجوع إلى القائمة</Link>
-      <h1 className="text-2xl font-bold mt-2 mb-6">كشف حساب تاجر: {account.name}</h1>
+      <h1 className="text-2xl font-bold mt-2 mb-6">كشف حساب مشتري: {account.name}</h1>
 
       {account.isOverCreditLimit && (
         <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-md p-3 mb-4">
-          ⚠️ هذا التاجر تجاوز الحد الائتماني المسموح ({formatCurrency(account.creditLimit ?? 0)}) — الرصيد المتبقي حاليًا {formatCurrency(account.remaining)}.
+          ⚠️ هذا المشتري تجاوز الحد الائتماني المسموح ({formatCurrency(account.creditLimit ?? 0)}) — الرصيد المتبقي حاليًا {formatCurrency(account.remaining)}.
         </div>
       )}
 

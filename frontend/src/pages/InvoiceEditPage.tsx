@@ -153,7 +153,7 @@ export function InvoiceEditPage() {
     const merchantName = merchantText.trim();
     const farmerName = farmerText.trim();
     const driverName = driverText.trim();
-    if (!merchant && !merchantName) { setError("يرجى إدخال اسم التاجر"); return; }
+    if (!merchant && !merchantName) { setError("يرجى إدخال اسم المشتري"); return; }
     const items = parsedRows
       .filter((r) => r.itemName.trim() && r.quantity > 0)
       .map((r) => ({ itemName: r.itemName, quantity: r.quantity, unit: r.unit, pricePerUnit: r.pricePerUnit, woodPrice: r.woodPrice }));
@@ -206,9 +206,9 @@ export function InvoiceEditPage() {
             <input type="date" className="input" value={date} onChange={(e) => setDate(e.target.value)} />
           </div>
           <PartnerAutocomplete
-            label="التاجر" value={merchant} onChange={setMerchant}
+            label="المشتري" value={merchant} onChange={setMerchant}
             allowNew onFreeTextChange={setMerchantText}
-            placeholder="اكتب اسم التاجر أو اختره من القائمة..."
+            placeholder="اكتب اسم المشتري أو اختره من القائمة..."
             types={["Merchant", "Both"]}
           />
           <PartnerAutocomplete
@@ -226,7 +226,7 @@ export function InvoiceEditPage() {
         </div>
         {wouldExceedCreditLimit && (
           <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-md p-3">
-            ⚠️ هذا التاجر سيتجاوز حده الائتماني ({formatCurrency(merchantAccount!.creditLimit ?? 0)}) بعد هذا التعديل —
+            ⚠️ هذا المشتري سيتجاوز حده الائتماني ({formatCurrency(merchantAccount!.creditLimit ?? 0)}) بعد هذا التعديل —
             الرصيد المتوقع بعدها {formatCurrency(projectedRemaining)}. هذا تنبيه فقط ولا يمنع الحفظ.
           </div>
         )}

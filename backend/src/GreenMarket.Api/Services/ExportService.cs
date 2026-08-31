@@ -46,7 +46,7 @@ public class ExportService : IExportService
     {
         using var workbook = new XLWorkbook();
         var sheet = workbook.Worksheets.Add("Invoices");
-        var headers = new[] { "Invoice #", "Date", "Merchant", "Seller", "Driver", "Status", "Weight (kg)", "Boxes", "Total (₪)", "Transport Fee (₪)", "Grand Total (₪)" };
+        var headers = new[] { "Invoice #", "Date", "Buyer", "Seller", "Driver", "Status", "Weight (kg)", "Boxes", "Total (₪)", "Transport Fee (₪)", "Grand Total (₪)" };
         for (var c = 0; c < headers.Length; c++) sheet.Cell(1, c + 1).Value = headers[c];
         sheet.Row(1).Style.Font.Bold = true;
 
@@ -98,7 +98,7 @@ public class ExportService : IExportService
     {
         using var workbook = new XLWorkbook();
         var sheet = workbook.Worksheets.Add("Merchant Report");
-        var headers = new[] { "Merchant", "Invoices", "Total Purchases (₪)", "Paid (₪)", "Remaining (₪)" };
+        var headers = new[] { "Buyer", "Invoices", "Total Purchases (₪)", "Paid (₪)", "Remaining (₪)" };
         for (var c = 0; c < headers.Length; c++) sheet.Cell(1, c + 1).Value = headers[c];
         sheet.Row(1).Style.Font.Bold = true;
 
@@ -142,7 +142,7 @@ public class ExportService : IExportService
     {
         using var workbook = new XLWorkbook();
         var sheet = workbook.Worksheets.Add("Aging Report");
-        var headers = new[] { "Merchant", "Current (<30d)", "30-59 days", "60-89 days", "90+ days", "Total (₪)" };
+        var headers = new[] { "Buyer", "Current (<30d)", "30-59 days", "60-89 days", "90+ days", "Total (₪)" };
         for (var c = 0; c < headers.Length; c++) sheet.Cell(1, c + 1).Value = headers[c];
         sheet.Row(1).Style.Font.Bold = true;
 
@@ -203,8 +203,9 @@ public class ExportService : IExportService
                             textCol.Item().AlignCenter().Text($"هاتف: {company.Phone}").FontSize(thermalWidth ? 8 : 9);
                     });
                     col.Item().PaddingTop(6).LineHorizontal(1).LineColor(Colors.Grey.Darken1);
-                    col.Item().PaddingTop(6).Text($"التاريخ: {invoice.Date:yyyy-MM-dd}").FontSize(thermalWidth ? 9 : 11);
-                    col.Item().Text($"التاجر: {invoice.MerchantName}").FontSize(thermalWidth ? 9 : 11);
+                    col.Item().PaddingTop(6).Text("فاتورة مشتري").Bold().FontSize(thermalWidth ? 10 : 13);
+                    col.Item().PaddingTop(2).Text($"التاريخ: {invoice.Date:yyyy-MM-dd}").FontSize(thermalWidth ? 9 : 11);
+                    col.Item().Text($"المطلوب من: {invoice.MerchantName}").FontSize(thermalWidth ? 9 : 11);
                     if (!string.IsNullOrWhiteSpace(invoice.FarmerName))
                         col.Item().Text($"البائع: {invoice.FarmerName}").FontSize(thermalWidth ? 9 : 11);
                     if (!string.IsNullOrWhiteSpace(invoice.DriverName))
@@ -213,10 +214,24 @@ public class ExportService : IExportService
 
                 page.Content().ContentFromRightToLeft().PaddingVertical(10).Table(table =>
                 {
+                    // العدد/الوزن replace the single merged "الكمية" column on the A4 print — a
+                    // Box-unit line's quantity goes under العدد with الوزن left blank, and a
+                    // Kg-unit line is the mirror image, derived straight from Quantity/Unit (no
+                    // separate fields to fill in — whichever the item already is drives which
+                    // column shows a number). The 80mm thermal receipt keeps the original single
+                    // merged column since it's already tight on space with just 4 columns.
                     table.ColumnsDefinition(columns =>
                     {
                         columns.RelativeColumn(4);
-                        columns.RelativeColumn(2);
+                        if (thermalWidth)
+                        {
+                            columns.RelativeColumn(2);
+                        }
+                        else
+                        {
+                            columns.RelativeColumn(2);
+                            columns.RelativeColumn(2);
+                        }
                         columns.RelativeColumn(2);
                         columns.RelativeColumn(2);
                     });
@@ -224,7 +239,15 @@ public class ExportService : IExportService
                     table.Header(header =>
                     {
                         header.Cell().Element(HeaderCell).AlignRight().Text("الصنف");
-                        header.Cell().Element(HeaderCell).AlignRight().Text("الكمية");
+                        if (thermalWidth)
+                        {
+                            header.Cell().Element(HeaderCell).AlignRight().Text("الكمية");
+                        }
+                        else
+                        {
+                            header.Cell().Element(HeaderCell).AlignRight().Text("العدد");
+                            header.Cell().Element(HeaderCell).AlignRight().Text("الوزن");
+                        }
                         header.Cell().Element(HeaderCell).AlignRight().Text("السعر");
                         header.Cell().Element(HeaderCell).AlignRight().Text("الإجمالي");
                     });
@@ -234,7 +257,15 @@ public class ExportService : IExportService
                         var item = invoice.Items[i];
                         var shaded = i % 2 == 1;
                         table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(item.ItemName);
-                        table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text($"{item.Quantity:0.###} {ArabicUnitLabel(item.Unit)}");
+                        if (thermalWidth)
+                        {
+                            table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text($"{item.Quantity:0.###} {ArabicUnitLabel(item.Unit)}");
+                        }
+                        else
+                        {
+                            table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(item.Unit == UnitOfMeasure.Box ? item.Quantity.ToString("0.###") : "—");
+                            table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(item.Unit == UnitOfMeasure.Kg ? $"{item.Quantity:0.###} كغم" : "—");
+                        }
                         table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(item.PricePerUnit.ToString("0.##"));
                         table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(item.LineTotal.ToString("0.##"));
                     }
@@ -491,8 +522,9 @@ public class ExportService : IExportService
                 if (!string.IsNullOrWhiteSpace(company.Phone))
                     textCol.Item().AlignCenter().Text($"هاتف: {company.Phone}").FontSize(7);
             });
+            col.Item().Text("فاتورة مشتري").Bold().FontSize(9);
             col.Item().Text($"التاريخ: {invoice.Date:yyyy-MM-dd}").FontSize(8);
-            col.Item().Text($"التاجر: {invoice.MerchantName}").FontSize(8);
+            col.Item().Text($"المطلوب من: {invoice.MerchantName}").FontSize(8);
             if (!string.IsNullOrWhiteSpace(invoice.FarmerName))
                 col.Item().Text($"البائع: {invoice.FarmerName}").FontSize(8);
             if (!string.IsNullOrWhiteSpace(invoice.DriverName))

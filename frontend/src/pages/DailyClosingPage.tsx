@@ -65,13 +65,13 @@ export function DailyClosingPage() {
 
           <h2 className="text-sm font-semibold text-gray-500 mb-2">حركة النقد الفعلية (لإغلاق الصندوق)</h2>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <StatCard label="دفعات مستلمة من التجار" value={formatCurrency(closing.paymentsReceivedFromMerchants)} tone="positive" />
+            <StatCard label="دفعات مستلمة من المشترين" value={formatCurrency(closing.paymentsReceivedFromMerchants)} tone="positive" />
             <StatCard label="دفعات مدفوعة للباعة والسواق" value={formatCurrency(closing.paymentsPaidToFarmers)} tone="negative" />
             <StatCard
               label="صافي التدفق النقدي اليوم"
               value={formatCurrency(netCashFlow)}
               tone={netCashFlow >= 0 ? "positive" : "negative"}
-              hint="دفعات التجار − دفعات الباعة والسواق − المصاريف"
+              hint="دفعات المشترين − دفعات الباعة والسواق − المصاريف"
             />
           </div>
         </>

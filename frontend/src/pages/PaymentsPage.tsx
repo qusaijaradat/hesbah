@@ -66,7 +66,7 @@ function PaymentsTab({ canManage }: { canManage: boolean }) {
               <tr key={p.id}>
                 <td>{formatDate(p.date)}</td>
                 <td>{p.partnerName}</td>
-                <td>{p.direction === "ToFarmer" ? "دفعة للبائع/السائق" : "دفعة من التاجر"}</td>
+                <td>{p.direction === "ToFarmer" ? "دفعة للبائع/السائق" : "دفعة من المشتري"}</td>
                 <td className="font-medium">{formatCurrency(p.amount)}</td>
                 <td className="text-gray-500 text-sm">{p.invoiceNumber ?? "—"}</td>
                 <td>{p.method || "—"}</td>
@@ -174,7 +174,7 @@ function PaymentFormModal({ onClose, onSaved }: { onClose: () => void; onSaved: 
             <label className="label">الاتجاه</label>
             <select className="input" value={direction} onChange={(e) => { setDirection(e.target.value as PaymentDirection); setInvoiceId(null); }}>
               <option value="ToFarmer">دفعة للبائع/السائق (يخفض مستحقاته)</option>
-              <option value="FromMerchant">دفعة من التاجر (تخفض دينه)</option>
+              <option value="FromMerchant">دفعة من المشتري (تخفض دينه)</option>
             </select>
           </div>
           <PartnerAutocomplete label="الشخص" value={partner} onChange={setPartner} allowNew onFreeTextChange={setPartnerText} />

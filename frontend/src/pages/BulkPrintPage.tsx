@@ -285,7 +285,7 @@ export function BulkPrintPage() {
               <th><input type="checkbox" checked={result.length > 0 && selected.size === result.length} onChange={toggleAll} /></th>
               <th>رقم الفاتورة</th>
               <th>التاريخ</th>
-              <th>التاجر</th>
+              <th>المشتري</th>
               <th>البائع</th>
               <th>السائق</th>
               <th>الكمية</th>
@@ -323,11 +323,11 @@ export function BulkPrintPage() {
 
       {traderGroups.length > 0 && (
         <div className="card overflow-x-auto mb-4">
-          <div className="px-4 pt-4 pb-1 text-sm font-semibold text-gray-700">تجميع حسب التاجر — نفس التجميع المستخدم في الطباعة</div>
+          <div className="px-4 pt-4 pb-1 text-sm font-semibold text-gray-700">تجميع حسب المشتري — نفس التجميع المستخدم في الطباعة</div>
           <table className="table-base">
             <thead>
               <tr>
-                <th>التاجر</th>
+                <th>المشتري</th>
                 <th>عدد الفواتير</th>
                 <th>الإجمالي</th>
                 <th></th>

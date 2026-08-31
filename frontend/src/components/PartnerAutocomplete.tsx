@@ -108,6 +108,6 @@ export function PartnerAutocomplete({
 function typeLabel(type: string) {
   if (type === "Farmer") return "بائع";
   if (type === "Driver") return "سائق";
-  if (type === "Merchant") return "تاجر";
-  return "بائع/تاجر";
+  if (type === "Merchant") return "مشتري";
+  return "بائع/مشتري";
 }

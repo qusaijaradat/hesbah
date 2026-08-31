@@ -11,8 +11,8 @@ const PERMISSION_LABELS: Record<string, string> = {
   "invoices.edit": "تعديل فواتير",
   "invoices.cancel": "إلغاء فواتير",
   "invoices.view": "عرض الفواتير",
-  "partners.manage": "إدارة الباعة والسواق والتجار",
-  "partners.view": "عرض الباعة والسواق والتجار",
+  "partners.manage": "إدارة الباعة والسواق والمشترين",
+  "partners.view": "عرض الباعة والسواق والمشترين",
   "payments.create": "تسجيل/تعديل/حذف الدفعات",
   "payments.view": "عرض الدفعات",
   "expenses.manage": "إدارة مصاريف الحسبة",
@@ -26,7 +26,7 @@ const PERMISSION_LABELS: Record<string, string> = {
 
 const GROUP_LABELS: Record<string, string> = {
   invoices: "الفواتير",
-  partners: "الباعة والسواق والتجار",
+  partners: "الباعة والسواق والمشترين",
   payments: "الدفعات",
   expenses: "المصاريف",
   employees: "الموظفون",

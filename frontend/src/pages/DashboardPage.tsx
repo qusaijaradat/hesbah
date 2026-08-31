@@ -25,7 +25,7 @@ export function DashboardPage() {
     }
     (async () => {
       const dateFrom = startOfToday();
-      // Note: no "مستحقات الباعة والسواق" or "مستحقات التجار" cards here on purpose —
+      // Note: no "مستحقات الباعة والسواق" or "مستحقات المشترين" cards here on purpose —
       // both were removed per explicit request. The farmers/drivers one was near-always
       // zero/irrelevant since most invoices never have one attached; the merchants one
       // was an all-time (not daily) outstanding-balance total that read as confusing on

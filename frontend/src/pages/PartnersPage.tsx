@@ -6,7 +6,7 @@ import { apiErrorMessage } from "../api/client";
 import { formatCurrency } from "../lib/format";
 import { useAuth } from "../auth/AuthContext";
 
-const TYPE_LABELS: Record<string, string> = { Farmer: "بائع", Driver: "سائق", Merchant: "تاجر", Both: "بائع/تاجر" };
+const TYPE_LABELS: Record<string, string> = { Farmer: "بائع", Driver: "سائق", Merchant: "مشتري", Both: "بائع/مشتري" };
 
 export function PartnersPage() {
   const { hasPermission } = useAuth();
@@ -31,7 +31,7 @@ export function PartnersPage() {
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold">الباعة والسواق والتجار</h1>
+        <h1 className="text-2xl font-bold">الباعة والسواق والمشترين</h1>
         {hasPermission("partners.manage") && (
           <button className="btn-primary" onClick={() => setEditing("new")}>+ إضافة شخص</button>
         )}
@@ -74,7 +74,7 @@ export function PartnersPage() {
                       <Link to={`/partners/${p.id}/farmer-account`} className="text-brand-700 text-sm hover:underline ms-2">كشف حساب (بائع/سائق)</Link>
                     )}
                     {(p.type === "Merchant" || p.type === "Both") && (
-                      <Link to={`/partners/${p.id}/merchant-account`} className="text-brand-700 text-sm hover:underline ms-2">كشف حساب (تاجر)</Link>
+                      <Link to={`/partners/${p.id}/merchant-account`} className="text-brand-700 text-sm hover:underline ms-2">كشف حساب (مشتري)</Link>
                     )}
                     {hasPermission("partners.manage") && (
                       <button className="text-gray-500 text-sm hover:underline ms-2" onClick={() => setEditing(p)}>تعديل</button>
@@ -156,7 +156,7 @@ function PartnerEditModal({ partner, onClose, onSaved }: {
               <option value="">غير محدد</option>
               <option value="Farmer">بائع</option>
               <option value="Driver">سائق</option>
-              <option value="Merchant">تاجر</option>
+              <option value="Merchant">مشتري</option>
             </select>
           </div>
           <div>
@@ -167,7 +167,7 @@ function PartnerEditModal({ partner, onClose, onSaved }: {
             <label className="label">الحد الائتماني (₪، اختياري)</label>
             <input className="input" type="number" min="0" step="0.01" value={creditLimit} onChange={(e) => setCreditLimit(e.target.value)}
               placeholder="اتركه فارغًا لعدم وضع حد" />
-            <p className="text-xs text-gray-400 mt-1">عند تجاوز التاجر هذا الحد، سيظهر تنبيه في كشف حسابه وعند إصدار فاتورة جديدة له.</p>
+            <p className="text-xs text-gray-400 mt-1">عند تجاوز المشتري هذا الحد، سيظهر تنبيه في كشف حسابه وعند إصدار فاتورة جديدة له.</p>
           </div>
           <div>
             <label className="label">ملاحظات</label>

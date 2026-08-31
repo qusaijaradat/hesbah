@@ -131,7 +131,7 @@ export function InvoicesPage() {
             <tr>
               <th>رقم الفاتورة</th>
               <th>التاريخ</th>
-              <th>التاجر</th>
+              <th>المشتري</th>
               <th>البائع</th>
               <th>السائق</th>
               <th>الكمية</th>
@@ -176,11 +176,11 @@ export function InvoicesPage() {
                       {inv.merchantWhatsApp && (
                         <button
                           className="text-xs text-green-700 hover:underline disabled:opacity-50"
-                          title={`إرسال للتاجر ${inv.merchantName} عبر واتساب`}
+                          title={`إرسال للمشتري ${inv.merchantName} عبر واتساب`}
                           disabled={sendingKey === `${inv.id}-merchant`}
                           onClick={() => handleSendWhatsApp(inv, "merchant")}
                         >
-                          📤 تاجر
+                          📤 مشتري
                         </button>
                       )}
                       {inv.farmerWhatsApp && (

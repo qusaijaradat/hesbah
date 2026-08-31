@@ -108,7 +108,7 @@ export function InvoiceDetailPage() {
       <div className="card p-6 mt-3">
         <div className="flex justify-between items-start mb-4">
           <div>
-            <h1 className="text-xl font-bold">فاتورة {invoice.invoiceNumber}</h1>
+            <h1 className="text-xl font-bold">فاتورة مشتري {invoice.invoiceNumber}</h1>
             <div className="text-sm text-gray-500">{formatDate(invoice.date)}</div>
           </div>
           <span className={`text-xs px-2 py-1 rounded-full ${invoice.status === "Active" ? "bg-brand-100 text-brand-800" : "bg-red-100 text-red-700"}`}>
@@ -117,7 +117,7 @@ export function InvoiceDetailPage() {
         </div>
 
         <div className="grid grid-cols-2 gap-4 mb-4 text-sm">
-          <div><span className="text-gray-500">التاجر:</span> <span className="font-medium">{invoice.merchantName}</span></div>
+          <div><span className="text-gray-500">المطلوب من:</span> <span className="font-medium">{invoice.merchantName}</span></div>
           {invoice.farmerName && (
             <div><span className="text-gray-500">البائع:</span> <span className="font-medium">{invoice.farmerName}</span></div>
           )}
@@ -126,22 +126,28 @@ export function InvoiceDetailPage() {
           )}
         </div>
 
-        <table className="table-base mb-4">
-          <thead>
-            <tr><th>الصنف</th><th>الكمية</th><th>السعر</th><th>سعر الخشب</th><th>الإجمالي</th></tr>
-          </thead>
-          <tbody>
-            {invoice.items.map((item) => (
-              <tr key={item.id}>
-                <td>{item.itemName}</td>
-                <td>{formatQuantity(item.quantity, item.unit)}</td>
-                <td>{formatCurrency(item.pricePerUnit)}</td>
-                <td>{item.woodPrice > 0 ? formatCurrency(item.woodPrice) : "—"}</td>
-                <td className="font-medium">{formatCurrency(item.lineTotal)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        {/* العدد/الوزن يحلّان محل عمود "الكمية" المدمج — مشتقّان مباشرة من الكمية/الوحدة (نفس
+            منطق الفاتورة المطبوعة A4، انظر ExportService.GenerateInvoicePdf): صنف بالصندوق
+            يعبّي "العدد" ويترك "الوزن" فاضي، وصنف بالكيلو العكس — بدون إدخال منفصل. */}
+        <div className="overflow-x-auto mb-4">
+          <table className="table-base">
+            <thead>
+              <tr><th>الصنف</th><th>العدد</th><th>الوزن</th><th>السعر</th><th>سعر الخشب</th><th>الإجمالي</th></tr>
+            </thead>
+            <tbody>
+              {invoice.items.map((item) => (
+                <tr key={item.id}>
+                  <td>{item.itemName}</td>
+                  <td>{item.unit === "Box" ? formatQuantity(item.quantity, "Box") : "—"}</td>
+                  <td>{item.unit === "Kg" ? formatWeight(item.quantity) : "—"}</td>
+                  <td>{formatCurrency(item.pricePerUnit)}</td>
+                  <td>{item.woodPrice > 0 ? formatCurrency(item.woodPrice) : "—"}</td>
+                  <td className="font-medium">{formatCurrency(item.lineTotal)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
 
         <div className="flex flex-wrap justify-between gap-2 border-t pt-3 text-sm">
           <div className="flex flex-wrap gap-4">
@@ -179,7 +185,7 @@ export function InvoiceDetailPage() {
           </button>
           {invoice.merchantWhatsApp && (
             <button className="btn-primary" onClick={() => handleSendWhatsApp(invoice.merchantWhatsApp!, invoice.merchantName)}>
-              📤 إرسال للتاجر عبر واتساب
+              📤 إرسال للمشتري عبر واتساب
             </button>
           )}
           {invoice.farmerWhatsApp && invoice.farmerName && (

@@ -18,6 +18,13 @@ export async function merchantReport(filter: ReportFilter) {
   return data;
 }
 
+/** Dashboard "كشف المشترين حسب الفترة" print button — اسم المشتري + المبلغ only, see
+ * ExportService.GenerateBuyerStatementPdf. */
+export async function printBuyerStatementPdf(filter: ReportFilter) {
+  const { data } = await apiClient.get("/reports/merchants/print/pdf", { params: filter, responseType: "blob" });
+  return data as Blob;
+}
+
 export async function marketReport(filter: ReportFilter) {
   const { data } = await apiClient.get<MarketReportRow[]>("/reports/market", { params: filter });
   return data;

@@ -17,12 +17,14 @@ public class ReportsController : ControllerBase
     private readonly IReportService _reportService;
     private readonly IExportService _exportService;
     private readonly ISettingsService _settingsService;
+    private readonly ICompanyLogoService _logoService;
 
-    public ReportsController(IReportService reportService, IExportService exportService, ISettingsService settingsService)
+    public ReportsController(IReportService reportService, IExportService exportService, ISettingsService settingsService, ICompanyLogoService logoService)
     {
         _reportService = reportService;
         _exportService = exportService;
         _settingsService = settingsService;
+        _logoService = logoService;
     }
 
     [HttpGet("daily-closing")]
@@ -48,6 +50,19 @@ public class ReportsController : ControllerBase
     [RequirePermission(PermissionKeys.ReportsView)]
     public async Task<ActionResult<IReadOnlyList<MerchantReportRow>>> Merchants([FromQuery] ReportFilterRequest filter) =>
         Ok(await _reportService.MerchantReportAsync(filter));
+
+    /// <summary>Dashboard "كشف المشترين حسب الفترة" print button — same period filter as the
+    /// on-screen list, printed as اسم المشتري + المبلغ only (see ExportService.
+    /// GenerateBuyerStatementPdf for why عدد الفواتير/المدفوع/المتبقي are left out).</summary>
+    [HttpGet("merchants/print/pdf")]
+    [RequirePermission(PermissionKeys.ReportsView)]
+    public async Task<IActionResult> MerchantsPrintPdf([FromQuery] ReportFilterRequest filter)
+    {
+        var rows = await _reportService.MerchantReportAsync(filter);
+        var company = await GetCompanyInfoAsync();
+        var bytes = _exportService.GenerateBuyerStatementPdf(rows, filter.DateFrom, filter.DateTo, company);
+        return PdfFile(bytes, "buyer-statement.pdf");
+    }
 
     [HttpGet("market")]
     [RequirePermission(PermissionKeys.ReportsView)]
@@ -153,4 +168,26 @@ public class ReportsController : ControllerBase
 
     private FileContentResult PdfFile(byte[] bytes, string fileName) =>
         File(bytes, "application/pdf", fileName);
+
+    /// <summary>Same letterhead-building logic as InvoicesController.GetCompanyInfoAsync — kept as
+    /// its own copy here rather than shared, matching how the two controllers already don't share
+    /// a base class.</summary>
+    private async Task<CompanyInfo> GetCompanyInfoAsync()
+    {
+        var settings = await _settingsService.ListAsync();
+        string? Get(string key)
+        {
+            var value = settings.FirstOrDefault(s => s.Key == key)?.Value;
+            return string.IsNullOrWhiteSpace(value) ? null : value;
+        }
+
+        var (logoContent, _) = await _logoService.GetEffectiveLogoAsync();
+
+        return new CompanyInfo(
+            Get(Setting.Keys.MarketName) ?? "Green Market",
+            Get(Setting.Keys.Address),
+            Get(Setting.Keys.Phone),
+            Get(Setting.Keys.RegistrationNumber),
+            logoContent);
+    }
 }

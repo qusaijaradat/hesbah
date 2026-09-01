@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { getInvoicesBatch, listInvoices, printDriverManifestPdf, printInvoicesBulkPdf, triggerBlobDownload } from "../api/invoices";
 import { listSettings } from "../api/settings";
+import { PartnerAutocomplete } from "../components/PartnerAutocomplete";
 import { buildStatementMessage, buildWhatsAppLink, formatCurrency, formatDate, formatQuantity, formatWeight, todayLocalDateString } from "../lib/format";
 import type { InvoiceFilter, InvoiceListItemDto } from "../types";
 
@@ -66,6 +67,14 @@ export function BulkPrintPage() {
   const [companyPhone, setCompanyPhone] = useState<string | null>(null);
   const [sendingTraderId, setSendingTraderId] = useState<number | null>(null);
   const [printingDriverKey, setPrintingDriverKey] = useState<string | number | null>(null);
+
+  // Dedicated "اختر سائق واطبع فاتورته" section — picks a driver directly and pulls every one
+  // of HIS invoices within the period filter above, with no dependency on the table below being
+  // filtered to show his invoices or on any row being checked. Separate from driverGroups below,
+  // which only ever covers whichever invoices already happen to be selected in the table.
+  const [driverPick, setDriverPick] = useState<{ id: number; name: string } | null>(null);
+  const [driverPrintBusy, setDriverPrintBusy] = useState(false);
+  const [driverPrintError, setDriverPrintError] = useState<string | null>(null);
 
   useEffect(() => {
     listSettings().then((settings) => {
@@ -187,23 +196,19 @@ export function BulkPrintPage() {
   // rather than by name alone, so two different drivers who happen to share a name never merge.
   const driverGroups = useMemo(() => {
     const selectedRows = result.filter((i) => selected.has(i.id) && i.driverName);
-    const byDriver = new Map<string | number, { key: string | number; driverName: string; invoiceIds: number[]; totalWeightKg: number; totalBoxes: number; farmerNames: string[] }>();
+    const byDriver = new Map<string | number, { key: string | number; driverName: string; invoiceIds: number[]; totalTransportFee: number }>();
     for (const inv of selectedRows) {
       const key = inv.driverId ?? inv.driverName!;
       const existing = byDriver.get(key);
       if (existing) {
         existing.invoiceIds.push(inv.id);
-        existing.totalWeightKg += inv.totalWeightKg;
-        existing.totalBoxes += inv.totalBoxes;
-        if (inv.farmerName && !existing.farmerNames.includes(inv.farmerName)) existing.farmerNames.push(inv.farmerName);
+        existing.totalTransportFee += inv.transportFee;
       } else {
         byDriver.set(key, {
           key,
           driverName: inv.driverName!,
           invoiceIds: [inv.id],
-          totalWeightKg: inv.totalWeightKg,
-          totalBoxes: inv.totalBoxes,
-          farmerNames: inv.farmerName ? [inv.farmerName] : [],
+          totalTransportFee: inv.transportFee,
         });
       }
     }
@@ -211,7 +216,8 @@ export function BulkPrintPage() {
   }, [result, selected]);
 
   // Downloads ExportService.GenerateDriverManifestPdf for just this one driver's selected
-  // invoices — every item across all of them, grouped by farmer/seller, on one printable sheet.
+  // invoices — اسم المشتري + أجرة النقل لكل فاتورة، ما فيها تفاصيل أصناف إطلاقًا (see that
+  // method's own doc comment — this is a transport-fee statement, not a goods hand-over list).
   async function handlePrintDriverManifest(driverKey: string | number, driverName: string, invoiceIds: number[]) {
     setPrintingDriverKey(driverKey);
     setError(null);
@@ -222,6 +228,28 @@ export function BulkPrintPage() {
       setError("فشل إنشاء كشف السائق");
     } finally {
       setPrintingDriverKey(null);
+    }
+  }
+
+  // Same PDF (ExportService.GenerateDriverManifestPdf) as handlePrintDriverManifest above, but
+  // looks the driver's invoices up directly by driverId + the period filter — no reliance on the
+  // table below already showing/selecting his invoices.
+  async function handlePrintDriverStandalone() {
+    if (!driverPick) return;
+    setDriverPrintBusy(true);
+    setDriverPrintError(null);
+    try {
+      const data = await listInvoices({ ...buildFilter(), driverId: driverPick.id, pageSize: 500 });
+      if (data.items.length === 0) {
+        setDriverPrintError("لا توجد فواتير لهذا السائق ضمن الفترة المحددة أعلاه.");
+        return;
+      }
+      const blob = await printDriverManifestPdf(data.items.map((i) => i.id));
+      triggerBlobDownload(blob, `driver-manifest-${driverPick.name}.pdf`);
+    } catch {
+      setDriverPrintError("فشل إنشاء كشف السائق");
+    } finally {
+      setDriverPrintBusy(false);
     }
   }
 
@@ -276,6 +304,24 @@ export function BulkPrintPage() {
             {loading ? "جاري البحث..." : "🔍 تطبيق الفلاتر"}
           </button>
         </div>
+      </div>
+
+      <div className="card p-4 mb-4">
+        <h2 className="font-semibold mb-1">طباعة فاتورة سائق</h2>
+        <p className="text-xs text-gray-500 mb-3">اختر السائق فقط — بتلمّ له تلقائيًا كل فواتيره ضمن الفترة المحددة أعلاه (بدون الحاجة لتحديدها بالجدول تحت).</p>
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="w-full max-w-xs">
+            <PartnerAutocomplete
+              label="السائق" value={driverPick} onChange={setDriverPick}
+              placeholder="اكتب اسم السائق واختره من القائمة..."
+              types={["Driver"]}
+            />
+          </div>
+          <button className="btn-primary" disabled={!driverPick || driverPrintBusy} onClick={handlePrintDriverStandalone}>
+            {driverPrintBusy ? "جاري التجهيز..." : "🖨️ طباعة فاتورة السائق"}
+          </button>
+        </div>
+        {driverPrintError && <div className="text-sm text-red-600 bg-red-50 rounded-md p-2 mt-3">{driverPrintError}</div>}
       </div>
 
       <div className="card overflow-x-auto mb-4">
@@ -368,19 +414,18 @@ export function BulkPrintPage() {
         </button>
       </div>
 
-      {/* كشف السائق: بدل ما نطبع كل فاتورة لحالها، هاي بتلمّ كل الأصناف من كل فواتير نفس السائق
-          (حتى لو كل فاتورة إلها بائع مختلف) بورقة وحدة مرتبة حسب البائع — عشان لما السائق يجيب
-          أكثر من صنف من أكثر من مزارع/بائع، ياخذ ورقة وحدة فيها كل شي بدل ما يحمل عدة فواتير. */}
+      {/* كشف أجرة نقل السائق: بدل ما نطبع كل فاتورة لحالها، هاي بتلمّ فواتير نفس السائق المحددة
+          بجدول واحد — اسم المشتري وأجرة النقل تبع فاتورته، بدون أي تفاصيل أصناف — عشان يبين
+          بالضبط قديش مستحق لهالسائق من أجرة النقل. */}
       {driverGroups.length > 0 && (
         <div className="card overflow-x-auto">
-          <div className="px-4 pt-4 pb-1 text-sm font-semibold text-gray-700">طباعة فواتير السائق — كشف استلام مجمّع لكل سائق حسب البائع</div>
+          <div className="px-4 pt-4 pb-1 text-sm font-semibold text-gray-700">طباعة فواتير السائق — كشف أجرة نقل مجمّع لكل سائق</div>
           <table className="table-base">
             <thead>
               <tr>
                 <th>السائق</th>
                 <th>عدد الفواتير</th>
-                <th>البائعون</th>
-                <th>الكمية</th>
+                <th>إجمالي أجرة النقل</th>
                 <th></th>
               </tr>
             </thead>
@@ -389,12 +434,7 @@ export function BulkPrintPage() {
                 <tr key={g.key}>
                   <td className="font-medium">{g.driverName}</td>
                   <td>{g.invoiceIds.length}</td>
-                  <td className="text-gray-500 text-sm">{g.farmerNames.length > 0 ? g.farmerNames.join("، ") : "—"}</td>
-                  <td>
-                    {g.totalWeightKg > 0 && <div>{formatWeight(g.totalWeightKg)}</div>}
-                    {g.totalBoxes > 0 && <div>{formatQuantity(g.totalBoxes, "Box")}</div>}
-                    {g.totalWeightKg === 0 && g.totalBoxes === 0 && "—"}
-                  </td>
+                  <td className="font-semibold">{formatCurrency(g.totalTransportFee)}</td>
                   <td>
                     <button
                       className="btn-secondary"

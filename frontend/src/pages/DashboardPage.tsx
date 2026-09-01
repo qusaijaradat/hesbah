@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { StatCard } from "../components/StatCard";
 import { listInvoices } from "../api/invoices";
-import { marketReport, merchantReport } from "../api/reports";
+import { marketReport, merchantReport, printBuyerStatementPdf } from "../api/reports";
 import { formatCurrency } from "../lib/format";
 import { useAuth } from "../auth/AuthContext";
 import type { MerchantReportRow } from "../types";
@@ -29,6 +29,10 @@ export function DashboardPage() {
   const [buyerDateTo, setBuyerDateTo] = useState("");
   const [buyerRows, setBuyerRows] = useState<MerchantReportRow[]>([]);
   const [buyerLoading, setBuyerLoading] = useState(false);
+  const [buyerPrinting, setBuyerPrinting] = useState(false);
+  // Nothing loads/shows until the user actually picks at least one side of the period —
+  // no more defaulting to "show everything" the moment this section is visible.
+  const buyerPeriodChosen = Boolean(buyerDateFrom || buyerDateTo);
 
   useEffect(() => {
     if (!hasPermission("invoices.view")) {
@@ -55,7 +59,10 @@ export function DashboardPage() {
   }, [hasPermission]);
 
   useEffect(() => {
-    if (!hasPermission("reports.view")) return;
+    if (!hasPermission("reports.view") || !buyerPeriodChosen) {
+      setBuyerRows([]);
+      return;
+    }
     setBuyerLoading(true);
     merchantReport({
       dateFrom: buyerDateFrom ? new Date(buyerDateFrom).toISOString() : undefined,
@@ -64,10 +71,25 @@ export function DashboardPage() {
       setBuyerRows(rows);
       setBuyerLoading(false);
     });
-  }, [hasPermission, buyerDateFrom, buyerDateTo]);
+  }, [hasPermission, buyerPeriodChosen, buyerDateFrom, buyerDateTo]);
 
   const buyerInvoiceTotal = buyerRows.reduce((sum, r) => sum + r.invoiceCount, 0);
   const buyerValueTotal = buyerRows.reduce((sum, r) => sum + r.totalPurchases, 0);
+
+  // Prints اسم المشتري + المبلغ only (no عدد الفواتير) — see ExportService.GenerateBuyerStatementPdf.
+  async function handlePrintBuyerStatement() {
+    setBuyerPrinting(true);
+    try {
+      const blob = await printBuyerStatementPdf({
+        dateFrom: buyerDateFrom ? new Date(buyerDateFrom).toISOString() : undefined,
+        dateTo: buyerDateTo ? new Date(buyerDateTo).toISOString() : undefined,
+      });
+      const url = URL.createObjectURL(blob);
+      window.open(url, "_blank");
+    } finally {
+      setBuyerPrinting(false);
+    }
+  }
 
   if (loading) return <div className="text-gray-500">جاري التحميل...</div>;
 
@@ -92,9 +114,14 @@ export function DashboardPage() {
               <label className="label">إلى تاريخ</label>
               <input type="date" className="input" value={buyerDateTo} onChange={(e) => setBuyerDateTo(e.target.value)} />
             </div>
-            {(buyerDateFrom || buyerDateTo) && (
+            {buyerPeriodChosen && (
               <button className="btn-secondary" onClick={() => { setBuyerDateFrom(""); setBuyerDateTo(""); }}>
-                إلغاء التصفية (عرض الكل)
+                إلغاء التصفية
+              </button>
+            )}
+            {buyerPeriodChosen && buyerRows.length > 0 && (
+              <button className="btn-secondary" disabled={buyerPrinting} onClick={handlePrintBuyerStatement}>
+                {buyerPrinting ? "جاري التجهيز..." : "🖨️ طباعة"}
               </button>
             )}
           </div>
@@ -104,7 +131,9 @@ export function DashboardPage() {
                 <tr><th>المشتري</th><th>عدد الفواتير</th><th>القيمة</th></tr>
               </thead>
               <tbody>
-                {buyerLoading ? (
+                {!buyerPeriodChosen ? (
+                  <tr><td colSpan={3} className="text-center text-gray-400 py-6">اختر تاريخًا (من و/أو إلى) لعرض كشف المشترين</td></tr>
+                ) : buyerLoading ? (
                   <tr><td colSpan={3} className="text-center text-gray-400 py-6">جاري التحميل...</td></tr>
                 ) : buyerRows.length === 0 ? (
                   <tr><td colSpan={3} className="text-center text-gray-400 py-6">لا توجد بيانات لهذه الفترة</td></tr>
@@ -118,7 +147,7 @@ export function DashboardPage() {
                   ))
                 )}
               </tbody>
-              {!buyerLoading && buyerRows.length > 0 && (
+              {buyerPeriodChosen && !buyerLoading && buyerRows.length > 0 && (
                 <tfoot>
                   <tr>
                     <td className="font-semibold">الإجمالي</td>

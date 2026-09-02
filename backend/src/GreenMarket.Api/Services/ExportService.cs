@@ -32,6 +32,7 @@ public interface IExportService
     byte[] GenerateInvoicesBulkPdf(IReadOnlyList<InvoiceDto> invoices, CompanyInfo company);
     byte[] GenerateDriverManifestPdf(string driverName, IReadOnlyList<InvoiceDto> invoices, CompanyInfo company);
     byte[] GenerateBuyerStatementPdf(IReadOnlyList<MerchantReportRow> rows, DateTimeOffset? dateFrom, DateTimeOffset? dateTo, CompanyInfo company);
+    byte[] GenerateFarmerStatementPdf(FarmerStatementDto statement, DateTimeOffset? dateFrom, DateTimeOffset? dateTo, CompanyInfo company);
     byte[] SimpleReportToPdf(string title, string[] headers, IEnumerable<string[]> rows);
     byte[] DailyClosingToPdf(DailyClosingDto closing, string marketName);
 }
@@ -536,6 +537,110 @@ public class ExportService : IExportService
                 {
                     col.Item().LineHorizontal(1).LineColor(Colors.Grey.Darken1);
                     col.Item().PaddingTop(4).AlignRight().Text($"الإجمالي: ₪ {grandTotal:0.##}").Bold().FontSize(13);
+                });
+            });
+        });
+
+        return document.GeneratePdf();
+    }
+
+    /// <summary>
+    /// Bulk-print page's new "كشف بائع" section: a chosen farmer's own item lines across every one
+    /// of his Active invoices within a required date range, one continuous statement (not one page
+    /// per invoice/date, and not grouped/subtotaled by date) — التاريخ here is just another column
+    /// on each row, letting the reader see the date a given item line was sold on without breaking
+    /// the sheet into a header + table per date. مجموع كلي per row is LineTotal (Quantity ×
+    /// PricePerUnit only, same convention as every other item table in this app — الخشب stays a
+    /// separate column, never folded into it). Footer sums: weight/box subtotals when relevant, an
+    /// إجمالي الخشب line when any line has one, then المجموع = sum(LineTotal) + sum(WoodPrice) —
+    /// mirrors GrandTotal's TotalValue + WoodTotal (no TransportFee: that belongs to a driver
+    /// statement, not this one).
+    /// </summary>
+    public byte[] GenerateFarmerStatementPdf(FarmerStatementDto statement, DateTimeOffset? dateFrom, DateTimeOffset? dateTo, CompanyInfo company)
+    {
+        var lines = statement.Lines;
+        var totalWeightKg = lines.Where(l => l.Unit == UnitOfMeasure.Kg).Sum(l => l.Quantity);
+        var totalBoxes = lines.Where(l => l.Unit == UnitOfMeasure.Box).Sum(l => l.Quantity);
+        var woodTotal = lines.Sum(l => l.WoodPrice);
+        var itemsTotal = lines.Sum(l => l.LineTotal);
+        var grandTotal = itemsTotal + woodTotal;
+
+        var document = Document.Create(container =>
+        {
+            container.Page(page =>
+            {
+                page.Size(PageSizes.A4);
+                page.Margin(30);
+                page.DefaultTextStyle(x => x.FontSize(9).FontFamily(PdfFontFamily));
+
+                page.Header().ContentFromRightToLeft().Column(col =>
+                {
+                    CompanyHeaderBlock(col, company, 50f, textCol =>
+                    {
+                        textCol.Item().AlignCenter().Text(company.Name).Bold().FontSize(15);
+                        if (!string.IsNullOrWhiteSpace(company.Phone))
+                            textCol.Item().AlignCenter().Text($"هاتف: {company.Phone}").FontSize(9);
+                    });
+                    col.Item().PaddingTop(6).LineHorizontal(1).LineColor(Colors.Grey.Darken1);
+                    col.Item().PaddingTop(6).AlignCenter().Text("كشف بائع").Bold().FontSize(14);
+                    col.Item().Text($"البائع: {statement.FarmerName}").FontSize(12);
+                    if (dateFrom is not null || dateTo is not null)
+                    {
+                        var from = dateFrom is not null ? dateFrom.Value.ToString("yyyy-MM-dd") : "البداية";
+                        var to = dateTo is not null ? dateTo.Value.ToString("yyyy-MM-dd") : "اليوم";
+                        col.Item().Text($"الفترة: من {from} إلى {to}").FontSize(10);
+                    }
+                    col.Item().Text($"تاريخ الطباعة: {DateTimeOffset.Now:yyyy-MM-dd}").FontSize(9).FontColor(Colors.Grey.Darken1);
+                });
+
+                page.Content().ContentFromRightToLeft().PaddingVertical(10).Table(table =>
+                {
+                    table.ColumnsDefinition(columns =>
+                    {
+                        columns.RelativeColumn(2);   // التاريخ
+                        columns.RelativeColumn(3);   // الصنف
+                        columns.RelativeColumn(2);   // العدد
+                        columns.RelativeColumn(2);   // الوزن
+                        columns.RelativeColumn(2);   // السعر
+                        columns.RelativeColumn(2);   // س.الخشب
+                        columns.RelativeColumn(2);   // مجموع كلي
+                    });
+
+                    table.Header(header =>
+                    {
+                        header.Cell().Element(HeaderCell).AlignRight().Text("التاريخ");
+                        header.Cell().Element(HeaderCell).AlignRight().Text("الصنف");
+                        header.Cell().Element(HeaderCell).AlignRight().Text("العدد");
+                        header.Cell().Element(HeaderCell).AlignRight().Text("الوزن");
+                        header.Cell().Element(HeaderCell).AlignRight().Text("السعر");
+                        header.Cell().Element(HeaderCell).AlignRight().Text("س.الخشب");
+                        header.Cell().Element(HeaderCell).AlignRight().Text("مجموع كلي");
+                    });
+
+                    for (var i = 0; i < lines.Count; i++)
+                    {
+                        var line = lines[i];
+                        var shaded = i % 2 == 1;
+                        table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text($"{line.Date:yyyy-MM-dd}");
+                        table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(line.ItemName);
+                        table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(line.Unit == UnitOfMeasure.Box ? line.Quantity.ToString("0.###") : "—");
+                        table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(line.Unit == UnitOfMeasure.Kg ? $"{line.Quantity:0.###} كغم" : "—");
+                        table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(line.PricePerUnit.ToString("0.##"));
+                        table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(line.WoodPrice > 0 ? line.WoodPrice.ToString("0.##") : "—");
+                        table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(line.LineTotal.ToString("0.##"));
+                    }
+                });
+
+                page.Footer().ContentFromRightToLeft().Column(col =>
+                {
+                    col.Item().LineHorizontal(1).LineColor(Colors.Grey.Darken1);
+                    if (totalWeightKg > 0)
+                        col.Item().AlignRight().Text($"إجمالي الوزن: {totalWeightKg:0.###} كغم");
+                    if (totalBoxes > 0)
+                        col.Item().AlignRight().Text($"إجمالي الصناديق: {totalBoxes:0.###}");
+                    if (woodTotal > 0)
+                        col.Item().AlignRight().Text($"إجمالي الخشب: ₪ {woodTotal:0.##}").FontSize(9);
+                    col.Item().PaddingTop(4).AlignRight().Text($"المجموع: ₪ {grandTotal:0.##}").Bold().FontSize(13);
                 });
             });
         });

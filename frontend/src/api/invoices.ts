@@ -80,6 +80,17 @@ export async function getInvoicesBatch(ids: number[]) {
   return data;
 }
 
+// Bulk-print page's "كشف بائع" section: one chosen farmer's own itemized item lines across every
+// one of his invoices within a required date range, as one continuous PDF statement (see backend
+// InvoiceService.GetFarmerStatementAsync / ExportService.GenerateFarmerStatementPdf).
+export async function printFarmerStatementPdf(farmerId: number, dateFrom: string, dateTo: string) {
+  const { data } = await apiClient.get(`/invoices/print/farmer-statement/pdf`, {
+    params: { farmerId, dateFrom, dateTo },
+    responseType: "blob",
+  });
+  return data as Blob;
+}
+
 export function triggerBlobDownload(blob: Blob, fileName: string) {
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");

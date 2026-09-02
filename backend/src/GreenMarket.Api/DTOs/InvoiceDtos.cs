@@ -105,3 +105,18 @@ public class InvoiceFilterRequest
 }
 
 public record CancelInvoiceRequest(string Reason);
+
+/// <summary>
+/// One row of the bulk-print page's new "كشف بائع" (farmer statement) section — a single item
+/// line pulled off one of the farmer's own Active invoices within the picked date range. Date is
+/// that owning invoice's date, not a separate per-item date: a farmer can appear across many
+/// different invoices within the range, and every one of their item lines becomes its own row
+/// here (see InvoiceService.GetFarmerStatementAsync). LineTotal mirrors InvoiceItemDto.LineTotal
+/// (Quantity * PricePerUnit only — WoodPrice is a separate flat add-on, same convention as every
+/// other item table in this app).
+/// </summary>
+public record FarmerStatementLineDto(DateTimeOffset Date, string ItemName, decimal Quantity, UnitOfMeasure Unit, decimal PricePerUnit, decimal WoodPrice, decimal LineTotal);
+
+/// <summary>Wraps the itemized lines above with the farmer's own name, resolved once in
+/// InvoiceService so the PDF header can show "البائع: ..." without a second round trip.</summary>
+public record FarmerStatementDto(int FarmerId, string FarmerName, IReadOnlyList<FarmerStatementLineDto> Lines);

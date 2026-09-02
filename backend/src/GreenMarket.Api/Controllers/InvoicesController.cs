@@ -110,6 +110,23 @@ public class InvoicesController : ControllerBase
         return File(bytes, "application/pdf", "driver-manifest.pdf");
     }
 
+    /// <summary>Bulk-print page's "كشف بائع" section: a chosen farmer's own itemized statement for
+    /// a required date range — every item line off every one of his Active invoices in that range,
+    /// one continuous PDF (not one page per invoice/date). Both dates are required by the frontend
+    /// before this is even called, so there's no "entire history" accidental print.</summary>
+    [HttpGet("print/farmer-statement/pdf")]
+    [RequirePermission(PermissionKeys.InvoicesView)]
+    public async Task<IActionResult> PrintFarmerStatementPdf([FromQuery] int farmerId, [FromQuery] DateTimeOffset? dateFrom, [FromQuery] DateTimeOffset? dateTo)
+    {
+        var statement = await _invoiceService.GetFarmerStatementAsync(farmerId, dateFrom, dateTo);
+        if (statement.Lines.Count == 0)
+            return BadRequest(new { error = "لا توجد فواتير لهذا البائع ضمن الفترة المحددة." });
+
+        var company = await GetCompanyInfoAsync();
+        var bytes = _exportService.GenerateFarmerStatementPdf(statement, dateFrom, dateTo, company);
+        return File(bytes, "application/pdf", "farmer-statement.pdf");
+    }
+
     /// <summary>Builds the printed header's company-identity block entirely from Settings, so the
     /// market can fill in its own name/address/phone/registration number without a code change.</summary>
     private async Task<CompanyInfo> GetCompanyInfoAsync()

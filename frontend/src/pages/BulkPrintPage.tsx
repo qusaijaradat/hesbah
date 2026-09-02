@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { getInvoicesBatch, listInvoices, printDriverManifestPdf, printInvoicesBulkPdf, triggerBlobDownload } from "../api/invoices";
+import { getInvoicesBatch, listInvoices, printDriverManifestPdf, printFarmerStatementPdf, printInvoicesBulkPdf, triggerBlobDownload } from "../api/invoices";
+import { apiErrorMessage } from "../api/client";
 import { listSettings } from "../api/settings";
 import { PartnerAutocomplete } from "../components/PartnerAutocomplete";
 import { buildStatementMessage, buildWhatsAppLink, formatCurrency, formatDate, formatQuantity, formatWeight, todayLocalDateString } from "../lib/format";
@@ -75,6 +76,15 @@ export function BulkPrintPage() {
   const [driverPick, setDriverPick] = useState<{ id: number; name: string } | null>(null);
   const [driverPrintBusy, setDriverPrintBusy] = useState(false);
   const [driverPrintError, setDriverPrintError] = useState<string | null>(null);
+
+  // "كشف بائع" section: a chosen farmer's own item lines across every one of his invoices within
+  // a REQUIRED date range (own from/to inputs — deliberately not tied to the period filter above,
+  // same "pick a date before anything prints" requirement as the Dashboard's buyer statement).
+  const [farmerPick, setFarmerPick] = useState<{ id: number; name: string } | null>(null);
+  const [farmerDateFrom, setFarmerDateFrom] = useState("");
+  const [farmerDateTo, setFarmerDateTo] = useState("");
+  const [farmerPrintBusy, setFarmerPrintBusy] = useState(false);
+  const [farmerPrintError, setFarmerPrintError] = useState<string | null>(null);
 
   useEffect(() => {
     listSettings().then((settings) => {
@@ -253,6 +263,25 @@ export function BulkPrintPage() {
     }
   }
 
+  // Downloads ExportService.GenerateFarmerStatementPdf for the picked farmer + required date
+  // range — one continuous itemized statement (التاريخ/الصنف/العدد/الوزن/السعر/س.الخشب/مجموع كلي
+  // per row, then a grand total), not a per-invoice printout.
+  async function handlePrintFarmerStatement() {
+    if (!farmerPick || !farmerDateFrom || !farmerDateTo) return;
+    setFarmerPrintBusy(true);
+    setFarmerPrintError(null);
+    try {
+      const from = startOfDay(new Date(farmerDateFrom)).toISOString();
+      const to = endOfDay(new Date(farmerDateTo)).toISOString();
+      const blob = await printFarmerStatementPdf(farmerPick.id, from, to);
+      triggerBlobDownload(blob, `farmer-statement-${farmerPick.name}.pdf`);
+    } catch (err) {
+      setFarmerPrintError(apiErrorMessage(err, "فشل إنشاء كشف البائع"));
+    } finally {
+      setFarmerPrintBusy(false);
+    }
+  }
+
   return (
     <div>
       <h1 className="text-2xl font-bold mb-6">طباعة الفواتير</h1>
@@ -322,6 +351,32 @@ export function BulkPrintPage() {
           </button>
         </div>
         {driverPrintError && <div className="text-sm text-red-600 bg-red-50 rounded-md p-2 mt-3">{driverPrintError}</div>}
+      </div>
+
+      <div className="card p-4 mb-4">
+        <h2 className="font-semibold mb-1">طباعة كشف بائع</h2>
+        <p className="text-xs text-gray-500 mb-3">اختر البائع وحدد الفترة — بيطلعلك كشف بكل الأصناف اللي باعها ضمن هالفترة (التاريخ/الصنف/العدد/الوزن/السعر/س.الخشب/مجموع كلي) بصفحة واحدة، مع المجموع بالنهاية.</p>
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="w-full max-w-xs">
+            <PartnerAutocomplete
+              label="البائع" value={farmerPick} onChange={setFarmerPick}
+              placeholder="اكتب اسم البائع واختره من القائمة..."
+              types={["Farmer", "Both"]}
+            />
+          </div>
+          <div>
+            <label className="label">من تاريخ</label>
+            <input type="date" className="input" value={farmerDateFrom} onChange={(e) => setFarmerDateFrom(e.target.value)} />
+          </div>
+          <div>
+            <label className="label">إلى تاريخ</label>
+            <input type="date" className="input" value={farmerDateTo} onChange={(e) => setFarmerDateTo(e.target.value)} />
+          </div>
+          <button className="btn-primary" disabled={!farmerPick || !farmerDateFrom || !farmerDateTo || farmerPrintBusy} onClick={handlePrintFarmerStatement}>
+            {farmerPrintBusy ? "جاري التجهيز..." : "🖨️ طباعة كشف البائع"}
+          </button>
+        </div>
+        {farmerPrintError && <div className="text-sm text-red-600 bg-red-50 rounded-md p-2 mt-3">{farmerPrintError}</div>}
       </div>
 
       <div className="card overflow-x-auto mb-4">

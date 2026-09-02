@@ -16,6 +16,7 @@ public interface IInvoiceService
     Task<PagedResult<InvoiceListItemDto>> ListAsync(InvoiceFilterRequest filter);
     Task<IReadOnlyList<InvoiceDto>> GetManyAsync(IReadOnlyList<int> ids);
     Task<InvoiceDto> CancelAsync(int id, CancelInvoiceRequest request, int cancelledByUserId);
+    Task<FarmerStatementDto> GetFarmerStatementAsync(int farmerId, DateTimeOffset? dateFrom, DateTimeOffset? dateTo);
 }
 
 /// <summary>
@@ -370,6 +371,37 @@ public class InvoiceService : IInvoiceService
         await _db.SaveChangesAsync();
         var previousBalance = await ComputePreviousBalanceAsync(invoice.MerchantId, invoice.Id);
         return ToDto(invoice, previousBalance);
+    }
+
+    /// <summary>
+    /// Bulk-print page's "كشف بائع" section: every item line off this farmer's own Active invoices
+    /// within the picked date range (inclusive), ordered oldest-first so the printed statement
+    /// reads chronologically. Farmer name is resolved directly via Partners rather than requiring
+    /// at least one matching invoice, so the caller still gets a proper "لا توجد فواتير..." message
+    /// (farmer exists, just nothing in range) instead of a bare 404.
+    /// </summary>
+    public async Task<FarmerStatementDto> GetFarmerStatementAsync(int farmerId, DateTimeOffset? dateFrom, DateTimeOffset? dateTo)
+    {
+        var farmer = await _db.Partners.FindAsync(farmerId) ?? throw new NotFoundAppException("Partner (farmer)", farmerId);
+
+        var query = _db.Invoices
+            .Where(i => i.FarmerId == farmerId && i.Status == InvoiceStatus.Active);
+        if (dateFrom is not null) query = query.Where(i => i.Date >= dateFrom);
+        if (dateTo is not null) query = query.Where(i => i.Date <= dateTo);
+
+        var invoices = await query
+            .Include(i => i.Items)
+            .OrderBy(i => i.Date)
+            .ToListAsync();
+
+        // In-memory flatten (not SelectMany translated to SQL) so the per-invoice date ordering
+        // above is guaranteed to carry through to the flattened item rows.
+        var lines = invoices
+            .SelectMany(i => i.Items.Select(it => new FarmerStatementLineDto(
+                i.Date, it.ItemName, it.Quantity, it.Unit, it.PricePerUnit, it.WoodPrice, it.LineTotal)))
+            .ToList();
+
+        return new FarmerStatementDto(farmer.Id, farmer.Name, lines);
     }
 
     /// <summary>An Id reuses an existing partner exactly; a Name resolves via find-or-create so a

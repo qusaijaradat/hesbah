@@ -278,12 +278,16 @@ public class ExportService : IExportService
                             table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(item.Unit == UnitOfMeasure.Box ? item.Quantity.ToString("0.###") : "—");
                             table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(item.Unit == UnitOfMeasure.Kg ? $"{item.Quantity:0.###} كغم" : "—");
                         }
-                        table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(item.PricePerUnit.ToString("0.##"));
+                        // PricePerUnit == 0 means "not priced yet, will be priced later" (see
+                        // InvoiceNewPage/InvoiceEditPage's now-optional price field) — flagged
+                        // instead of printing a misleading "₪0.00" that reads as a free item.
+                        var unpriced = item.PricePerUnit == 0;
+                        table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(unpriced ? "غير مسعّر" : item.PricePerUnit.ToString("0.##"));
                         if (!thermalWidth)
                         {
                             table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(item.WoodPrice > 0 ? item.WoodPrice.ToString("0.##") : "—");
                         }
-                        table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(item.LineTotal.ToString("0.##"));
+                        table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(unpriced ? "غير مسعّر" : item.LineTotal.ToString("0.##"));
                     }
                 });
 
@@ -621,13 +625,14 @@ public class ExportService : IExportService
                     {
                         var line = lines[i];
                         var shaded = i % 2 == 1;
+                        var unpriced = line.PricePerUnit == 0;
                         table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text($"{line.Date:yyyy-MM-dd}");
                         table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(line.ItemName);
                         table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(line.Unit == UnitOfMeasure.Box ? line.Quantity.ToString("0.###") : "—");
                         table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(line.Unit == UnitOfMeasure.Kg ? $"{line.Quantity:0.###} كغم" : "—");
-                        table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(line.PricePerUnit.ToString("0.##"));
+                        table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(unpriced ? "غير مسعّر" : line.PricePerUnit.ToString("0.##"));
                         table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(line.WoodPrice > 0 ? line.WoodPrice.ToString("0.##") : "—");
-                        table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(line.LineTotal.ToString("0.##"));
+                        table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(unpriced ? "غير مسعّر" : line.LineTotal.ToString("0.##"));
                     }
                 });
 
@@ -702,10 +707,11 @@ public class ExportService : IExportService
                 {
                     var item = invoice.Items[i];
                     var shaded = i % 2 == 1;
+                    var unpriced = item.PricePerUnit == 0;
                     table.Cell().Element(c => MiniDataCell(c, shaded)).AlignRight().Text(item.ItemName);
                     table.Cell().Element(c => MiniDataCell(c, shaded)).AlignRight().Text($"{item.Quantity:0.###} {ArabicUnitLabel(item.Unit)}");
-                    table.Cell().Element(c => MiniDataCell(c, shaded)).AlignRight().Text(item.PricePerUnit.ToString("0.##"));
-                    table.Cell().Element(c => MiniDataCell(c, shaded)).AlignRight().Text(item.LineTotal.ToString("0.##"));
+                    table.Cell().Element(c => MiniDataCell(c, shaded)).AlignRight().Text(unpriced ? "غير مسعّر" : item.PricePerUnit.ToString("0.##"));
+                    table.Cell().Element(c => MiniDataCell(c, shaded)).AlignRight().Text(unpriced ? "غير مسعّر" : item.LineTotal.ToString("0.##"));
                 }
             });
 

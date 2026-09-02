@@ -132,16 +132,27 @@ export function InvoiceDetailPage() {
               <tr><th>الصنف</th><th>العدد</th><th>الوزن</th><th>السعر</th><th>سعر الخشب</th><th>الإجمالي</th></tr>
             </thead>
             <tbody>
-              {invoice.items.map((item) => (
-                <tr key={item.id}>
-                  <td>{item.itemName}</td>
-                  <td>{item.unit === "Box" ? formatQuantity(item.quantity, "Box") : "—"}</td>
-                  <td>{item.unit === "Kg" ? formatWeight(item.quantity) : "—"}</td>
-                  <td>{formatCurrency(item.pricePerUnit)}</td>
-                  <td>{item.woodPrice > 0 ? formatCurrency(item.woodPrice) : "—"}</td>
-                  <td className="font-medium">{formatCurrency(item.lineTotal)}</td>
-                </tr>
-              ))}
+              {/* pricePerUnit == 0 means "not priced yet", not "free" — the item can be added to
+                  the invoice before it's priced and priced later via "تعديل الفاتورة" (see
+                  InvoiceNewPage/InvoiceEditPage's optional price field). Flagged here instead of
+                  silently showing ₪0.00 so it's obvious at a glance which lines still need a price. */}
+              {invoice.items.map((item) => {
+                const unpriced = item.pricePerUnit === 0;
+                return (
+                  <tr key={item.id} className={unpriced ? "bg-amber-50" : undefined}>
+                    <td>{item.itemName}</td>
+                    <td>{item.unit === "Box" ? formatQuantity(item.quantity, "Box") : "—"}</td>
+                    <td>{item.unit === "Kg" ? formatWeight(item.quantity) : "—"}</td>
+                    <td className={unpriced ? "text-amber-700 font-medium" : undefined}>
+                      {unpriced ? "غير مسعّر" : formatCurrency(item.pricePerUnit)}
+                    </td>
+                    <td>{item.woodPrice > 0 ? formatCurrency(item.woodPrice) : "—"}</td>
+                    <td className={unpriced ? "text-amber-700 font-medium" : "font-medium"}>
+                      {unpriced ? "غير مسعّر" : formatCurrency(item.lineTotal)}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

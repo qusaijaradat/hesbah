@@ -33,8 +33,11 @@ function quantityLabel(unit: UnitOfMeasure) {
   return unit === "Kg" ? "الوزن (كغم)" : "عدد الصناديق";
 }
 
+// "اختياري" — sometimes an item goes on the invoice before it's been priced (the market prices
+// it later); leaving this blank saves the line at price 0, which InvoiceDetailPage/the printed
+// PDF then show as "غير مسعّر" instead of "₪0.00" so it reads as "still needs a price", not "free".
 function priceLabel(unit: UnitOfMeasure) {
-  return unit === "Kg" ? "سعر الكيلو (₪)" : "سعر الصندوق (₪)";
+  return unit === "Kg" ? "سعر الكيلو (₪، اختياري)" : "سعر الصندوق (₪، اختياري)";
 }
 
 export function InvoiceNewPage() {
@@ -219,7 +222,7 @@ export function InvoiceNewPage() {
             <div className="col-span-3">الصنف</div>
             <div className="col-span-2">الوحدة</div>
             <div className="col-span-2">الكمية</div>
-            <div className="col-span-2">السعر (₪)</div>
+            <div className="col-span-2">السعر (₪) — اختياري</div>
             <div className="col-span-1">سعر الخشب</div>
             <div className="col-span-1">الإجمالي</div>
           </div>
@@ -248,7 +251,7 @@ export function InvoiceNewPage() {
                 <div className="col-span-1 sm:col-span-2">
                   <label className="label sm:hidden">{priceLabel(row.unit)}</label>
                   <input className="input" type="number" min="0" step="0.01" value={row.pricePerUnit}
-                    placeholder={priceLabel(row.unit)}
+                    placeholder="اتركه فارغًا إذا لم يُسعَّر بعد"
                     onChange={(e) => updateRow(idx, { pricePerUnit: e.target.value })} />
                 </div>
                 <div className="col-span-1 sm:col-span-1">
@@ -261,7 +264,14 @@ export function InvoiceNewPage() {
                 </div>
                 <div className="col-span-1 sm:col-span-1 flex items-center justify-between sm:block">
                   <label className="label sm:hidden">الإجمالي</label>
-                  <div className="text-sm font-medium">{formatCurrency(lineTotal)}</div>
+                  {/* A blank/zero price means "not priced yet", not "free" (produce is never sold
+                      for ₪0 here) — flagging it now so it's obvious at a glance which lines still
+                      need a price before/after saving, same convention as the detail page/PDF. */}
+                  {row.pricePerUnit.trim() === "" || (parseFloat(row.pricePerUnit) || 0) === 0 ? (
+                    <div className="text-sm font-medium text-amber-600">غير مسعّر</div>
+                  ) : (
+                    <div className="text-sm font-medium">{formatCurrency(lineTotal)}</div>
+                  )}
                 </div>
                 <div className="col-span-2 sm:col-span-12 flex justify-end">
                   <button className="text-red-500 text-sm" onClick={() => removeRow(idx)} title="حذف الصنف">

@@ -2,8 +2,12 @@ import { useEffect, useRef, useState } from "react";
 import { createUser, listRoles, listUsers, updateUser } from "../api/users";
 import type { RoleDto, UserDto } from "../types";
 import { apiErrorMessage } from "../api/client";
+import { useAuth } from "../auth/AuthContext";
 
 export function UsersPage() {
+  const { hasPermission } = useAuth();
+  const canCreate = hasPermission("users.create");
+  const canEdit = hasPermission("users.edit");
   const [users, setUsers] = useState<UserDto[]>([]);
   const [roles, setRoles] = useState<RoleDto[]>([]);
   const [editing, setEditing] = useState<UserDto | "new" | null>(null);
@@ -20,7 +24,7 @@ export function UsersPage() {
     <div>
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold">المستخدمون</h1>
-        <button className="btn-primary" onClick={() => setEditing("new")}>+ إضافة مستخدم</button>
+        {canCreate && <button className="btn-primary" onClick={() => setEditing("new")}>+ إضافة مستخدم</button>}
       </div>
 
       <div className="card overflow-x-auto">
@@ -37,7 +41,7 @@ export function UsersPage() {
                     {u.isActive ? "مفعّل" : "معطّل"}
                   </span>
                 </td>
-                <td><button className="text-brand-700 text-sm hover:underline" onClick={() => setEditing(u)}>تعديل</button></td>
+                <td>{canEdit && <button className="text-brand-700 text-sm hover:underline" onClick={() => setEditing(u)}>تعديل</button>}</td>
               </tr>
             ))}
           </tbody>

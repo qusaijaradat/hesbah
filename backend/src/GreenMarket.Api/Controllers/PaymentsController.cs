@@ -26,15 +26,13 @@ public class PaymentsController : ControllerBase
     public async Task<ActionResult<PaymentDto>> Create(CreatePaymentRequest request) =>
         Ok(await _paymentService.CreateAsync(request, CurrentUserId.Require(User)));
 
-    // Same permission as Create — whoever is trusted to record a payment is trusted to fix a
-    // mistake in one (wrong amount/date typed in), rather than a separate finer-grained key.
     [HttpPut("{id:int}")]
-    [RequirePermission(PermissionKeys.PaymentsCreate)]
+    [RequirePermission(PermissionKeys.PaymentsEdit)]
     public async Task<ActionResult<PaymentDto>> Update(int id, UpdatePaymentRequest request) =>
         Ok(await _paymentService.UpdateAsync(id, request));
 
     [HttpDelete("{id:int}")]
-    [RequirePermission(PermissionKeys.PaymentsCreate)]
+    [RequirePermission(PermissionKeys.PaymentsDelete)]
     public async Task<IActionResult> Delete(int id)
     {
         await _paymentService.DeleteAsync(id);

@@ -25,6 +25,7 @@ public interface IExportService
     byte[] InvoicesToExcel(IReadOnlyList<InvoiceListItemDto> invoices);
     byte[] FarmerReportToExcel(IReadOnlyList<FarmerReportRow> rows);
     byte[] MerchantReportToExcel(IReadOnlyList<MerchantReportRow> rows);
+    byte[] DriverReportToExcel(IReadOnlyList<DriverReportRow> rows);
     byte[] MarketReportToExcel(IReadOnlyList<MarketReportRow> rows);
     byte[] AgingReportToExcel(IReadOnlyList<AgingReportRow> rows);
 
@@ -48,7 +49,7 @@ public class ExportService : IExportService
     {
         using var workbook = new XLWorkbook();
         var sheet = workbook.Worksheets.Add("Invoices");
-        var headers = new[] { "Invoice #", "Date", "Buyer", "Seller", "Driver", "Status", "Weight (kg)", "Boxes", "Total (₪)", "Transport Fee (₪)", "Grand Total (₪)" };
+        var headers = new[] { "Invoice #", "Date", "Buyer", "Seller", "Driver", "Items", "Status", "Weight (kg)", "Boxes", "Total (₪)", "Transport Fee (₪)", "Grand Total (₪)" };
         for (var c = 0; c < headers.Length; c++) sheet.Cell(1, c + 1).Value = headers[c];
         sheet.Row(1).Style.Font.Bold = true;
 
@@ -60,12 +61,13 @@ public class ExportService : IExportService
             sheet.Cell(row, 3).Value = inv.MerchantName;
             sheet.Cell(row, 4).Value = inv.FarmerName;
             sheet.Cell(row, 5).Value = inv.DriverName;
-            sheet.Cell(row, 6).Value = inv.Status.ToString();
-            sheet.Cell(row, 7).Value = (double)inv.TotalWeightKg;
-            sheet.Cell(row, 8).Value = (double)inv.TotalBoxes;
-            sheet.Cell(row, 9).Value = (double)inv.TotalValue;
-            sheet.Cell(row, 10).Value = (double)inv.TransportFee;
-            sheet.Cell(row, 11).Value = (double)inv.GrandTotal;
+            sheet.Cell(row, 6).Value = inv.ItemsSummary;
+            sheet.Cell(row, 7).Value = inv.Status.ToString();
+            sheet.Cell(row, 8).Value = (double)inv.TotalWeightKg;
+            sheet.Cell(row, 9).Value = (double)inv.TotalBoxes;
+            sheet.Cell(row, 10).Value = (double)inv.TotalValue;
+            sheet.Cell(row, 11).Value = (double)inv.TransportFee;
+            sheet.Cell(row, 12).Value = (double)inv.GrandTotal;
             row++;
         }
         sheet.Columns().AdjustToContents();
@@ -76,7 +78,7 @@ public class ExportService : IExportService
     {
         using var workbook = new XLWorkbook();
         var sheet = workbook.Worksheets.Add("Farmer Report");
-        var headers = new[] { "Farmer", "Invoices", "Total Weight (kg)", "Total Sales (₪)", "Commission (₪)", "Paid (₪)", "Remaining (₪)" };
+        var headers = new[] { "Farmer", "Invoices", "Total Weight (kg)", "Total Boxes", "Total Sales (₪)", "Commission (₪)", "Net Due (₪)", "Paid (₪)", "Opening Balance (₪)", "Remaining (₪)", "Last Invoice" };
         for (var c = 0; c < headers.Length; c++) sheet.Cell(1, c + 1).Value = headers[c];
         sheet.Row(1).Style.Font.Bold = true;
 
@@ -86,10 +88,14 @@ public class ExportService : IExportService
             sheet.Cell(row, 1).Value = r.FarmerName;
             sheet.Cell(row, 2).Value = r.InvoiceCount;
             sheet.Cell(row, 3).Value = (double)r.TotalWeightKg;
-            sheet.Cell(row, 4).Value = (double)r.TotalSalesValue;
-            sheet.Cell(row, 5).Value = (double)r.TotalCommission;
-            sheet.Cell(row, 6).Value = (double)r.TotalPaid;
-            sheet.Cell(row, 7).Value = (double)r.Remaining;
+            sheet.Cell(row, 4).Value = (double)r.TotalBoxes;
+            sheet.Cell(row, 5).Value = (double)r.TotalSalesValue;
+            sheet.Cell(row, 6).Value = (double)r.TotalCommission;
+            sheet.Cell(row, 7).Value = (double)r.NetDue;
+            sheet.Cell(row, 8).Value = (double)r.TotalPaid;
+            sheet.Cell(row, 9).Value = (double)r.OpeningBalance;
+            sheet.Cell(row, 10).Value = (double)r.Remaining;
+            sheet.Cell(row, 11).Value = r.LastInvoiceDate?.ToLocalTime().DateTime.ToString("yyyy-MM-dd") ?? "-";
             row++;
         }
         sheet.Columns().AdjustToContents();
@@ -100,7 +106,7 @@ public class ExportService : IExportService
     {
         using var workbook = new XLWorkbook();
         var sheet = workbook.Worksheets.Add("Merchant Report");
-        var headers = new[] { "Buyer", "Invoices", "Total Purchases (₪)", "Paid (₪)", "Remaining (₪)" };
+        var headers = new[] { "Buyer", "Invoices", "Total Weight (kg)", "Total Boxes", "Purchases (₪)", "Wood (₪)", "Transport Fee (₪)", "Grand Total (₪)", "Paid (₪)", "Opening Balance (₪)", "Remaining (₪)", "Last Invoice" };
         for (var c = 0; c < headers.Length; c++) sheet.Cell(1, c + 1).Value = headers[c];
         sheet.Row(1).Style.Font.Bold = true;
 
@@ -109,9 +115,40 @@ public class ExportService : IExportService
         {
             sheet.Cell(row, 1).Value = r.MerchantName;
             sheet.Cell(row, 2).Value = r.InvoiceCount;
-            sheet.Cell(row, 3).Value = (double)r.TotalPurchases;
+            sheet.Cell(row, 3).Value = (double)r.TotalWeightKg;
+            sheet.Cell(row, 4).Value = (double)r.TotalBoxes;
+            sheet.Cell(row, 5).Value = (double)r.TotalPurchases;
+            sheet.Cell(row, 6).Value = (double)r.TotalWoodTotal;
+            sheet.Cell(row, 7).Value = (double)r.TotalTransportFee;
+            sheet.Cell(row, 8).Value = (double)r.GrandTotal;
+            sheet.Cell(row, 9).Value = (double)r.TotalPaid;
+            sheet.Cell(row, 10).Value = (double)r.OpeningBalance;
+            sheet.Cell(row, 11).Value = (double)r.Remaining;
+            sheet.Cell(row, 12).Value = r.LastInvoiceDate?.ToLocalTime().DateTime.ToString("yyyy-MM-dd") ?? "-";
+            row++;
+        }
+        sheet.Columns().AdjustToContents();
+        return ToBytes(workbook);
+    }
+
+    public byte[] DriverReportToExcel(IReadOnlyList<DriverReportRow> rows)
+    {
+        using var workbook = new XLWorkbook();
+        var sheet = workbook.Worksheets.Add("Driver Report");
+        var headers = new[] { "Driver", "Invoices", "Transport Fee (₪)", "Paid (₪)", "Opening Balance (₪)", "Remaining (₪)", "Last Invoice" };
+        for (var c = 0; c < headers.Length; c++) sheet.Cell(1, c + 1).Value = headers[c];
+        sheet.Row(1).Style.Font.Bold = true;
+
+        var row = 2;
+        foreach (var r in rows)
+        {
+            sheet.Cell(row, 1).Value = r.DriverName;
+            sheet.Cell(row, 2).Value = r.InvoiceCount;
+            sheet.Cell(row, 3).Value = (double)r.TotalTransportFee;
             sheet.Cell(row, 4).Value = (double)r.TotalPaid;
-            sheet.Cell(row, 5).Value = (double)r.Remaining;
+            sheet.Cell(row, 5).Value = (double)r.OpeningBalance;
+            sheet.Cell(row, 6).Value = (double)r.Remaining;
+            sheet.Cell(row, 7).Value = r.LastInvoiceDate?.ToLocalTime().DateTime.ToString("yyyy-MM-dd") ?? "-";
             row++;
         }
         sheet.Columns().AdjustToContents();

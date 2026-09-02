@@ -1,10 +1,10 @@
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { StatCard } from "../components/StatCard";
 import { listInvoices } from "../api/invoices";
-import { marketReport, merchantReport, printBuyerStatementPdf } from "../api/reports";
-import { formatCurrency } from "../lib/format";
+import { marketReport, merchantItemsBreakdown, printBuyerStatementPdf } from "../api/reports";
+import { formatCurrency, formatQuantity } from "../lib/format";
 import { useAuth } from "../auth/AuthContext";
-import type { MerchantReportRow } from "../types";
+import type { MerchantItemBreakdownRow } from "../types";
 
 function startOfToday(): string {
   const d = new Date();
@@ -20,14 +20,15 @@ export function DashboardPage() {
   const [todayCommission, setTodayCommission] = useState(0);
 
   // Buyer statement for an arbitrary chosen period — separate from the "today" stats above.
-  // Deliberately period-scoped ONLY (no المدفوع/المتبقي columns): those two figures in
-  // MerchantReportRow are always all-time regardless of the date filter (see ReportService.
-  // MerchantReportAsync), so showing them next to a period total here would misleadingly look
-  // scoped to the chosen period when they're not — same reasoning as the note below about the
-  // removed all-time balance cards.
+  // Deliberately period-scoped ONLY (no المدفوع/المتبقي columns): those two figures would always be
+  // all-time regardless of the date filter (see ReportService.MerchantReportAsync), so showing them
+  // next to a period total here would misleadingly look scoped to the chosen period when they're
+  // not — same reasoning as the note below about the removed all-time balance cards.
+  // Per-(merchant, item) rows rather than one row per merchant — shows exactly what each merchant
+  // bought (item/quantity/price), not just their total. See ReportService.MerchantItemBreakdownAsync.
   const [buyerDateFrom, setBuyerDateFrom] = useState("");
   const [buyerDateTo, setBuyerDateTo] = useState("");
-  const [buyerRows, setBuyerRows] = useState<MerchantReportRow[]>([]);
+  const [buyerItemRows, setBuyerItemRows] = useState<MerchantItemBreakdownRow[]>([]);
   const [buyerLoading, setBuyerLoading] = useState(false);
   const [buyerPrinting, setBuyerPrinting] = useState(false);
   // Nothing loads/shows until the user actually picks at least one side of the period —
@@ -60,21 +61,37 @@ export function DashboardPage() {
 
   useEffect(() => {
     if (!hasPermission("reports.view") || !buyerPeriodChosen) {
-      setBuyerRows([]);
+      setBuyerItemRows([]);
       return;
     }
     setBuyerLoading(true);
-    merchantReport({
+    merchantItemsBreakdown({
       dateFrom: buyerDateFrom ? new Date(buyerDateFrom).toISOString() : undefined,
       dateTo: buyerDateTo ? new Date(buyerDateTo).toISOString() : undefined,
     }).then((rows) => {
-      setBuyerRows(rows);
+      setBuyerItemRows(rows);
       setBuyerLoading(false);
     });
   }, [hasPermission, buyerPeriodChosen, buyerDateFrom, buyerDateTo]);
 
-  const buyerInvoiceTotal = buyerRows.reduce((sum, r) => sum + r.invoiceCount, 0);
-  const buyerValueTotal = buyerRows.reduce((sum, r) => sum + r.totalPurchases, 0);
+  // One group per merchant, each carrying its own item rows plus a subtotal — quantity is
+  // deliberately NOT summed at this level (a merchant's items can mix Kg and Box units, which
+  // can't be added into one meaningful number), only the price/value column is.
+  const buyerMerchantGroups = useMemo(() => {
+    const byMerchant = new Map<number, { merchantId: number; merchantName: string; items: MerchantItemBreakdownRow[]; subtotal: number }>();
+    for (const row of buyerItemRows) {
+      let group = byMerchant.get(row.merchantId);
+      if (!group) {
+        group = { merchantId: row.merchantId, merchantName: row.merchantName, items: [], subtotal: 0 };
+        byMerchant.set(row.merchantId, group);
+      }
+      group.items.push(row);
+      group.subtotal += row.totalValue;
+    }
+    return Array.from(byMerchant.values());
+  }, [buyerItemRows]);
+
+  const buyerValueTotal = buyerItemRows.reduce((sum, r) => sum + r.totalValue, 0);
 
   // Prints اسم المشتري + المبلغ only (no عدد الفواتير) — see ExportService.GenerateBuyerStatementPdf.
   async function handlePrintBuyerStatement() {
@@ -119,7 +136,7 @@ export function DashboardPage() {
                 إلغاء التصفية
               </button>
             )}
-            {buyerPeriodChosen && buyerRows.length > 0 && (
+            {buyerPeriodChosen && buyerMerchantGroups.length > 0 && (
               <button className="btn-secondary" disabled={buyerPrinting} onClick={handlePrintBuyerStatement}>
                 {buyerPrinting ? "جاري التجهيز..." : "🖨️ طباعة"}
               </button>
@@ -128,30 +145,38 @@ export function DashboardPage() {
           <div className="overflow-x-auto">
             <table className="table-base">
               <thead>
-                <tr><th>المشتري</th><th>عدد الفواتير</th><th>القيمة</th></tr>
+                <tr><th>المشتري</th><th>الصنف</th><th>الكمية</th><th>السعر</th></tr>
               </thead>
               <tbody>
                 {!buyerPeriodChosen ? (
-                  <tr><td colSpan={3} className="text-center text-gray-400 py-6">اختر تاريخًا (من و/أو إلى) لعرض كشف المشترين</td></tr>
+                  <tr><td colSpan={4} className="text-center text-gray-400 py-6">اختر تاريخًا (من و/أو إلى) لعرض كشف المشترين</td></tr>
                 ) : buyerLoading ? (
-                  <tr><td colSpan={3} className="text-center text-gray-400 py-6">جاري التحميل...</td></tr>
-                ) : buyerRows.length === 0 ? (
-                  <tr><td colSpan={3} className="text-center text-gray-400 py-6">لا توجد بيانات لهذه الفترة</td></tr>
+                  <tr><td colSpan={4} className="text-center text-gray-400 py-6">جاري التحميل...</td></tr>
+                ) : buyerMerchantGroups.length === 0 ? (
+                  <tr><td colSpan={4} className="text-center text-gray-400 py-6">لا توجد بيانات لهذه الفترة</td></tr>
                 ) : (
-                  buyerRows.map((r) => (
-                    <tr key={r.merchantId}>
-                      <td className="font-medium">{r.merchantName}</td>
-                      <td>{r.invoiceCount}</td>
-                      <td className="font-semibold">{formatCurrency(r.totalPurchases)}</td>
-                    </tr>
+                  buyerMerchantGroups.map((group) => (
+                    <Fragment key={group.merchantId}>
+                      {group.items.map((item, idx) => (
+                        <tr key={idx}>
+                          <td className="font-medium">{group.merchantName}</td>
+                          <td>{item.itemName}</td>
+                          <td>{formatQuantity(item.totalQuantity, item.unit)}</td>
+                          <td>{formatCurrency(item.totalValue)}</td>
+                        </tr>
+                      ))}
+                      <tr className="bg-gray-50">
+                        <td colSpan={3} className="font-semibold text-gray-600">إجمالي {group.merchantName}</td>
+                        <td className="font-semibold">{formatCurrency(group.subtotal)}</td>
+                      </tr>
+                    </Fragment>
                   ))
                 )}
               </tbody>
-              {buyerPeriodChosen && !buyerLoading && buyerRows.length > 0 && (
+              {buyerPeriodChosen && !buyerLoading && buyerMerchantGroups.length > 0 && (
                 <tfoot>
                   <tr>
-                    <td className="font-semibold">الإجمالي</td>
-                    <td className="font-semibold">{buyerInvoiceTotal}</td>
+                    <td colSpan={3} className="font-semibold">الإجمالي الكلي</td>
                     <td className="font-bold">{formatCurrency(buyerValueTotal)}</td>
                   </tr>
                 </tfoot>

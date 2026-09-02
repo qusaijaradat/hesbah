@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { createPartner, listPartners, updatePartner } from "../api/partners";
+import { createPartner, deletePartner, listPartners, updatePartner } from "../api/partners";
 import type { PartnerDto, PartnerType } from "../types";
 import { apiErrorMessage } from "../api/client";
 import { formatCurrency } from "../lib/format";
@@ -10,10 +10,15 @@ const TYPE_LABELS: Record<string, string> = { Farmer: "بائع", Driver: "سا�
 
 export function PartnersPage() {
   const { hasPermission } = useAuth();
+  const canCreate = hasPermission("partners.create");
+  const canEdit = hasPermission("partners.edit");
+  const canDelete = hasPermission("partners.delete");
   const [partners, setPartners] = useState<PartnerDto[]>([]);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<PartnerDto | "new" | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
 
   async function refresh() {
     setLoading(true);
@@ -28,11 +33,25 @@ export function PartnersPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search]);
 
+  async function handleDelete(p: PartnerDto) {
+    if (!window.confirm(`حذف "${p.name}"؟ لا يمكن التراجع عن هذا.`)) return;
+    setDeletingId(p.id);
+    setError(null);
+    try {
+      await deletePartner(p.id);
+      refresh();
+    } catch (err) {
+      setError(apiErrorMessage(err, "فشل الحذف"));
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold">الباعة والسواق والمشترين</h1>
-        {hasPermission("partners.manage") && (
+        {canCreate && (
           <button className="btn-primary" onClick={() => setEditing("new")}>+ إضافة شخص</button>
         )}
       </div>
@@ -44,6 +63,8 @@ export function PartnersPage() {
         onChange={(e) => setSearch(e.target.value)}
       />
 
+      {error && <div className="text-sm text-red-600 bg-red-50 rounded-md p-3 mb-4">{error}</div>}
+
       <div className="card overflow-x-auto">
         <table className="table-base">
           <thead>
@@ -51,6 +72,7 @@ export function PartnersPage() {
               <th>الاسم</th>
               <th>النوع</th>
               <th>رقم واتساب</th>
+              <th>العنوان</th>
               <th>الحد الائتماني</th>
               <th>ملاحظات</th>
               <th></th>
@@ -58,26 +80,38 @@ export function PartnersPage() {
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={6} className="text-center text-gray-400 py-6">جاري التحميل...</td></tr>
+              <tr><td colSpan={7} className="text-center text-gray-400 py-6">جاري التحميل...</td></tr>
             ) : partners.length === 0 ? (
-              <tr><td colSpan={6} className="text-center text-gray-400 py-6">لا يوجد نتائج</td></tr>
+              <tr><td colSpan={7} className="text-center text-gray-400 py-6">لا يوجد نتائج</td></tr>
             ) : (
               partners.map((p) => (
                 <tr key={p.id}>
                   <td className="font-medium">{p.name}</td>
                   <td>{p.type ? TYPE_LABELS[p.type] : "—"}</td>
                   <td>{p.whatsAppNumber || "—"}</td>
+                  <td className="text-gray-500">{p.address || "—"}</td>
                   <td>{p.creditLimit != null ? formatCurrency(p.creditLimit) : "—"}</td>
                   <td className="text-gray-500">{p.notes || "—"}</td>
                   <td className="whitespace-nowrap">
+                    {/* Label reflects this person's ACTUAL type — not a blanket "بائع/سائق" for
+                        everyone, since a Driver never has a farmer side and vice versa. A Both
+                        partner is farmer+merchant (never a driver), so their farmer-side link
+                        always reads "بائع". */}
                     {(p.type === "Farmer" || p.type === "Driver" || p.type === "Both") && (
-                      <Link to={`/partners/${p.id}/farmer-account`} className="text-brand-700 text-sm hover:underline ms-2">كشف حساب (بائع/سائق)</Link>
+                      <Link to={`/partners/${p.id}/farmer-account`} className="text-brand-700 text-sm hover:underline ms-2">
+                        كشف حساب ({p.type === "Driver" ? "سائق" : "بائع"})
+                      </Link>
                     )}
                     {(p.type === "Merchant" || p.type === "Both") && (
                       <Link to={`/partners/${p.id}/merchant-account`} className="text-brand-700 text-sm hover:underline ms-2">كشف حساب (مشتري)</Link>
                     )}
-                    {hasPermission("partners.manage") && (
+                    {canEdit && (
                       <button className="text-gray-500 text-sm hover:underline ms-2" onClick={() => setEditing(p)}>تعديل</button>
+                    )}
+                    {canDelete && (
+                      <button className="text-red-500 text-sm hover:underline ms-2" disabled={deletingId === p.id} onClick={() => handleDelete(p)}>
+                        {deletingId === p.id ? "جاري الحذف..." : "حذف"}
+                      </button>
                     )}
                   </td>
                 </tr>
@@ -108,8 +142,10 @@ function PartnerEditModal({ partner, onClose, onSaved }: {
   const [name, setName] = useState(partner?.name ?? "");
   const [type, setType] = useState<PartnerType | "">(partner?.type ?? "");
   const [whatsAppNumber, setWhatsAppNumber] = useState(partner?.whatsAppNumber ?? "");
+  const [address, setAddress] = useState(partner?.address ?? "");
   const [notes, setNotes] = useState(partner?.notes ?? "");
   const [creditLimit, setCreditLimit] = useState(partner?.creditLimit != null ? String(partner.creditLimit) : "");
+  const [openingBalance, setOpeningBalance] = useState(partner?.openingBalance != null ? String(partner.openingBalance) : "");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [justAdded, setJustAdded] = useState(false);
@@ -121,7 +157,8 @@ function PartnerEditModal({ partner, onClose, onSaved }: {
     setError(null);
     try {
       const creditLimitValue = creditLimit.trim() === "" ? null : parseFloat(creditLimit);
-      const payload = { name, type: type || null, whatsAppNumber: whatsAppNumber || undefined, notes: notes || undefined, creditLimit: creditLimitValue };
+      const openingBalanceValue = openingBalance.trim() === "" ? null : parseFloat(openingBalance);
+      const payload = { name, type: type || null, whatsAppNumber: whatsAppNumber || undefined, address: address || undefined, notes: notes || undefined, creditLimit: creditLimitValue, openingBalance: openingBalanceValue };
       if (partner) {
         await updatePartner(partner.id, payload);
         onSaved();
@@ -130,7 +167,7 @@ function PartnerEditModal({ partner, onClose, onSaved }: {
       await createPartner(payload);
       onSaved();
       // Stay open for the next person instead of closing.
-      setName(""); setType(""); setWhatsAppNumber(""); setNotes(""); setCreditLimit("");
+      setName(""); setType(""); setWhatsAppNumber(""); setAddress(""); setNotes(""); setCreditLimit(""); setOpeningBalance("");
       setJustAdded(true);
       nameRef.current?.focus();
       setTimeout(() => setJustAdded(false), 1200);
@@ -164,10 +201,23 @@ function PartnerEditModal({ partner, onClose, onSaved }: {
             <input className="input" value={whatsAppNumber} onChange={(e) => setWhatsAppNumber(e.target.value)} placeholder="9705xxxxxxxx" />
           </div>
           <div>
+            <label className="label">العنوان (اختياري)</label>
+            <input className="input" value={address} onChange={(e) => setAddress(e.target.value)} placeholder="اتركه فارغًا إذا لا يوجد" />
+          </div>
+          <div>
             <label className="label">الحد الائتماني (₪، اختياري)</label>
             <input className="input" type="number" min="0" step="0.01" value={creditLimit} onChange={(e) => setCreditLimit(e.target.value)}
               placeholder="اتركه فارغًا لعدم وضع حد" />
             <p className="text-xs text-gray-400 mt-1">عند تجاوز المشتري هذا الحد، سيظهر تنبيه في كشف حسابه وعند إصدار فاتورة جديدة له.</p>
+          </div>
+          <div>
+            <label className="label">الرصيد الافتتاحي (₪، اختياري)</label>
+            <input className="input" type="number" step="0.01" value={openingBalance} onChange={(e) => setOpeningBalance(e.target.value)}
+              placeholder="مبلغ كان مستحقًا قبل استخدام البرنامج — اتركه فارغًا إذا لا يوجد" />
+            <p className="text-xs text-gray-400 mt-1">
+              للمشتري: مبلغ كان عليه قبل هيك. للبائع/السائق: مبلغ كان مستحق إلو من السوق قبل هيك.
+              بيضاف تلقائيًا على كل كشف حساب وعلى "الرصيد السابق" بالفاتورة المطبوعة.
+            </p>
           </div>
           <div>
             <label className="label">ملاحظات</label>

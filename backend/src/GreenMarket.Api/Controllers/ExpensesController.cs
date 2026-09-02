@@ -16,22 +16,22 @@ public class ExpensesController : ControllerBase
     public ExpensesController(IExpenseService expenseService) => _expenseService = expenseService;
 
     [HttpGet]
-    [RequirePermission(PermissionKeys.ExpensesManage)]
+    [RequirePermission(PermissionKeys.ExpensesView)]
     public async Task<ActionResult> List(DateTimeOffset? from, DateTimeOffset? to, int page = 1, int pageSize = 25) =>
         Ok(await _expenseService.ListAsync(from, to, page, pageSize));
 
     [HttpPost]
-    [RequirePermission(PermissionKeys.ExpensesManage)]
+    [RequirePermission(PermissionKeys.ExpensesCreate)]
     public async Task<ActionResult<ExpenseDto>> Create(CreateExpenseRequest request) =>
         Ok(await _expenseService.CreateAsync(request, CurrentUserId.Require(User)));
 
     [HttpPut("{id:int}")]
-    [RequirePermission(PermissionKeys.ExpensesManage)]
+    [RequirePermission(PermissionKeys.ExpensesEdit)]
     public async Task<ActionResult<ExpenseDto>> Update(int id, UpdateExpenseRequest request) =>
         Ok(await _expenseService.UpdateAsync(id, request));
 
     [HttpDelete("{id:int}")]
-    [RequirePermission(PermissionKeys.ExpensesManage)]
+    [RequirePermission(PermissionKeys.ExpensesDelete)]
     public async Task<IActionResult> Delete(int id)
     {
         await _expenseService.DeleteAsync(id);

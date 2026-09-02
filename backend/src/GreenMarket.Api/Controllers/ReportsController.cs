@@ -51,6 +51,18 @@ public class ReportsController : ControllerBase
     public async Task<ActionResult<IReadOnlyList<MerchantReportRow>>> Merchants([FromQuery] ReportFilterRequest filter) =>
         Ok(await _reportService.MerchantReportAsync(filter));
 
+    [HttpGet("drivers")]
+    [RequirePermission(PermissionKeys.ReportsView)]
+    public async Task<ActionResult<IReadOnlyList<DriverReportRow>>> Drivers([FromQuery] ReportFilterRequest filter) =>
+        Ok(await _reportService.DriverReportAsync(filter));
+
+    /// <summary>Dashboard "كشف المشترين حسب الفترة" — per-item breakdown (اسم/صنف/كمية/سعر) under
+    /// each merchant, alongside the existing per-merchant totals from Merchants() above.</summary>
+    [HttpGet("merchants/items-breakdown")]
+    [RequirePermission(PermissionKeys.ReportsView)]
+    public async Task<ActionResult<IReadOnlyList<MerchantItemBreakdownRow>>> MerchantsItemsBreakdown([FromQuery] ReportFilterRequest filter) =>
+        Ok(await _reportService.MerchantItemBreakdownAsync(filter));
+
     /// <summary>Dashboard "كشف المشترين حسب الفترة" print button — same period filter as the
     /// on-screen list, printed as اسم المشتري + المبلغ only (see ExportService.
     /// GenerateBuyerStatementPdf for why عدد الفواتير/المدفوع/المتبقي are left out).</summary>
@@ -112,6 +124,14 @@ public class ReportsController : ControllerBase
         return ExcelFile(_exportService.MerchantReportToExcel(rows), "merchant-report.xlsx");
     }
 
+    [HttpGet("drivers/export/excel")]
+    [RequirePermission(PermissionKeys.ReportsExport)]
+    public async Task<IActionResult> DriversExcel([FromQuery] ReportFilterRequest filter)
+    {
+        var rows = await _reportService.DriverReportAsync(filter);
+        return ExcelFile(_exportService.DriverReportToExcel(rows), "driver-report.xlsx");
+    }
+
     [HttpGet("market/export/excel")]
     [RequirePermission(PermissionKeys.ReportsExport)]
     public async Task<IActionResult> MarketExcel([FromQuery] ReportFilterRequest filter)
@@ -125,12 +145,13 @@ public class ReportsController : ControllerBase
     public async Task<IActionResult> FarmersPdf([FromQuery] ReportFilterRequest filter)
     {
         var rows = await _reportService.FarmerReportAsync(filter);
-        var headers = new[] { "Farmer", "Invoices", "Weight (kg)", "Sales (₪)", "Commission (₪)", "Paid (₪)", "Remaining (₪)" };
+        var headers = new[] { "Farmer", "Invoices", "Weight (kg)", "Boxes", "Sales (₪)", "Commission (₪)", "Net Due (₪)", "Paid (₪)", "Opening (₪)", "Remaining (₪)", "Last Invoice" };
         var body = rows.Select(r => new[]
         {
-            r.FarmerName, r.InvoiceCount.ToString(), r.TotalWeightKg.ToString("0.###"),
-            r.TotalSalesValue.ToString("0.##"), r.TotalCommission.ToString("0.##"),
-            r.TotalPaid.ToString("0.##"), r.Remaining.ToString("0.##")
+            r.FarmerName, r.InvoiceCount.ToString(), r.TotalWeightKg.ToString("0.###"), r.TotalBoxes.ToString("0.###"),
+            r.TotalSalesValue.ToString("0.##"), r.TotalCommission.ToString("0.##"), r.NetDue.ToString("0.##"),
+            r.TotalPaid.ToString("0.##"), r.OpeningBalance.ToString("0.##"), r.Remaining.ToString("0.##"),
+            r.LastInvoiceDate?.ToString("yyyy-MM-dd") ?? "-"
         });
         return PdfFile(_exportService.SimpleReportToPdf("Farmer Report", headers, body), "farmer-report.pdf");
     }
@@ -140,13 +161,30 @@ public class ReportsController : ControllerBase
     public async Task<IActionResult> MerchantsPdf([FromQuery] ReportFilterRequest filter)
     {
         var rows = await _reportService.MerchantReportAsync(filter);
-        var headers = new[] { "Merchant", "Invoices", "Purchases (₪)", "Paid (₪)", "Remaining (₪)" };
+        var headers = new[] { "Merchant", "Invoices", "Weight (kg)", "Boxes", "Purchases (₪)", "Wood (₪)", "Transport (₪)", "Grand Total (₪)", "Paid (₪)", "Opening (₪)", "Remaining (₪)", "Last Invoice" };
         var body = rows.Select(r => new[]
         {
-            r.MerchantName, r.InvoiceCount.ToString(), r.TotalPurchases.ToString("0.##"),
-            r.TotalPaid.ToString("0.##"), r.Remaining.ToString("0.##")
+            r.MerchantName, r.InvoiceCount.ToString(), r.TotalWeightKg.ToString("0.###"), r.TotalBoxes.ToString("0.###"),
+            r.TotalPurchases.ToString("0.##"), r.TotalWoodTotal.ToString("0.##"), r.TotalTransportFee.ToString("0.##"),
+            r.GrandTotal.ToString("0.##"), r.TotalPaid.ToString("0.##"), r.OpeningBalance.ToString("0.##"),
+            r.Remaining.ToString("0.##"), r.LastInvoiceDate?.ToString("yyyy-MM-dd") ?? "-"
         });
         return PdfFile(_exportService.SimpleReportToPdf("Merchant Report", headers, body), "merchant-report.pdf");
+    }
+
+    [HttpGet("drivers/export/pdf")]
+    [RequirePermission(PermissionKeys.ReportsExport)]
+    public async Task<IActionResult> DriversPdf([FromQuery] ReportFilterRequest filter)
+    {
+        var rows = await _reportService.DriverReportAsync(filter);
+        var headers = new[] { "Driver", "Invoices", "Transport Fee (₪)", "Paid (₪)", "Opening (₪)", "Remaining (₪)", "Last Invoice" };
+        var body = rows.Select(r => new[]
+        {
+            r.DriverName, r.InvoiceCount.ToString(), r.TotalTransportFee.ToString("0.##"),
+            r.TotalPaid.ToString("0.##"), r.OpeningBalance.ToString("0.##"), r.Remaining.ToString("0.##"),
+            r.LastInvoiceDate?.ToString("yyyy-MM-dd") ?? "-"
+        });
+        return PdfFile(_exportService.SimpleReportToPdf("Driver Report", headers, body), "driver-report.pdf");
     }
 
     [HttpGet("market/export/pdf")]

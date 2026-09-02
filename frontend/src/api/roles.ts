@@ -20,3 +20,9 @@ export async function updateRole(id: number, payload: { name: string; descriptio
   const { data } = await apiClient.put<RoleDto>(`/roles/${id}`, payload);
   return data;
 }
+
+// Only succeeds server-side on a role with zero users currently assigned to it — see
+// RoleService.DeleteAsync's doc comment.
+export async function deleteRole(id: number) {
+  await apiClient.delete(`/roles/${id}`);
+}

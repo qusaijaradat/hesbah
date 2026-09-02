@@ -22,12 +22,25 @@ export function PaymentsPage() {
         <button className={tab === "payments" ? "btn-primary" : "btn-secondary"} onClick={() => setTab("payments")}>الدفعات</button>
         <button className={tab === "expenses" ? "btn-primary" : "btn-secondary"} onClick={() => setTab("expenses")}>مصاريف الحسبة</button>
       </div>
-      {tab === "payments" ? <PaymentsTab canManage={hasPermission("payments.create")} /> : <ExpensesTab canManage={hasPermission("expenses.manage")} />}
+      {tab === "payments" ? (
+        <PaymentsTab
+          canCreate={hasPermission("payments.create")}
+          canEdit={hasPermission("payments.edit")}
+          canDelete={hasPermission("payments.delete")}
+        />
+      ) : (
+        <ExpensesTab
+          canCreate={hasPermission("expenses.create")}
+          canEdit={hasPermission("expenses.edit")}
+          canDelete={hasPermission("expenses.delete")}
+        />
+      )}
     </div>
   );
 }
 
-function PaymentsTab({ canManage }: { canManage: boolean }) {
+function PaymentsTab({ canCreate, canEdit, canDelete }: { canCreate: boolean; canEdit: boolean; canDelete: boolean }) {
+  const showActionsColumn = canEdit || canDelete;
   const [payments, setPayments] = useState<PaymentDto[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<PaymentDto | null>(null);
@@ -51,17 +64,17 @@ function PaymentsTab({ canManage }: { canManage: boolean }) {
 
   return (
     <div>
-      {canManage && (
+      {canCreate && (
         <button className="btn-primary mb-4" onClick={() => setShowForm(true)}>+ تسجيل دفعة</button>
       )}
       <div className="card overflow-x-auto">
         <table className="table-base">
           <thead>
-            <tr><th>التاريخ</th><th>الشخص</th><th>الاتجاه</th><th>المبلغ</th><th>الفاتورة</th><th>طريقة الدفع</th><th>ملاحظات</th>{canManage && <th></th>}</tr>
+            <tr><th>التاريخ</th><th>الشخص</th><th>الاتجاه</th><th>المبلغ</th><th>الفاتورة</th><th>طريقة الدفع</th><th>ملاحظات</th>{showActionsColumn && <th></th>}</tr>
           </thead>
           <tbody>
             {payments.length === 0 ? (
-              <tr><td colSpan={canManage ? 8 : 7} className="text-center text-gray-400 py-6">لا توجد دفعات</td></tr>
+              <tr><td colSpan={showActionsColumn ? 8 : 7} className="text-center text-gray-400 py-6">لا توجد دفعات</td></tr>
             ) : payments.map((p) => (
               <tr key={p.id}>
                 <td>{formatDate(p.date)}</td>
@@ -71,10 +84,10 @@ function PaymentsTab({ canManage }: { canManage: boolean }) {
                 <td className="text-gray-500 text-sm">{p.invoiceNumber ?? "—"}</td>
                 <td>{p.method || "—"}</td>
                 <td className="text-gray-500">{p.notes || "—"}</td>
-                {canManage && (
+                {showActionsColumn && (
                   <td className="whitespace-nowrap">
-                    <button className="text-brand-700 text-sm hover:underline ms-2" onClick={() => setEditing(p)}>تعديل</button>
-                    <button className="text-red-500 text-sm hover:underline ms-2" onClick={() => handleDelete(p)}>حذف</button>
+                    {canEdit && <button className="text-brand-700 text-sm hover:underline ms-2" onClick={() => setEditing(p)}>تعديل</button>}
+                    {canDelete && <button className="text-red-500 text-sm hover:underline ms-2" onClick={() => handleDelete(p)}>حذف</button>}
                   </td>
                 )}
               </tr>
@@ -102,8 +115,26 @@ function InvoiceLinkPicker({ partnerId, direction, invoiceId, onChange }: {
 
   useEffect(() => {
     if (!partnerId) { setInvoices([]); onChange(null); return; }
-    const filter = direction === "FromMerchant" ? { merchantId: partnerId, pageSize: 100 } : { farmerId: partnerId, pageSize: 100 };
-    listInvoices(filter).then((r) => setInvoices(r.items));
+    if (direction === "FromMerchant") {
+      listInvoices({ merchantId: partnerId, pageSize: 100 }).then((r) => setInvoices(r.items));
+      return;
+    }
+    // "ToFarmer" covers BOTH farmers and drivers (see PaymentDirection.ToFarmer) — the same
+    // person id could be attached to invoices either as the farmer or as the driver, so both
+    // sides are fetched and merged (a person is essentially never both on the same invoice, but
+    // dedupe by id defensively anyway).
+    Promise.all([
+      listInvoices({ farmerId: partnerId, pageSize: 100 }),
+      listInvoices({ driverId: partnerId, pageSize: 100 }),
+    ]).then(([farmerResult, driverResult]) => {
+      const seen = new Set<number>();
+      const merged = [...farmerResult.items, ...driverResult.items].filter((inv) => {
+        if (seen.has(inv.id)) return false;
+        seen.add(inv.id);
+        return true;
+      });
+      setInvoices(merged);
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [partnerId, direction]);
 
@@ -301,7 +332,8 @@ function EmployeeSelect({ employeeId, onChange, currentName }: {
   );
 }
 
-function ExpensesTab({ canManage }: { canManage: boolean }) {
+function ExpensesTab({ canCreate, canEdit, canDelete }: { canCreate: boolean; canEdit: boolean; canDelete: boolean }) {
+  const showActionsColumn = canEdit || canDelete;
   const [expenses, setExpenses] = useState<ExpenseDto[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<ExpenseDto | null>(null);
@@ -325,13 +357,13 @@ function ExpensesTab({ canManage }: { canManage: boolean }) {
 
   return (
     <div>
-      {canManage && <button className="btn-primary mb-4" onClick={() => setShowForm(true)}>+ إضافة مصروف</button>}
+      {canCreate && <button className="btn-primary mb-4" onClick={() => setShowForm(true)}>+ إضافة مصروف</button>}
       <div className="card overflow-x-auto">
         <table className="table-base">
-          <thead><tr><th>التاريخ</th><th>الوصف</th><th>الفئة</th><th>الموظف</th><th>المبلغ</th>{canManage && <th></th>}</tr></thead>
+          <thead><tr><th>التاريخ</th><th>الوصف</th><th>الفئة</th><th>الموظف</th><th>المبلغ</th>{showActionsColumn && <th></th>}</tr></thead>
           <tbody>
             {expenses.length === 0 ? (
-              <tr><td colSpan={canManage ? 6 : 5} className="text-center text-gray-400 py-6">لا توجد مصاريف</td></tr>
+              <tr><td colSpan={showActionsColumn ? 6 : 5} className="text-center text-gray-400 py-6">لا توجد مصاريف</td></tr>
             ) : expenses.map((e) => (
               <tr key={e.id}>
                 <td>{formatDate(e.date)}</td>
@@ -339,10 +371,10 @@ function ExpensesTab({ canManage }: { canManage: boolean }) {
                 <td>{e.category || "—"}</td>
                 <td>{e.employeeName || "—"}</td>
                 <td className="font-medium">{formatCurrency(e.amount)}</td>
-                {canManage && (
+                {showActionsColumn && (
                   <td className="whitespace-nowrap">
-                    <button className="text-brand-700 text-sm hover:underline ms-2" onClick={() => setEditing(e)}>تعديل</button>
-                    <button className="text-red-500 text-sm hover:underline ms-2" onClick={() => handleDelete(e)}>حذف</button>
+                    {canEdit && <button className="text-brand-700 text-sm hover:underline ms-2" onClick={() => setEditing(e)}>تعديل</button>}
+                    {canDelete && <button className="text-red-500 text-sm hover:underline ms-2" onClick={() => handleDelete(e)}>حذف</button>}
                   </td>
                 )}
               </tr>

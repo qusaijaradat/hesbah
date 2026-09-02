@@ -16,6 +16,12 @@ public interface IEmployeeService
     Task<EmployeeDto> GetAsync(int id);
     Task<EmployeeDto> CreateAsync(CreateEmployeeRequest request);
     Task<EmployeeDto> UpdateAsync(int id, UpdateEmployeeRequest request);
+
+    /// <summary>Only ever succeeds on an employee with zero expenses/withdrawals ever attributed
+    /// to them — see the implementation. An employee who left but has history should be deactivated
+    /// (IsActive = false) instead, which already hides them from the "attribute this expense to"
+    /// picker while keeping their historical total intact.</summary>
+    Task DeleteAsync(int id);
 }
 
 /// <summary>
@@ -75,5 +81,20 @@ public class EmployeeService : IEmployeeService
         employee.IsActive = request.IsActive;
         await _db.SaveChangesAsync();
         return await GetAsync(id);
+    }
+
+    /// <summary>See the interface doc comment — a hard-ish removal (soft-delete via the inherited
+    /// IsDeleted flag, globally filtered from then on) but only ever reachable on an employee with
+    /// no expense history at all, so nothing downstream ever ends up pointing at a "gone" employee.</summary>
+    public async Task DeleteAsync(int id)
+    {
+        var employee = await _db.Employees.FindAsync(id) ?? throw new NotFoundAppException("Employee", id);
+
+        var hasExpenses = await _db.Expenses.AnyAsync(e => e.EmployeeId == id);
+        if (hasExpenses)
+            throw new ConflictAppException("لا يمكن حذف هذا الموظف لوجود مصاريف/سحوبات مسجّلة باسمه — يمكنك إلغاء تفعيله بدلاً من ذلك.");
+
+        employee.IsDeleted = true;
+        await _db.SaveChangesAsync();
     }
 }

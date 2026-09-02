@@ -21,25 +21,28 @@ public class ItemsController : ControllerBase
     public ItemsController(IItemService itemService) => _itemService = itemService;
 
     [HttpGet]
-    [RequirePermission(PermissionKeys.InvoicesView)]
+    [RequirePermission(PermissionKeys.ItemsView)]
     public async Task<ActionResult> List([FromQuery] ItemFilterRequest filter) =>
         Ok(await _itemService.ListAsync(filter.Search, filter.Page, filter.PageSize));
 
+    // Suggestions feed the invoice item picker itself, so anyone who can create/edit an invoice
+    // needs this even without a dedicated Items permission — checked against InvoicesView (the
+    // narrowest permission every invoice-facing role already has) rather than ItemsView.
     [HttpGet("suggest")]
     [RequirePermission(PermissionKeys.InvoicesView)]
     public async Task<ActionResult<IReadOnlyList<ItemDto>>> Suggest([FromQuery] string? q = null) =>
         Ok(await _itemService.SuggestAsync(q));
 
     [HttpPost]
-    [RequirePermission(PermissionKeys.InvoicesCreate)]
+    [RequirePermission(PermissionKeys.ItemsCreate)]
     public async Task<ActionResult<ItemDto>> Create(CreateItemRequest request) => Ok(await _itemService.CreateAsync(request));
 
     [HttpPut("{id:int}")]
-    [RequirePermission(PermissionKeys.InvoicesCreate)]
+    [RequirePermission(PermissionKeys.ItemsEdit)]
     public async Task<ActionResult<ItemDto>> Update(int id, UpdateItemRequest request) => Ok(await _itemService.UpdateAsync(id, request));
 
     [HttpDelete("{id:int}")]
-    [RequirePermission(PermissionKeys.InvoicesCreate)]
+    [RequirePermission(PermissionKeys.ItemsDelete)]
     public async Task<IActionResult> Delete(int id)
     {
         await _itemService.DeleteAsync(id);

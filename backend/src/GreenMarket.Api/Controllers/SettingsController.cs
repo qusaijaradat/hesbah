@@ -29,11 +29,11 @@ public class SettingsController : ControllerBase
     }
 
     [HttpGet]
-    [RequirePermission(PermissionKeys.SettingsManage)]
+    [RequirePermission(PermissionKeys.SettingsView)]
     public async Task<ActionResult<IReadOnlyList<SettingDto>>> List() => Ok(await _settingsService.ListAsync());
 
     [HttpPut("{key}")]
-    [RequirePermission(PermissionKeys.SettingsManage)]
+    [RequirePermission(PermissionKeys.SettingsEdit)]
     public async Task<ActionResult<SettingDto>> Update(string key, UpdateSettingRequest request) =>
         Ok(await _settingsService.UpdateAsync(key, request.Value, CurrentUserId.Require(User)));
 
@@ -44,7 +44,7 @@ public class SettingsController : ControllerBase
     /// since a plain &lt;img src&gt; can't carry the Authorization header.
     /// </summary>
     [HttpGet("logo")]
-    [RequirePermission(PermissionKeys.SettingsManage)]
+    [RequirePermission(PermissionKeys.SettingsView)]
     public async Task<IActionResult> GetLogo()
     {
         var logo = await _logoService.GetAsync();
@@ -54,7 +54,7 @@ public class SettingsController : ControllerBase
 
     /// <summary>Uploads (or replaces) the market's logo, shown in Settings and on the invoice PDF header.</summary>
     [HttpPost("logo")]
-    [RequirePermission(PermissionKeys.SettingsManage)]
+    [RequirePermission(PermissionKeys.SettingsEdit)]
     [RequestSizeLimit(MaxLogoBytes)]
     public async Task<IActionResult> UploadLogo(IFormFile file)
     {
@@ -72,7 +72,7 @@ public class SettingsController : ControllerBase
     }
 
     [HttpDelete("logo")]
-    [RequirePermission(PermissionKeys.SettingsManage)]
+    [RequirePermission(PermissionKeys.SettingsEdit)]
     public async Task<IActionResult> DeleteLogo()
     {
         await _logoService.DeleteAsync();

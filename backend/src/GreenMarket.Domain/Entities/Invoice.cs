@@ -28,9 +28,11 @@ public class Invoice : AuditableEntity
 
     /// <summary>
     /// Optional: the driver who transported this shipment, tracked separately from the seller
-    /// (<see cref="Farmer"/>) — an invoice can have either, both, or neither attached. Unlike
-    /// Farmer, attaching a driver does NOT create a <see cref="FarmerTransaction"/>/commission
-    /// ledger row; the driver's compensation for this invoice is <see cref="TransportFee"/> below.
+    /// (<see cref="Farmer"/>) — an invoice can have either, both, or neither attached. If both are
+    /// attached AND TransportFee is greater than 0, this invoice ends up with TWO rows in
+    /// <see cref="FarmerTransactions"/>: a Sale row keyed to the farmer, and a TransportFee row
+    /// keyed to the driver (see FarmerTransactionType.TransportFee) — the driver's compensation
+    /// for this invoice is <see cref="TransportFee"/> below, never folded into commission math.
     /// </summary>
     public int? DriverId { get; set; }
     public Partner? Driver { get; set; }
@@ -62,5 +64,12 @@ public class Invoice : AuditableEntity
     public string? CancellationReason { get; set; }
 
     public ICollection<InvoiceItem> Items { get; set; } = new List<InvoiceItem>();
-    public FarmerTransaction? FarmerTransaction { get; set; }
+
+    /// <summary>
+    /// Up to two rows: a Sale row for the farmer (if attached) and/or a TransportFee row for the
+    /// driver (if attached and TransportFee &gt; 0) — was a single nullable one-to-one reference
+    /// before drivers got their own ledger entries; now a plain collection since an invoice can
+    /// legitimately have both at once.
+    /// </summary>
+    public ICollection<FarmerTransaction> FarmerTransactions { get; set; } = new List<FarmerTransaction>();
 }

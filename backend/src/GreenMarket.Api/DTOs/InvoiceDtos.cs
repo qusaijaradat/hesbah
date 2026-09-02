@@ -39,9 +39,10 @@ public record InvoiceItemDto(int Id, string ItemName, decimal Quantity, UnitOfMe
 /// TotalValue + TransportFee + WoodTotal (sum of every item's WoodPrice) — the actual amount the
 /// merchant pays, including the pass-through transport/crate costs that are excluded from
 /// TotalValue specifically so they never inflate the commission base. PreviousBalance is computed
-/// (not stored) in InvoiceService — what this merchant still owed from every one of their OTHER
-/// Active invoices, minus every payment they've ever made, clamped to 0 (never shown negative even
-/// if they're in credit). Printed on the invoice as "الرصيد السابق" added on top of GrandTotal, so
+/// (not stored) in InvoiceService — the merchant's manually-entered "الرصيد الافتتاحي"
+/// (Partner.OpeningBalance) plus what they still owed from every one of their OTHER Active
+/// invoices, minus every payment they've ever made, clamped to 0 (never shown negative even if
+/// they're in credit). Printed on the invoice as "الرصيد السابق" added on top of GrandTotal, so
 /// a newly-printed invoice always shows the full amount actually due, not just this one sale.
 /// </summary>
 public record InvoiceDto(
@@ -73,7 +74,19 @@ public record InvoiceListItemDto(
     string? FarmerName, string? FarmerWhatsApp,
     int? DriverId, string? DriverName, string? DriverWhatsApp,
     InvoiceStatus Status,
-    decimal TotalWeightKg, decimal TotalBoxes, decimal TotalValue, decimal TransportFee, decimal GrandTotal);
+    decimal TotalWeightKg, decimal TotalBoxes, decimal TotalValue, decimal TransportFee, decimal GrandTotal,
+    // "، "-joined distinct item names on this invoice (e.g. "طماطم، خيار، بندورة") so the list view
+    // answers "ايش الاصناف" without opening the invoice — see InvoiceService.ListAsync.
+    string ItemsSummary,
+    // GrandTotal already folds this in — broken out on its own too so a print/list view can show
+    // "سعر الخشب" as its own visible figure instead of it disappearing silently into GrandTotal.
+    decimal WoodTotal,
+    // Bulk-print page's per-type sections ("قسم بائع/سائق/مشتري"): each person's CURRENT overall
+    // account balance (same Remaining figure their own كشف حساب page shows — already includes their
+    // opening balance and, for a merchant, every invoice's own wood total) shown alongside every one
+    // of their invoices, not just one. FarmerRemaining/DriverRemaining are null when the invoice has
+    // no farmer/driver attached — see InvoiceService.ListAsync for how these are batch-computed.
+    decimal MerchantRemaining, decimal? FarmerRemaining, decimal? DriverRemaining);
 
 /// <summary>Requirement doc §7 filters: date range, merchant, farmer/driver, item, user, invoice number, weight, amount.</summary>
 public class InvoiceFilterRequest
@@ -83,6 +96,14 @@ public class InvoiceFilterRequest
     public int? MerchantId { get; set; }
     public int? FarmerId { get; set; }
     public int? DriverId { get; set; }
+
+    /// <summary>Bulk-print page's "قسم بائع"/"قسم سائق": true = only invoices that HAVE a
+    /// farmer/driver attached (any one), used when that section's own farmer/driver picker is left
+    /// blank — so the section still only ever shows بائع/سائق invoices instead of silently falling
+    /// back to every invoice. Ignored (no extra filtering) when null/false.</summary>
+    public bool? HasFarmer { get; set; }
+    public bool? HasDriver { get; set; }
+
     public string? ItemName { get; set; }
     public int? CreatedByUserId { get; set; }
     public string? InvoiceNumber { get; set; }
@@ -120,3 +141,18 @@ public record FarmerStatementLineDto(DateTimeOffset Date, string ItemName, decim
 /// <summary>Wraps the itemized lines above with the farmer's own name, resolved once in
 /// InvoiceService so the PDF header can show "البائع: ..." without a second round trip.</summary>
 public record FarmerStatementDto(int FarmerId, string FarmerName, IReadOnlyList<FarmerStatementLineDto> Lines);
+
+/// <summary>
+/// One row of the standalone "بضاعة الباعة" page — aggregated by day + item + unit across all of
+/// this farmer's Active invoices within the (optional) date range: how much of that item he
+/// brought that day (TotalQuantity), and how much of that same quantity came in wood crates
+/// (WoodQuantity) — a SEPARATE figure, not a yes/no flag, since a farmer can bring e.g. 20 boxes
+/// of tomatoes on the same day with only 5 of them in wood crates. That split is entered on the
+/// invoice itself as two separate lines for the same item/day (one with a WoodPrice, one without —
+/// exactly how staff already price a mixed wood/non-wood delivery); this just aggregates it back
+/// up into WoodQuantity = sum of Quantity across only the lines that had WoodPrice > 0, out of
+/// TotalQuantity = sum of Quantity across every line for that day+item+unit.
+/// </summary>
+public record FarmerGoodsRow(DateTime Date, string ItemName, UnitOfMeasure Unit, decimal TotalQuantity, decimal WoodQuantity);
+
+public record FarmerGoodsDto(int FarmerId, string FarmerName, IReadOnlyList<FarmerGoodsRow> Rows);

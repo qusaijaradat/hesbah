@@ -35,6 +35,20 @@ public static class DbSeeder
             db.Permissions.Add(new Permission { Key = key, Description = key });
         }
         await db.SaveChangesAsync();
+
+        // A permission key retired from PermissionKeys.All (e.g. the old coarse "partners.manage"
+        // split into partners.create/edit/delete) would otherwise sit forever as a dead row in the
+        // Permissions table — still shown as an unlabeled checkbox on the Roles page and still
+        // "granted" to whichever roles had it. Removing it here cascades to delete every
+        // RolePermission row referencing it too (see RolePermissionConfiguration's cascade delete),
+        // so a role's obsolete grants clean up automatically on the next startup — no manual
+        // migration needed, matching this project's no-EF-migrations, idempotent-guard approach.
+        var obsolete = await db.Permissions.Where(p => !PermissionKeys.All.Contains(p.Key)).ToListAsync();
+        if (obsolete.Count > 0)
+        {
+            db.Permissions.RemoveRange(obsolete);
+            await db.SaveChangesAsync();
+        }
     }
 
     private static async Task SeedRolesAsync(AppDbContext db)
@@ -65,23 +79,30 @@ public static class DbSeeder
         var grants = new Dictionary<string, string[]>
         {
             [SeedRoleNames.Admin] = PermissionKeys.All,
+            // Least-privilege defaults: non-Admin seeded roles get View/Create/Edit for the areas
+            // they need day to day, but never Delete — an admin can grant that explicitly per role
+            // via the "الأدوار والصلاحيات" page once they decide who should actually have it.
             [SeedRoleNames.HasbehEmployee] = new[]
             {
                 PermissionKeys.InvoicesCreate, PermissionKeys.InvoicesEdit, PermissionKeys.InvoicesView,
-                PermissionKeys.PartnersManage, PermissionKeys.PartnersView,
-                PermissionKeys.PaymentsCreate, PermissionKeys.PaymentsView,
+                PermissionKeys.PartnersView, PermissionKeys.PartnersCreate, PermissionKeys.PartnersEdit,
+                PermissionKeys.ItemsView, PermissionKeys.ItemsCreate, PermissionKeys.ItemsEdit,
+                PermissionKeys.PaymentsView, PermissionKeys.PaymentsCreate, PermissionKeys.PaymentsEdit,
                 PermissionKeys.ReportsView
             },
             [SeedRoleNames.Accountant] = new[]
             {
                 PermissionKeys.InvoicesView, PermissionKeys.PartnersView,
-                PermissionKeys.PaymentsCreate, PermissionKeys.PaymentsView,
-                PermissionKeys.ExpensesManage, PermissionKeys.EmployeesManage,
+                PermissionKeys.PaymentsView, PermissionKeys.PaymentsCreate, PermissionKeys.PaymentsEdit,
+                PermissionKeys.ExpensesView, PermissionKeys.ExpensesCreate, PermissionKeys.ExpensesEdit,
+                PermissionKeys.EmployeesView,
                 PermissionKeys.ReportsView, PermissionKeys.ReportsExport
             },
             [SeedRoleNames.Viewer] = new[]
             {
-                PermissionKeys.InvoicesView, PermissionKeys.PartnersView, PermissionKeys.PaymentsView, PermissionKeys.ReportsView
+                PermissionKeys.InvoicesView, PermissionKeys.PartnersView, PermissionKeys.PaymentsView,
+                PermissionKeys.ItemsView, PermissionKeys.EmployeesView, PermissionKeys.ExpensesView,
+                PermissionKeys.ReportsView
             },
         };
 

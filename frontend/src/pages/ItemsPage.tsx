@@ -11,7 +11,9 @@ import { useAuth } from "../auth/AuthContext";
  */
 export function ItemsPage() {
   const { hasPermission } = useAuth();
-  const canManage = hasPermission("invoices.create");
+  const canCreate = hasPermission("items.create");
+  const canEdit = hasPermission("items.edit");
+  const canDelete = hasPermission("items.delete");
   const [items, setItems] = useState<ItemDto[]>([]);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
@@ -46,7 +48,7 @@ export function ItemsPage() {
     <div>
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold">الأصناف</h1>
-        {canManage && (
+        {canCreate && (
           <button className="btn-primary" onClick={() => setEditing("new")}>+ إضافة صنف</button>
         )}
       </div>
@@ -78,11 +80,11 @@ export function ItemsPage() {
                 <tr key={item.id}>
                   <td className="font-medium">{item.name}</td>
                   <td className="whitespace-nowrap">
-                    {canManage && (
-                      <>
-                        <button className="text-gray-500 text-sm hover:underline ms-2" onClick={() => setEditing(item)}>تعديل</button>
-                        <button className="text-red-500 text-sm hover:underline ms-2" onClick={() => handleDelete(item)}>حذف</button>
-                      </>
+                    {canEdit && (
+                      <button className="text-gray-500 text-sm hover:underline ms-2" onClick={() => setEditing(item)}>تعديل</button>
+                    )}
+                    {canDelete && (
+                      <button className="text-red-500 text-sm hover:underline ms-2" onClick={() => handleDelete(item)}>حذف</button>
                     )}
                   </td>
                 </tr>

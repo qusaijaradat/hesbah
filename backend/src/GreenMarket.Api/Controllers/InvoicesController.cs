@@ -127,6 +127,13 @@ public class InvoicesController : ControllerBase
         return File(bytes, "application/pdf", "farmer-statement.pdf");
     }
 
+    /// <summary>Standalone "بضاعة الباعة" page: a chosen farmer's goods, grouped by day + item +
+    /// unit, over an optional date range (omit both to see his entire history at once).</summary>
+    [HttpGet("farmer-goods")]
+    [RequirePermission(PermissionKeys.InvoicesView)]
+    public async Task<ActionResult<FarmerGoodsDto>> FarmerGoods([FromQuery] int farmerId, [FromQuery] DateTimeOffset? dateFrom, [FromQuery] DateTimeOffset? dateTo) =>
+        Ok(await _invoiceService.GetFarmerGoodsAsync(farmerId, dateFrom, dateTo));
+
     /// <summary>Builds the printed header's company-identity block entirely from Settings, so the
     /// market can fill in its own name/address/phone/registration number without a code change.</summary>
     private async Task<CompanyInfo> GetCompanyInfoAsync()

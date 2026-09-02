@@ -20,18 +20,26 @@ public class RolesController : ControllerBase
     public RolesController(IRoleService roleService) => _roleService = roleService;
 
     [HttpGet]
-    [RequirePermission(PermissionKeys.UsersManage)]
+    [RequirePermission(PermissionKeys.RolesView)]
     public async Task<ActionResult<IReadOnlyList<RoleDto>>> List() => Ok(await _roleService.ListAsync());
 
     [HttpGet("permissions")]
-    [RequirePermission(PermissionKeys.UsersManage)]
+    [RequirePermission(PermissionKeys.RolesView)]
     public async Task<ActionResult<IReadOnlyList<PermissionDto>>> Permissions() => Ok(await _roleService.ListPermissionsAsync());
 
     [HttpPost]
-    [RequirePermission(PermissionKeys.UsersManage)]
+    [RequirePermission(PermissionKeys.RolesCreate)]
     public async Task<ActionResult<RoleDto>> Create(CreateRoleRequest request) => Ok(await _roleService.CreateAsync(request));
 
     [HttpPut("{id:int}")]
-    [RequirePermission(PermissionKeys.UsersManage)]
+    [RequirePermission(PermissionKeys.RolesEdit)]
     public async Task<ActionResult<RoleDto>> Update(int id, UpdateRoleRequest request) => Ok(await _roleService.UpdateAsync(id, request));
+
+    [HttpDelete("{id:int}")]
+    [RequirePermission(PermissionKeys.RolesDelete)]
+    public async Task<IActionResult> Delete(int id)
+    {
+        await _roleService.DeleteAsync(id);
+        return NoContent();
+    }
 }

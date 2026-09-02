@@ -134,6 +134,7 @@ export function InvoicesPage() {
               <th>المشتري</th>
               <th>البائع</th>
               <th>السائق</th>
+              <th>الأصناف</th>
               <th>الكمية</th>
               <th>القيمة</th>
               <th>الحالة</th>
@@ -142,9 +143,9 @@ export function InvoicesPage() {
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={9} className="text-center text-gray-400 py-6">جاري التحميل...</td></tr>
+              <tr><td colSpan={10} className="text-center text-gray-400 py-6">جاري التحميل...</td></tr>
             ) : !result || result.items.length === 0 ? (
-              <tr><td colSpan={9} className="text-center text-gray-400 py-6">لا توجد فواتير</td></tr>
+              <tr><td colSpan={10} className="text-center text-gray-400 py-6">لا توجد فواتير</td></tr>
             ) : (
               result.items.map((inv) => (
                 <tr key={inv.id}>
@@ -153,6 +154,7 @@ export function InvoicesPage() {
                   <td>{inv.merchantName}</td>
                   <td>{inv.farmerName ?? "—"}</td>
                   <td>{inv.driverName ?? "—"}</td>
+                  <td className="text-gray-600 max-w-[16rem]">{inv.itemsSummary || "—"}</td>
                   <td>
                     {/* Not everything is sold by weight — a box-only invoice has totalWeightKg
                         === 0, which on its own looks like an empty/broken row, so show whichever

@@ -1,7 +1,7 @@
 import { apiClient } from "./client";
 import type {
   PartnerDto, PartnerSuggestionDto, PagedResult, PartnerType,
-  MerchantAccountDto, FarmerAccountDto,
+  MerchantAccountDto, FarmerAccountDto, DebtsOverviewDto,
 } from "../types";
 
 export async function listPartners(params: { search?: string; type?: PartnerType; page?: number; pageSize?: number }) {
@@ -26,12 +26,12 @@ export async function getPartner(id: number) {
   return data;
 }
 
-export async function createPartner(payload: { name: string; type: PartnerType | null; whatsAppNumber?: string; notes?: string; creditLimit?: number | null }) {
+export async function createPartner(payload: { name: string; type: PartnerType | null; whatsAppNumber?: string; address?: string; notes?: string; creditLimit?: number | null; openingBalance?: number | null }) {
   const { data } = await apiClient.post<PartnerDto>("/partners", payload);
   return data;
 }
 
-export async function updatePartner(id: number, payload: { name: string; type: PartnerType | null; whatsAppNumber?: string; notes?: string; creditLimit?: number | null }) {
+export async function updatePartner(id: number, payload: { name: string; type: PartnerType | null; whatsAppNumber?: string; address?: string; notes?: string; creditLimit?: number | null; openingBalance?: number | null }) {
   const { data } = await apiClient.put<PartnerDto>(`/partners/${id}`, payload);
   return data;
 }
@@ -44,4 +44,15 @@ export async function getMerchantAccount(id: number) {
 export async function getFarmerAccount(id: number) {
   const { data } = await apiClient.get<FarmerAccountDto>(`/partners/${id}/farmer-account`);
   return data;
+}
+
+export async function getDebtsOverview() {
+  const { data } = await apiClient.get<DebtsOverviewDto>("/partners/debts-overview");
+  return data;
+}
+
+// Only succeeds server-side on a partner with zero invoices/payments/ledger history — see
+// PartnerService.DeleteAsync's doc comment.
+export async function deletePartner(id: number) {
+  await apiClient.delete(`/partners/${id}`);
 }

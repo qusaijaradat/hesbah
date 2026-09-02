@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { deleteLogo, getLogo, listSettings, updateSetting, uploadLogo } from "../api/settings";
 import type { SettingDto } from "../types";
 import { apiErrorMessage } from "../api/client";
+import { useAuth } from "../auth/AuthContext";
 
 const KEY_LABELS: Record<string, string> = {
   "commission.default_rate": "نسبة العمولة الافتراضية (مثال: 0.07 = 7%)",
@@ -16,6 +17,8 @@ const MAX_LOGO_BYTES = 3 * 1024 * 1024;
 const ALLOWED_LOGO_TYPES = ["image/png", "image/jpeg", "image/webp"];
 
 export function SettingsPage() {
+  const { hasPermission } = useAuth();
+  const canEdit = hasPermission("settings.edit");
   const [settings, setSettings] = useState<SettingDto[]>([]);
   const [edited, setEdited] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState<string | null>(null);
@@ -131,21 +134,25 @@ export function SettingsPage() {
             )}
           </div>
           <div className="flex flex-col gap-2">
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/png,image/jpeg,image/webp"
-              className="text-sm"
-              disabled={logoBusy}
-              onChange={(e) => handleLogoFileChosen(e.target.files?.[0])}
-            />
+            {canEdit ? (
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                className="text-sm"
+                disabled={logoBusy}
+                onChange={(e) => handleLogoFileChosen(e.target.files?.[0])}
+              />
+            ) : (
+              <span className="text-xs text-gray-400">لا تملك صلاحية تعديل الإعدادات</span>
+            )}
             {logoBusy && <span className="text-xs text-gray-400">جاري المعالجة...</span>}
             {!logoBusy && !logoLoading && (
               <span className="text-xs text-gray-400">
                 {hasCustomLogo ? "شعارك المرفوع" : "الشعار الافتراضي (لم يُرفع شعار خاص بعد)"}
               </span>
             )}
-            {hasCustomLogo && !logoBusy && (
+            {canEdit && hasCustomLogo && !logoBusy && (
               <button className="btn-danger text-sm self-start" onClick={handleLogoDelete}>
                 حذف الشعار (والرجوع للشعار الافتراضي)
               </button>
@@ -163,11 +170,14 @@ export function SettingsPage() {
               <input
                 className="input"
                 defaultValue={s.value}
+                disabled={!canEdit}
                 onChange={(e) => setEdited((prev) => ({ ...prev, [s.key]: e.target.value }))}
               />
-              <button className="btn-primary shrink-0" disabled={saving === s.key} onClick={() => handleSave(s.key)}>
-                {saving === s.key ? "..." : "حفظ"}
-              </button>
+              {canEdit && (
+                <button className="btn-primary shrink-0" disabled={saving === s.key} onClick={() => handleSave(s.key)}>
+                  {saving === s.key ? "..." : "حفظ"}
+                </button>
+              )}
             </div>
             {s.description && <p className="text-xs text-gray-400 mt-1">{s.description}</p>}
           </div>

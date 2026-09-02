@@ -11,6 +11,10 @@ public interface IReportService
 {
     Task<IReadOnlyList<FarmerReportRow>> FarmerReportAsync(ReportFilterRequest filter);
     Task<IReadOnlyList<MerchantReportRow>> MerchantReportAsync(ReportFilterRequest filter);
+
+    /// <summary>See DriverReportRow's doc comment — the transport-side counterpart to FarmerReportAsync.</summary>
+    Task<IReadOnlyList<DriverReportRow>> DriverReportAsync(ReportFilterRequest filter);
+    Task<IReadOnlyList<MerchantItemBreakdownRow>> MerchantItemBreakdownAsync(ReportFilterRequest filter);
     Task<IReadOnlyList<MarketReportRow>> MarketReportAsync(ReportFilterRequest filter);
     Task<DailyClosingDto> DailyClosingAsync(DateTimeOffset date);
     Task<IReadOnlyList<AgingReportRow>> AgingReportAsync(ReportFilterRequest filter);
@@ -30,7 +34,15 @@ public class ReportService : IReportService
         if (filter.DateTo is not null) invoiceQuery = invoiceQuery.Where(i => i.Date <= filter.DateTo);
         if (filter.PartnerId is not null) invoiceQuery = invoiceQuery.Where(i => i.FarmerId == filter.PartnerId);
 
-        var invoiceAgg = await invoiceQuery
+        // Materialized in-memory (rather than a translated GroupBy) so TotalBoxes — a per-item
+        // aggregate — and LastInvoiceDate can sit alongside the scalar sums, same reasoning as
+        // MerchantItemBreakdownAsync/InvoiceService.ListAsync's ItemsSummary.
+        var invoices = await invoiceQuery
+            .Include(i => i.Farmer)
+            .Include(i => i.Items)
+            .ToListAsync();
+
+        var invoiceAgg = invoices
             .GroupBy(i => new { FarmerId = i.FarmerId!.Value, i.Farmer!.Name })
             .Select(g => new
             {
@@ -38,9 +50,11 @@ public class ReportService : IReportService
                 FarmerName = g.Key.Name,
                 InvoiceCount = g.Count(),
                 TotalWeightKg = g.Sum(i => i.TotalWeightKg),
-                TotalSalesValue = g.Sum(i => i.TotalValue)
+                TotalBoxes = g.Sum(i => i.Items.Where(it => it.Unit == UnitOfMeasure.Box).Sum(it => it.Quantity)),
+                TotalSalesValue = g.Sum(i => i.TotalValue),
+                LastInvoiceDate = (DateTimeOffset?)g.Max(i => i.Date)
             })
-            .ToListAsync();
+            .ToList();
 
         var commissionQuery = _db.FarmerTransactions.Where(t => t.Type == FarmerTransactionType.Sale);
         if (filter.DateFrom is not null) commissionQuery = commissionQuery.Where(t => t.Date >= filter.DateFrom);
@@ -59,7 +73,10 @@ public class ReportService : IReportService
             .ToDictionaryAsync(x => x.FarmerId, x => x.Paid);
 
         // "Remaining" is the all-time running balance (not scoped to the filter window) so it
-        // always reflects reality, matching how the account statement screen computes it.
+        // always reflects reality, matching how the account statement screen computes it. Summing
+        // EVERY transaction's Amount (no Type filter) already nets Sale/TransportFee/Payment/
+        // Adjustment together correctly, on its own — see PartnerService.GetFarmerAccountAsync's
+        // Remaining, which does the exact same sum for the exact same reason.
         // Note: "== null" here, not "is null" — pattern-matching ('is') can't appear inside
         // a lambda EF Core converts to an expression tree; plain equality can.
         var allTimeBalance = await _db.FarmerTransactions
@@ -68,12 +85,26 @@ public class ReportService : IReportService
             .Select(g => new { FarmerId = g.Key, Balance = g.Sum(t => t.Amount) })
             .ToDictionaryAsync(x => x.FarmerId, x => x.Balance);
 
-        return invoiceAgg.Select(a => new FarmerReportRow(
-            a.FarmerId, a.FarmerName, a.InvoiceCount, a.TotalWeightKg, a.TotalSalesValue,
-            commissionByFarmer.GetValueOrDefault(a.FarmerId), paidByFarmer.GetValueOrDefault(a.FarmerId),
-            allTimeBalance.GetValueOrDefault(a.FarmerId)))
-            .OrderBy(r => r.FarmerName)
-            .ToList();
+        // Bug fix: Remaining here used to leave out the partner's manually-entered "الرصيد
+        // الافتتاحي" (Partner.OpeningBalance) entirely, so this report's numbers could disagree
+        // with the farmer's own كشف حساب page and the "قيمة الديون" overview the moment an opening
+        // balance was set on them.
+        var openingBalances = await _db.Partners
+            .Where(p => filter.PartnerId == null || p.Id == filter.PartnerId)
+            .Select(p => new { p.Id, p.OpeningBalance })
+            .ToDictionaryAsync(x => x.Id, x => x.OpeningBalance ?? 0);
+
+        return invoiceAgg.Select(a =>
+        {
+            var commission = commissionByFarmer.GetValueOrDefault(a.FarmerId);
+            var opening = openingBalances.GetValueOrDefault(a.FarmerId);
+            return new FarmerReportRow(
+                a.FarmerId, a.FarmerName, a.InvoiceCount, a.TotalWeightKg, a.TotalBoxes, a.TotalSalesValue,
+                commission, a.TotalSalesValue - commission, paidByFarmer.GetValueOrDefault(a.FarmerId),
+                opening + allTimeBalance.GetValueOrDefault(a.FarmerId), opening, a.LastInvoiceDate);
+        })
+        .OrderBy(r => r.FarmerName)
+        .ToList();
     }
 
     public async Task<IReadOnlyList<MerchantReportRow>> MerchantReportAsync(ReportFilterRequest filter)
@@ -83,16 +114,28 @@ public class ReportService : IReportService
         if (filter.DateTo is not null) invoiceQuery = invoiceQuery.Where(i => i.Date <= filter.DateTo);
         if (filter.PartnerId is not null) invoiceQuery = invoiceQuery.Where(i => i.MerchantId == filter.PartnerId);
 
-        var invoiceAgg = await invoiceQuery
+        // Materialized in-memory — same reasoning as FarmerReportAsync above — so TotalBoxes/
+        // TotalWoodTotal (per-item aggregates) and LastInvoiceDate can sit alongside the scalars.
+        var invoices = await invoiceQuery
+            .Include(i => i.Merchant)
+            .Include(i => i.Items)
+            .ToListAsync();
+
+        var invoiceAgg = invoices
             .GroupBy(i => new { i.MerchantId, i.Merchant.Name })
             .Select(g => new
             {
                 MerchantId = g.Key.MerchantId,
                 MerchantName = g.Key.Name,
                 InvoiceCount = g.Count(),
-                TotalPurchases = g.Sum(i => i.TotalValue)
+                TotalWeightKg = g.Sum(i => i.TotalWeightKg),
+                TotalBoxes = g.Sum(i => i.Items.Where(it => it.Unit == UnitOfMeasure.Box).Sum(it => it.Quantity)),
+                TotalPurchases = g.Sum(i => i.TotalValue),
+                TotalWoodTotal = g.Sum(i => i.Items.Sum(it => it.WoodPrice)),
+                TotalTransportFee = g.Sum(i => i.TransportFee),
+                LastInvoiceDate = (DateTimeOffset?)g.Max(i => i.Date)
             })
-            .ToListAsync();
+            .ToList();
 
         // Note: "== null" here, not "is null" — same expression-tree restriction as above.
         var allTimePurchases = await _db.Invoices.Where(i => i.Status == InvoiceStatus.Active)
@@ -107,14 +150,109 @@ public class ReportService : IReportService
             .Select(g => new { MerchantId = g.Key, Total = g.Sum(p => p.Amount) })
             .ToDictionaryAsync(x => x.MerchantId, x => x.Total);
 
+        // Same bug fix as FarmerReportAsync above: fold in OpeningBalance so this matches the
+        // merchant's own كشف حساب page and the "قيمة الديون" overview.
+        var openingBalances = await _db.Partners
+            .Where(p => filter.PartnerId == null || p.Id == filter.PartnerId)
+            .Select(p => new { p.Id, p.OpeningBalance })
+            .ToDictionaryAsync(x => x.Id, x => x.OpeningBalance ?? 0);
+
         return invoiceAgg.Select(a =>
         {
             var totalPaid = allTimePaid.GetValueOrDefault(a.MerchantId);
-            var remaining = allTimePurchases.GetValueOrDefault(a.MerchantId) - totalPaid;
-            return new MerchantReportRow(a.MerchantId, a.MerchantName, a.InvoiceCount, a.TotalPurchases, totalPaid, remaining);
+            var opening = openingBalances.GetValueOrDefault(a.MerchantId);
+            var remaining = opening + allTimePurchases.GetValueOrDefault(a.MerchantId) - totalPaid;
+            return new MerchantReportRow(
+                a.MerchantId, a.MerchantName, a.InvoiceCount, a.TotalWeightKg, a.TotalBoxes,
+                a.TotalPurchases, a.TotalWoodTotal, a.TotalTransportFee, a.TotalPurchases + a.TotalWoodTotal + a.TotalTransportFee,
+                totalPaid, remaining, opening, a.LastInvoiceDate);
         })
         .OrderBy(r => r.MerchantName)
         .ToList();
+    }
+
+    /// <summary>See DriverReportRow's doc comment. Mirrors FarmerReportAsync's structure exactly —
+    /// same shared farmer_transactions ledger, same Paid/Remaining/OpeningBalance formulas — just
+    /// scoped to Invoice.DriverId instead of Invoice.FarmerId, and with TotalTransportFee (there is
+    /// no "sale"/commission concept for a driver) in place of TotalSalesValue/TotalCommission.</summary>
+    public async Task<IReadOnlyList<DriverReportRow>> DriverReportAsync(ReportFilterRequest filter)
+    {
+        var invoiceQuery = _db.Invoices.Where(i => i.Status == InvoiceStatus.Active && i.DriverId != null);
+        if (filter.DateFrom is not null) invoiceQuery = invoiceQuery.Where(i => i.Date >= filter.DateFrom);
+        if (filter.DateTo is not null) invoiceQuery = invoiceQuery.Where(i => i.Date <= filter.DateTo);
+        if (filter.PartnerId is not null) invoiceQuery = invoiceQuery.Where(i => i.DriverId == filter.PartnerId);
+
+        var invoices = await invoiceQuery.Include(i => i.Driver).ToListAsync();
+
+        var invoiceAgg = invoices
+            .GroupBy(i => new { DriverId = i.DriverId!.Value, i.Driver!.Name })
+            .Select(g => new
+            {
+                DriverId = g.Key.DriverId,
+                DriverName = g.Key.Name,
+                InvoiceCount = g.Count(),
+                TotalTransportFee = g.Sum(i => i.TransportFee),
+                LastInvoiceDate = (DateTimeOffset?)g.Max(i => i.Date)
+            })
+            .ToList();
+
+        var paidQuery = _db.FarmerTransactions.Where(t => t.Type == FarmerTransactionType.Payment);
+        if (filter.DateFrom is not null) paidQuery = paidQuery.Where(t => t.Date >= filter.DateFrom);
+        if (filter.DateTo is not null) paidQuery = paidQuery.Where(t => t.Date <= filter.DateTo);
+        if (filter.PartnerId is not null) paidQuery = paidQuery.Where(t => t.FarmerId == filter.PartnerId);
+        var paidByDriver = await paidQuery.GroupBy(t => t.FarmerId)
+            .Select(g => new { DriverId = g.Key, Paid = g.Sum(t => -t.Amount) })
+            .ToDictionaryAsync(x => x.DriverId, x => x.Paid);
+
+        // Same "all-time running balance" convention as FarmerReportAsync — see its comment above.
+        var allTimeBalance = await _db.FarmerTransactions
+            .Where(t => filter.PartnerId == null || t.FarmerId == filter.PartnerId)
+            .GroupBy(t => t.FarmerId)
+            .Select(g => new { DriverId = g.Key, Balance = g.Sum(t => t.Amount) })
+            .ToDictionaryAsync(x => x.DriverId, x => x.Balance);
+
+        var openingBalances = await _db.Partners
+            .Where(p => filter.PartnerId == null || p.Id == filter.PartnerId)
+            .Select(p => new { p.Id, p.OpeningBalance })
+            .ToDictionaryAsync(x => x.Id, x => x.OpeningBalance ?? 0);
+
+        return invoiceAgg.Select(a =>
+        {
+            var opening = openingBalances.GetValueOrDefault(a.DriverId);
+            return new DriverReportRow(
+                a.DriverId, a.DriverName, a.InvoiceCount, a.TotalTransportFee, paidByDriver.GetValueOrDefault(a.DriverId),
+                opening + allTimeBalance.GetValueOrDefault(a.DriverId), opening, a.LastInvoiceDate);
+        })
+        .OrderBy(r => r.DriverName)
+        .ToList();
+    }
+
+    /// <summary>
+    /// Dashboard "كشف المشترين حسب الفترة": one row per (merchant, item) — see
+    /// MerchantItemBreakdownRow's doc comment. Grouping happens IN MEMORY after materializing the
+    /// period's invoices+items (same choice InvoiceService.GetFarmerGoodsAsync makes and for the
+    /// same reason): a composite GroupBy key that also needs a navigation property's column
+    /// (i.Merchant.Name here) doesn't reliably translate through the Npgsql EF provider, and this
+    /// only ever runs over one filtered period's invoices, so it's cheap and safe to do here.
+    /// </summary>
+    public async Task<IReadOnlyList<MerchantItemBreakdownRow>> MerchantItemBreakdownAsync(ReportFilterRequest filter)
+    {
+        var query = _db.Invoices.Where(i => i.Status == InvoiceStatus.Active).AsQueryable();
+        if (filter.DateFrom is not null) query = query.Where(i => i.Date >= filter.DateFrom);
+        if (filter.DateTo is not null) query = query.Where(i => i.Date <= filter.DateTo);
+        if (filter.PartnerId is not null) query = query.Where(i => i.MerchantId == filter.PartnerId);
+
+        var invoices = await query
+            .Include(i => i.Merchant)
+            .Include(i => i.Items)
+            .ToListAsync();
+
+        return invoices
+            .SelectMany(i => i.Items.Select(it => new { i.MerchantId, MerchantName = i.Merchant.Name, it.ItemName, it.Unit, it.Quantity, it.LineTotal }))
+            .GroupBy(x => new { x.MerchantId, x.MerchantName, x.ItemName, x.Unit })
+            .Select(g => new MerchantItemBreakdownRow(g.Key.MerchantId, g.Key.MerchantName, g.Key.ItemName, g.Key.Unit, g.Sum(x => x.Quantity), g.Sum(x => x.LineTotal)))
+            .OrderBy(r => r.MerchantName).ThenBy(r => r.ItemName)
+            .ToList();
     }
 
     public async Task<IReadOnlyList<MarketReportRow>> MarketReportAsync(ReportFilterRequest filter)

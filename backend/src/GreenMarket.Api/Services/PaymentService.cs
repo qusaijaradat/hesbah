@@ -155,8 +155,9 @@ public class PaymentService : IPaymentService
     }
 
     /// <summary>Validates that an optional invoice link actually belongs to the partner this
-    /// payment is against — a merchant payment can only link to one of their own invoices, and
-    /// a farmer payment only to one they were the farmer on.</summary>
+    /// payment is against — a merchant payment can only link to one of their own invoices, and a
+    /// ToFarmer payment (which covers both farmers AND drivers — see PaymentDirection.ToFarmer) to
+    /// one they were either the farmer OR the driver on.</summary>
     private async Task<Invoice?> ResolveInvoiceLinkAsync(int? invoiceId, int partnerId, PaymentDirection direction)
     {
         if (invoiceId is null) return null;
@@ -164,7 +165,7 @@ public class PaymentService : IPaymentService
         var invoice = await _db.Invoices.FindAsync(invoiceId) ?? throw new NotFoundAppException("Invoice", invoiceId);
         var belongsToPartner = direction == PaymentDirection.FromMerchant
             ? invoice.MerchantId == partnerId
-            : invoice.FarmerId == partnerId;
+            : invoice.FarmerId == partnerId || invoice.DriverId == partnerId;
 
         if (!belongsToPartner)
             throw new ValidationAppException("The selected invoice does not belong to this partner.");

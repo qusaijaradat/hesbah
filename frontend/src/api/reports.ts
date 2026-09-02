@@ -1,5 +1,5 @@
 import { apiClient } from "./client";
-import type { FarmerReportRow, MerchantReportRow, MarketReportRow, AgingReportRow, DailyClosingDto } from "../types";
+import type { FarmerReportRow, MerchantReportRow, DriverReportRow, MerchantItemBreakdownRow, MarketReportRow, AgingReportRow, DailyClosingDto } from "../types";
 
 export interface ReportFilter {
   dateFrom?: string;
@@ -15,6 +15,17 @@ export async function farmerReport(filter: ReportFilter) {
 
 export async function merchantReport(filter: ReportFilter) {
   const { data } = await apiClient.get<MerchantReportRow[]>("/reports/merchants", { params: filter });
+  return data;
+}
+
+export async function driverReport(filter: ReportFilter) {
+  const { data } = await apiClient.get<DriverReportRow[]>("/reports/drivers", { params: filter });
+  return data;
+}
+
+/** Dashboard "كشف المشترين حسب الفترة" — per-item breakdown (اسم/صنف/كمية/سعر) under each merchant. */
+export async function merchantItemsBreakdown(filter: ReportFilter) {
+  const { data } = await apiClient.get<MerchantItemBreakdownRow[]>("/reports/merchants/items-breakdown", { params: filter });
   return data;
 }
 
@@ -35,7 +46,7 @@ export async function agingReport(filter: ReportFilter) {
   return data;
 }
 
-export type ReportKind = "farmers" | "merchants" | "market" | "aging";
+export type ReportKind = "farmers" | "merchants" | "drivers" | "market" | "aging";
 
 export async function exportReport(kind: ReportKind, format: "excel" | "pdf", filter: ReportFilter) {
   const { data } = await apiClient.get(`/reports/${kind}/export/${format}`, { params: filter, responseType: "blob" });

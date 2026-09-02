@@ -17,18 +17,20 @@ public class UsersController : ControllerBase
     public UsersController(IUserService userService) => _userService = userService;
 
     [HttpGet]
-    [RequirePermission(PermissionKeys.UsersManage)]
+    [RequirePermission(PermissionKeys.UsersView)]
     public async Task<ActionResult<IReadOnlyList<UserDto>>> List() => Ok(await _userService.ListAsync());
 
     [HttpPost]
-    [RequirePermission(PermissionKeys.UsersManage)]
+    [RequirePermission(PermissionKeys.UsersCreate)]
     public async Task<ActionResult<UserDto>> Create(CreateUserRequest request) => Ok(await _userService.CreateAsync(request));
 
     [HttpPut("{id:int}")]
-    [RequirePermission(PermissionKeys.UsersManage)]
+    [RequirePermission(PermissionKeys.UsersEdit)]
     public async Task<ActionResult<UserDto>> Update(int id, UpdateUserRequest request) => Ok(await _userService.UpdateAsync(id, request));
 
+    // Feeds the Users page's role-assignment dropdown — gated by UsersView (not RolesView) since
+    // it's used purely to label/pick a role while managing users, not to manage roles themselves.
     [HttpGet("roles")]
-    [RequirePermission(PermissionKeys.UsersManage)]
+    [RequirePermission(PermissionKeys.UsersView)]
     public async Task<ActionResult<IReadOnlyList<RoleDto>>> Roles() => Ok(await _userService.ListRolesAsync());
 }

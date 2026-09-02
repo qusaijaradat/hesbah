@@ -249,6 +249,68 @@ using (var scope = app.Services.CreateScope())
         app.Logger.LogError(ex, "Failed to create the employees table / EmployeeId column — the Employees page and linking expenses to employees will not work until this is fixed.");
     }
 
+    // Same EnsureCreated gap as above: Partner.OpeningBalance ("الرصيد الافتتاحي") is a new column
+    // on the existing "partners" table.
+    try
+    {
+        await db.Database.ExecuteSqlRawAsync("""
+            ALTER TABLE partners ADD COLUMN IF NOT EXISTS "OpeningBalance" numeric(14,2) NULL;
+            """);
+    }
+    catch (Exception ex)
+    {
+        app.Logger.LogError(ex, "Failed to add the partners.OpeningBalance column — recording an opening balance for a farmer/driver/merchant will not work until this is fixed.");
+    }
+
+    // FarmerTransaction.Invoice went from a one-to-one relationship to one-to-many (an invoice can
+    // now carry BOTH a farmer's Sale row and a driver's TransportFee row — see
+    // FarmerTransactionType.TransportFee / Invoice.FarmerTransactions). EnsureCreatedAsync only
+    // ever builds a table from the CURRENT model on a brand-new database, so a database that
+    // already had "farmer_transactions" still has the OLD one-to-one mapping's UNIQUE index on
+    // "InvoiceId" sitting there physically — which would reject a driver's TransportFee row the
+    // moment an invoice already has a farmer's Sale row. This finds and drops any such unique
+    // index by inspecting the catalog (rather than guessing EF's auto-generated name, which can
+    // vary), then makes sure a plain non-unique index still exists so invoice-scoped lookups
+    // (existingSale/existingTransportFee in InvoiceService) stay fast.
+    try
+    {
+        await db.Database.ExecuteSqlRawAsync("""
+            DO $$
+            DECLARE
+                idx RECORD;
+            BEGIN
+                FOR idx IN
+                    SELECT indexname FROM pg_indexes
+                    WHERE schemaname = current_schema()
+                      AND tablename = 'farmer_transactions'
+                      AND indexdef ILIKE '%UNIQUE%'
+                      AND indexdef ILIKE '%"InvoiceId"%'
+                LOOP
+                    EXECUTE format('DROP INDEX IF EXISTS %I', idx.indexname);
+                END LOOP;
+            END $$;
+
+            CREATE INDEX IF NOT EXISTS ix_farmer_transactions_invoiceid_nonunique ON farmer_transactions ("InvoiceId");
+            """);
+    }
+    catch (Exception ex)
+    {
+        app.Logger.LogError(ex, "Failed to drop the stale unique index on farmer_transactions.InvoiceId — an invoice with both a farmer and a driver+transport-fee attached will fail to save until this is fixed.");
+    }
+
+    // Same EnsureCreated gap as above: Partner.Address ("العنوان") is a new column on the existing
+    // "partners" table — plain optional free text, no dependent calculation.
+    try
+    {
+        await db.Database.ExecuteSqlRawAsync("""
+            ALTER TABLE partners ADD COLUMN IF NOT EXISTS "Address" text NULL;
+            """);
+    }
+    catch (Exception ex)
+    {
+        app.Logger.LogError(ex, "Failed to add the partners.Address column — recording an address for a farmer/driver/merchant will not work until this is fixed.");
+    }
+
     await DbSeeder.SeedAsync(db);
 }
 

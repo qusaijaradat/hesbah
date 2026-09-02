@@ -17,6 +17,7 @@ public interface IInvoiceService
     Task<IReadOnlyList<InvoiceDto>> GetManyAsync(IReadOnlyList<int> ids);
     Task<InvoiceDto> CancelAsync(int id, CancelInvoiceRequest request, int cancelledByUserId);
     Task<FarmerStatementDto> GetFarmerStatementAsync(int farmerId, DateTimeOffset? dateFrom, DateTimeOffset? dateTo);
+    Task<FarmerGoodsDto> GetFarmerGoodsAsync(int farmerId, DateTimeOffset? dateFrom, DateTimeOffset? dateTo);
 }
 
 /// <summary>
@@ -105,7 +106,24 @@ public class InvoiceService : IInvoiceService
                 SaleValue = totals.TotalValue,
                 Commission = commissionResult.Commission,
                 Amount = commissionResult.NetDueToFarmer,
-                Notes = $"Auto-generated from invoice {invoice.InvoiceNumber}"
+                Notes = $"تسجيل تلقائي من الفاتورة رقم {invoice.InvoiceNumber}"
+            });
+            await _db.SaveChangesAsync();
+        }
+
+        // Same idea as the farmer's Sale row above, but for the driver's transport fee — no driver
+        // attached, or attached with TransportFee still 0, means nothing to post yet (the driver's
+        // ledger only grows once there's an actual fee owed to them for this invoice).
+        if (driver is not null && invoice.TransportFee > 0)
+        {
+            _db.FarmerTransactions.Add(new FarmerTransaction
+            {
+                FarmerId = driver.Id,
+                Type = FarmerTransactionType.TransportFee,
+                InvoiceId = invoice.Id,
+                Date = invoice.Date,
+                Amount = invoice.TransportFee,
+                Notes = $"أجرة نقل تلقائية من الفاتورة {invoice.InvoiceNumber}"
             });
             await _db.SaveChangesAsync();
         }
@@ -167,6 +185,7 @@ public class InvoiceService : IInvoiceService
         var commissionResult = CommissionCalculator.Calculate(totals.TotalValue, commissionRate);
 
         var previousFarmerId = invoice.FarmerId;
+        var previousDriverId = invoice.DriverId;
 
         invoice.Date = request.Date;
         invoice.MerchantId = merchant.Id;
@@ -225,7 +244,40 @@ public class InvoiceService : IInvoiceService
                 SaleValue = totals.TotalValue,
                 Commission = commissionResult.Commission,
                 Amount = commissionResult.NetDueToFarmer,
-                Notes = $"Auto-generated from invoice {invoice.InvoiceNumber} (edited)"
+                Notes = $"تسجيل تلقائي من الفاتورة رقم {invoice.InvoiceNumber} (بعد التعديل)"
+            });
+        }
+
+        // Same sync as the farmer's Sale row above, mirrored for the driver's TransportFee row
+        // (previousDriverId was captured up front alongside previousFarmerId, before invoice.DriverId
+        // got overwritten above).
+        var existingTransportFee = await _db.FarmerTransactions
+            .SingleOrDefaultAsync(t => t.InvoiceId == invoice.Id && t.Type == FarmerTransactionType.TransportFee);
+
+        if (driver is null || invoice.TransportFee <= 0)
+        {
+            // Driver removed, or transport fee zeroed out — nothing left to post.
+            if (existingTransportFee is not null) _db.FarmerTransactions.Remove(existingTransportFee);
+        }
+        else if (existingTransportFee is not null && previousDriverId == driver.Id)
+        {
+            // Same driver as before — just correct the fee/date on their existing ledger row.
+            existingTransportFee.Date = invoice.Date;
+            existingTransportFee.Amount = invoice.TransportFee;
+            existingTransportFee.Notes = $"أجرة نقل تلقائية من الفاتورة {invoice.InvoiceNumber} (معدّلة)";
+        }
+        else
+        {
+            // Driver was added for the first time, or swapped for a different one.
+            if (existingTransportFee is not null) _db.FarmerTransactions.Remove(existingTransportFee);
+            _db.FarmerTransactions.Add(new FarmerTransaction
+            {
+                FarmerId = driver.Id,
+                Type = FarmerTransactionType.TransportFee,
+                InvoiceId = invoice.Id,
+                Date = invoice.Date,
+                Amount = invoice.TransportFee,
+                Notes = $"أجرة نقل تلقائية من الفاتورة {invoice.InvoiceNumber} (معدّلة)"
             });
         }
 
@@ -271,16 +323,22 @@ public class InvoiceService : IInvoiceService
     }
 
     /// <summary>
-    /// "الرصيد السابق" on a printed invoice: what this merchant still owes from every one of their
-    /// OTHER Active invoices (GrandTotal — TotalValue + TransportFee + per-line WoodPrice, same as
-    /// ToDto computes for a single invoice) minus every FromMerchant payment they've ever made,
-    /// all-time — never date-scoped, since the point is "what's actually still owed right now",
-    /// not a snapshot frozen at some past invoice date. Clamped to 0 so a merchant who has
-    /// overpaid never shows a negative "balance owed" on their next invoice (that's a credit
-    /// situation, a different feature not covered here).
+    /// "الرصيد السابق" on a printed invoice: this merchant's manually-entered "الرصيد الافتتاحي"
+    /// (Partner.OpeningBalance — money already owed before this system was in use) PLUS what they
+    /// still owe from every one of their OTHER Active invoices (GrandTotal — TotalValue +
+    /// TransportFee + per-line WoodPrice, same as ToDto computes for a single invoice) minus every
+    /// FromMerchant payment they've ever made, all-time — never date-scoped, since the point is
+    /// "what's actually still owed right now", not a snapshot frozen at some past invoice date.
+    /// Clamped to 0 so a merchant who has overpaid never shows a negative "balance owed" on their
+    /// next invoice (that's a credit situation, a different feature not covered here).
     /// </summary>
     private async Task<decimal> ComputePreviousBalanceAsync(int merchantId, int excludeInvoiceId)
     {
+        // FindAsync hits the DbContext's local tracking cache first — every caller of this method
+        // already Included the Merchant navigation on the same context, so this is normally free.
+        var merchant = await _db.Partners.FindAsync(merchantId);
+        var openingBalance = merchant?.OpeningBalance ?? 0;
+
         var otherInvoices = await _db.Invoices
             .Where(i => i.MerchantId == merchantId && i.Status == InvoiceStatus.Active && i.Id != excludeInvoiceId)
             .Select(i => new { i.TotalValue, i.TransportFee, WoodTotal = i.Items.Sum(it => it.WoodPrice) })
@@ -291,7 +349,7 @@ public class InvoiceService : IInvoiceService
             .Where(p => p.PartnerId == merchantId && p.Direction == PaymentDirection.FromMerchant)
             .SumAsync(p => (decimal?)p.Amount) ?? 0;
 
-        return Math.Max(0, totalOwed - totalPaid);
+        return Math.Max(0, openingBalance + totalOwed - totalPaid);
     }
 
     public async Task<PagedResult<InvoiceListItemDto>> ListAsync(InvoiceFilterRequest filter)
@@ -303,6 +361,8 @@ public class InvoiceService : IInvoiceService
         if (filter.MerchantId is not null) query = query.Where(i => i.MerchantId == filter.MerchantId);
         if (filter.FarmerId is not null) query = query.Where(i => i.FarmerId == filter.FarmerId);
         if (filter.DriverId is not null) query = query.Where(i => i.DriverId == filter.DriverId);
+        if (filter.HasFarmer == true) query = query.Where(i => i.FarmerId != null);
+        if (filter.HasDriver == true) query = query.Where(i => i.DriverId != null);
         if (filter.Status is not null) query = query.Where(i => i.Status == filter.Status);
         if (!string.IsNullOrWhiteSpace(filter.InvoiceNumber)) query = query.Where(i => i.InvoiceNumber.Contains(filter.InvoiceNumber));
         if (!string.IsNullOrWhiteSpace(filter.InvoiceNumberFrom)) query = query.Where(i => i.InvoiceNumber.CompareTo(filter.InvoiceNumberFrom) >= 0);
@@ -316,20 +376,61 @@ public class InvoiceService : IInvoiceService
             query = query.Where(i => i.Items.Any(it => it.ItemName.Contains(filter.ItemName)));
 
         var total = await query.CountAsync();
-        var items = await query.OrderByDescending(i => i.Date)
+        // ItemsSummary is built in-memory (not string.Join'd inside the SQL projection below) —
+        // Distinct() over a correlated collection doesn't reliably translate through the Npgsql EF
+        // provider, and this only ever runs over one page of invoices (Page/PageSize), so pulling
+        // each page's item names down first and joining them here is cheap and safe.
+        var raw = await query.OrderByDescending(i => i.Date)
             .Skip((filter.Page - 1) * filter.PageSize).Take(filter.PageSize)
-            .Select(i => new InvoiceListItemDto(
-                i.Id, i.InvoiceNumber, i.Date, i.MerchantId, i.Merchant.Name, i.Merchant.WhatsAppNumber,
-                i.Farmer != null ? i.Farmer.Name : null,
-                i.Farmer != null ? i.Farmer.WhatsAppNumber : null,
+            .Select(i => new
+            {
+                i.Id, i.InvoiceNumber, i.Date, i.MerchantId, MerchantName = i.Merchant.Name, MerchantWhatsApp = i.Merchant.WhatsAppNumber,
+                i.FarmerId,
+                FarmerName = i.Farmer != null ? i.Farmer.Name : null,
+                FarmerWhatsApp = i.Farmer != null ? i.Farmer.WhatsAppNumber : null,
                 i.DriverId,
-                i.Driver != null ? i.Driver.Name : null,
-                i.Driver != null ? i.Driver.WhatsAppNumber : null,
+                DriverName = i.Driver != null ? i.Driver.Name : null,
+                DriverWhatsApp = i.Driver != null ? i.Driver.WhatsAppNumber : null,
                 i.Status, i.TotalWeightKg,
-                i.Items.Where(it => it.Unit == UnitOfMeasure.Box).Sum(it => (decimal?)it.Quantity) ?? 0,
+                TotalBoxes = i.Items.Where(it => it.Unit == UnitOfMeasure.Box).Sum(it => (decimal?)it.Quantity) ?? 0,
                 i.TotalValue, i.TransportFee,
-                i.TotalValue + i.TransportFee + (i.Items.Sum(it => (decimal?)it.WoodPrice) ?? 0)))
+                WoodTotal = i.Items.Sum(it => (decimal?)it.WoodPrice) ?? 0,
+                ItemNames = i.Items.Select(it => it.ItemName).ToList()
+            })
             .ToListAsync();
+
+        // Bulk-print page's per-type sections want each invoice row to also show that row's
+        // merchant/farmer/driver CURRENT overall account balance (their own كشف حساب "المتبقي" —
+        // already includes their opening balance, and for a merchant, every invoice's own wood
+        // total). Batched over the distinct partners on THIS page only (not one query per row), and
+        // reusing PartnerService's own account methods rather than a third copy of the balance
+        // formula, so this can never drift out of sync with the account pages after a future fix
+        // there. Sequential awaits, not Task.WhenAll — a single EF Core DbContext can't run more
+        // than one query at a time.
+        var merchantIds = raw.Select(x => x.MerchantId).Distinct().ToList();
+        var sellerIds = raw.Select(x => x.FarmerId).Concat(raw.Select(x => x.DriverId))
+            .Where(id => id is not null).Select(id => id!.Value).Distinct().ToList();
+
+        var merchantRemainingById = new Dictionary<int, decimal>();
+        foreach (var merchantId in merchantIds)
+            merchantRemainingById[merchantId] = (await _partners.GetMerchantAccountAsync(merchantId)).Remaining;
+
+        // One dictionary covers both farmers and drivers — they share the same ledger/account method.
+        var sellerRemainingById = new Dictionary<int, decimal>();
+        foreach (var sellerId in sellerIds)
+            sellerRemainingById[sellerId] = (await _partners.GetFarmerAccountAsync(sellerId)).Remaining;
+
+        var items = raw.Select(x => new InvoiceListItemDto(
+                x.Id, x.InvoiceNumber, x.Date, x.MerchantId, x.MerchantName, x.MerchantWhatsApp,
+                x.FarmerName, x.FarmerWhatsApp, x.DriverId, x.DriverName, x.DriverWhatsApp,
+                x.Status, x.TotalWeightKg, x.TotalBoxes, x.TotalValue, x.TransportFee,
+                x.TotalValue + x.TransportFee + x.WoodTotal,
+                string.Join("، ", x.ItemNames.Distinct()),
+                x.WoodTotal,
+                merchantRemainingById.GetValueOrDefault(x.MerchantId),
+                x.FarmerId is not null ? sellerRemainingById.GetValueOrDefault(x.FarmerId.Value) : null,
+                x.DriverId is not null ? sellerRemainingById.GetValueOrDefault(x.DriverId.Value) : null))
+            .ToList();
 
         return new PagedResult<InvoiceListItemDto> { Items = items, TotalCount = total, Page = filter.Page, PageSize = filter.PageSize };
     }
@@ -352,19 +453,22 @@ public class InvoiceService : IInvoiceService
         invoice.CancelledByUserId = cancelledByUserId;
         invoice.CancellationReason = request.Reason;
 
-        var originalTransaction = await _db.FarmerTransactions.SingleOrDefaultAsync(t => t.InvoiceId == invoice.Id);
-        if (originalTransaction is not null)
+        // Up to TWO original rows now (was at most one): a Sale row for the farmer and/or a
+        // TransportFee row for the driver (see Invoice.FarmerTransactions) — each gets its own
+        // offsetting Adjustment, keyed off THAT row's own FarmerId (the farmer's id on a Sale row,
+        // the driver's id on a TransportFee row), not invoice.FarmerId, which would be null/wrong
+        // for the driver's row.
+        var originalTransactions = await _db.FarmerTransactions.Where(t => t.InvoiceId == invoice.Id).ToListAsync();
+        foreach (var originalTransaction in originalTransactions)
         {
-            // originalTransaction only ever exists when a farmer was attached at creation time,
-            // so invoice.FarmerId is guaranteed non-null here.
             _db.FarmerTransactions.Add(new FarmerTransaction
             {
-                FarmerId = invoice.FarmerId!.Value,
+                FarmerId = originalTransaction.FarmerId,
                 Type = FarmerTransactionType.Adjustment,
                 InvoiceId = invoice.Id,
                 Date = DateTimeOffset.UtcNow,
                 Amount = -originalTransaction.Amount,
-                Notes = $"Reversal for cancelled invoice {invoice.InvoiceNumber}: {request.Reason}"
+                Notes = $"إلغاء فاتورة رقم {invoice.InvoiceNumber} — السبب: {request.Reason}"
             });
         }
 
@@ -402,6 +506,37 @@ public class InvoiceService : IInvoiceService
             .ToList();
 
         return new FarmerStatementDto(farmer.Id, farmer.Name, lines);
+    }
+
+    /// <summary>
+    /// Standalone "بضاعة الباعة" page: what this farmer brought, grouped by day + item + unit,
+    /// across his own Active invoices within the (optional) date range — see FarmerGoodsRow's doc
+    /// comment for exactly what TotalQuantity/WoodQuantity mean. Grouped in memory (not via SQL
+    /// GroupBy) since it's keyed on the invoice's calendar DAY, not its exact timestamp, and on the
+    /// already-materialized item rows — simplest to just flatten first, then group with LINQ.
+    /// </summary>
+    public async Task<FarmerGoodsDto> GetFarmerGoodsAsync(int farmerId, DateTimeOffset? dateFrom, DateTimeOffset? dateTo)
+    {
+        var farmer = await _db.Partners.FindAsync(farmerId) ?? throw new NotFoundAppException("Partner (farmer)", farmerId);
+
+        var query = _db.Invoices
+            .Where(i => i.FarmerId == farmerId && i.Status == InvoiceStatus.Active);
+        if (dateFrom is not null) query = query.Where(i => i.Date >= dateFrom);
+        if (dateTo is not null) query = query.Where(i => i.Date <= dateTo);
+
+        var invoices = await query.Include(i => i.Items).ToListAsync();
+
+        var rows = invoices
+            .SelectMany(i => i.Items.Select(it => new { Day = i.Date.Date, it.ItemName, it.Unit, it.Quantity, it.WoodPrice }))
+            .GroupBy(x => new { x.Day, x.ItemName, x.Unit })
+            .Select(g => new FarmerGoodsRow(
+                g.Key.Day, g.Key.ItemName, g.Key.Unit,
+                g.Sum(x => x.Quantity),
+                g.Where(x => x.WoodPrice > 0).Sum(x => x.Quantity)))
+            .OrderBy(r => r.Date).ThenBy(r => r.ItemName)
+            .ToList();
+
+        return new FarmerGoodsDto(farmer.Id, farmer.Name, rows);
     }
 
     /// <summary>An Id reuses an existing partner exactly; a Name resolves via find-or-create so a

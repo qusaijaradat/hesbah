@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { createRole, listAllPermissions, listRolesFull, updateRole } from "../api/roles";
+import { createRole, deleteRole, listAllPermissions, listRolesFull, updateRole } from "../api/roles";
 import type { PermissionDto, RoleDto } from "../types";
 import { apiErrorMessage } from "../api/client";
 
@@ -7,34 +7,78 @@ import { apiErrorMessage } from "../api/client";
 // the backend). A key added later without an entry here just falls back to showing its raw
 // string, so nothing silently disappears from the checklist.
 const PERMISSION_LABELS: Record<string, string> = {
-  "invoices.create": "إنشاء فواتير",
+  "invoices.view": "إظهار الفواتير",
+  "invoices.create": "إضافة فواتير",
   "invoices.edit": "تعديل فواتير",
-  "invoices.cancel": "إلغاء فواتير",
-  "invoices.view": "عرض الفواتير",
-  "partners.manage": "إدارة الباعة والسواق والمشترين",
-  "partners.view": "عرض الباعة والسواق والمشترين",
-  "payments.create": "تسجيل/تعديل/حذف الدفعات",
-  "payments.view": "عرض الدفعات",
-  "expenses.manage": "إدارة مصاريف الحسبة",
-  "employees.manage": "إدارة الموظفين",
+  "invoices.cancel": "إلغاء (حذف) فواتير",
+
+  "partners.view": "إظهار الباعة والسواق والمشترين",
+  "partners.create": "إضافة شخص جديد",
+  "partners.edit": "تعديل بيانات شخص",
+  "partners.delete": "حذف شخص (فقط إن لم يكن له أي تعامل سابق)",
+
+  "items.view": "إظهار قائمة الأصناف",
+  "items.create": "إضافة صنف",
+  "items.edit": "تعديل صنف",
+  "items.delete": "حذف صنف",
+
+  "payments.view": "إظهار الدفعات",
+  "payments.create": "تسجيل دفعة",
+  "payments.edit": "تعديل دفعة",
+  "payments.delete": "حذف دفعة",
+
+  "expenses.view": "إظهار مصاريف الحسبة",
+  "expenses.create": "إضافة مصروف",
+  "expenses.edit": "تعديل مصروف",
+  "expenses.delete": "حذف مصروف",
+
+  "employees.view": "إظهار الموظفين",
+  "employees.create": "إضافة موظف",
+  "employees.edit": "تعديل موظف",
+  "employees.delete": "حذف موظف (فقط إن لم تُسجَّل له مصاريف)",
+
   "reports.view": "عرض التقارير",
   "reports.export": "تصدير التقارير (Excel/PDF)",
-  "settings.manage": "إدارة الإعدادات",
-  "users.manage": "إدارة المستخدمين والأدوار",
+
+  "settings.view": "إظهار الإعدادات",
+  "settings.edit": "تعديل الإعدادات والشعار",
+
+  "users.view": "إظهار المستخدمين",
+  "users.create": "إضافة مستخدم",
+  "users.edit": "تعديل مستخدم (وتعطيله)",
+
+  "roles.view": "إظهار الأدوار والصلاحيات",
+  "roles.create": "إضافة دور",
+  "roles.edit": "تعديل صلاحيات دور",
+  "roles.delete": "حذف دور (فقط إن لم يكن له مستخدمون)",
+
   "audit.view": "عرض سجل التعديلات",
 };
 
 const GROUP_LABELS: Record<string, string> = {
   invoices: "الفواتير",
   partners: "الباعة والسواق والمشترين",
+  items: "الأصناف",
   payments: "الدفعات",
   expenses: "المصاريف",
   employees: "الموظفون",
   reports: "التقارير",
   settings: "الإعدادات",
   users: "المستخدمون",
+  roles: "الأدوار والصلاحيات",
   audit: "سجل التعديلات",
 };
+
+// Keeps each group's checklist in a stable، predictable order (إظهار → إضافة → تعديل → حذف)
+// instead of whatever order the backend happens to return the Permissions table in.
+const ACTION_ORDER: Record<string, number> = { view: 0, create: 1, edit: 2, delete: 3, cancel: 3, export: 1 };
+function sortGroupPermissions(perms: PermissionDto[]): PermissionDto[] {
+  return [...perms].sort((a, b) => {
+    const actionA = a.key.split(".")[1] ?? "";
+    const actionB = b.key.split(".")[1] ?? "";
+    return (ACTION_ORDER[actionA] ?? 99) - (ACTION_ORDER[actionB] ?? 99);
+  });
+}
 
 function groupPermissions(permissions: PermissionDto[]) {
   const groups = new Map<string, PermissionDto[]>();
@@ -43,13 +87,15 @@ function groupPermissions(permissions: PermissionDto[]) {
     if (!groups.has(prefix)) groups.set(prefix, []);
     groups.get(prefix)!.push(p);
   }
-  return Array.from(groups.entries());
+  return Array.from(groups.entries()).map(([prefix, perms]) => [prefix, sortGroupPermissions(perms)] as const);
 }
 
 export function RolesPage() {
   const [roles, setRoles] = useState<RoleDto[]>([]);
   const [permissions, setPermissions] = useState<PermissionDto[]>([]);
   const [editing, setEditing] = useState<RoleDto | "new" | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
 
   async function refresh() {
     const [r, p] = await Promise.all([listRolesFull(), listAllPermissions()]);
@@ -59,12 +105,28 @@ export function RolesPage() {
 
   useEffect(() => { refresh(); }, []);
 
+  async function handleDelete(r: RoleDto) {
+    if (!window.confirm(`حذف دور "${r.name}"؟ لا يمكن التراجع عن هذا.`)) return;
+    setDeletingId(r.id);
+    setError(null);
+    try {
+      await deleteRole(r.id);
+      refresh();
+    } catch (err) {
+      setError(apiErrorMessage(err, "فشل الحذف"));
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold">الأدوار والصلاحيات</h1>
         <button className="btn-primary" onClick={() => setEditing("new")}>+ إضافة دور</button>
       </div>
+
+      {error && <div className="text-sm text-red-600 bg-red-50 rounded-md p-3 mb-4">{error}</div>}
 
       <div className="card overflow-x-auto">
         <table className="table-base">
@@ -75,7 +137,12 @@ export function RolesPage() {
                 <td className="font-medium">{r.name}</td>
                 <td className="text-gray-500">{r.description || "—"}</td>
                 <td>{r.permissions.length}</td>
-                <td><button className="text-brand-700 text-sm hover:underline" onClick={() => setEditing(r)}>تعديل</button></td>
+                <td className="whitespace-nowrap">
+                  <button className="text-brand-700 text-sm hover:underline ms-2" onClick={() => setEditing(r)}>تعديل</button>
+                  <button className="text-red-500 text-sm hover:underline ms-2" disabled={deletingId === r.id} onClick={() => handleDelete(r)}>
+                    {deletingId === r.id ? "جاري الحذف..." : "حذف"}
+                  </button>
+                </td>
               </tr>
             ))}
           </tbody>

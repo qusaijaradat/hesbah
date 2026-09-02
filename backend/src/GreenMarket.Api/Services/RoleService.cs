@@ -17,6 +17,10 @@ public interface IRoleService
     Task<IReadOnlyList<PermissionDto>> ListPermissionsAsync();
     Task<RoleDto> CreateAsync(CreateRoleRequest request);
     Task<RoleDto> UpdateAsync(int id, UpdateRoleRequest request);
+
+    /// <summary>Only ever succeeds on a role with zero users currently assigned to it — see the
+    /// implementation. Reassign or deactivate its users first.</summary>
+    Task DeleteAsync(int id);
 }
 
 public class RoleService : IRoleService
@@ -67,6 +71,22 @@ public class RoleService : IRoleService
 
         await ApplyPermissionGrantsAsync(id, request.PermissionKeys);
         return await GetDtoAsync(id);
+    }
+
+    /// <summary>See the interface doc comment. A hard delete — unlike Partners/Employees this
+    /// isn't a soft-delete-and-hide, since once no user is left pointing at this RoleId, nothing
+    /// in the system will ever reference it again; RolePermission rows for it cascade-delete
+    /// automatically (see RolePermissionConfiguration).</summary>
+    public async Task DeleteAsync(int id)
+    {
+        var role = await _db.Roles.FindAsync(id) ?? throw new NotFoundAppException("Role", id);
+
+        var userCount = await _db.Users.CountAsync(u => u.RoleId == id);
+        if (userCount > 0)
+            throw new ConflictAppException($"لا يمكن حذف هذا الدور لوجود {userCount} مستخدم(ين) مرتبطين به — غيّر دورهم أولًا.");
+
+        _db.Roles.Remove(role);
+        await _db.SaveChangesAsync();
     }
 
     /// <summary>Reconciles a role's RolePermission rows to exactly match the requested key set —

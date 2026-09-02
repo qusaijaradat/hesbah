@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { createEmployee, listEmployees, updateEmployee } from "../api/employees";
+import { createEmployee, deleteEmployee, listEmployees, updateEmployee } from "../api/employees";
 import type { EmployeeDto } from "../types";
 import { apiErrorMessage } from "../api/client";
 import { formatCurrency } from "../lib/format";
@@ -7,10 +7,14 @@ import { useAuth } from "../auth/AuthContext";
 
 export function EmployeesPage() {
   const { hasPermission } = useAuth();
-  const canManage = hasPermission("employees.manage");
+  const canCreate = hasPermission("employees.create");
+  const canEdit = hasPermission("employees.edit");
+  const canDelete = hasPermission("employees.delete");
   const [employees, setEmployees] = useState<EmployeeDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<EmployeeDto | "new" | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
 
   async function refresh() {
     setLoading(true);
@@ -20,14 +24,30 @@ export function EmployeesPage() {
 
   useEffect(() => { refresh(); }, []);
 
+  async function handleDelete(e: EmployeeDto) {
+    if (!window.confirm(`حذف "${e.name}"؟ لا يمكن التراجع عن هذا.`)) return;
+    setDeletingId(e.id);
+    setError(null);
+    try {
+      await deleteEmployee(e.id);
+      refresh();
+    } catch (err) {
+      setError(apiErrorMessage(err, "فشل الحذف"));
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold">الموظفون</h1>
-        {canManage && (
+        {canCreate && (
           <button className="btn-primary" onClick={() => setEditing("new")}>+ إضافة موظف</button>
         )}
       </div>
+
+      {error && <div className="text-sm text-red-600 bg-red-50 rounded-md p-3 mb-4">{error}</div>}
 
       {/* عمود "إجمالي المصاريف" هو تجميع كل مصروف/سحبة تم ربطها بهذا الموظف من صفحة
           "مصاريف الحسبة" — هذا هو ما يتيح معرفة كم أُعطي لكل موظف. */}
@@ -60,9 +80,14 @@ export function EmployeesPage() {
                     </span>
                   </td>
                   <td className="font-semibold">{formatCurrency(e.totalExpenses)}</td>
-                  <td>
-                    {canManage && (
-                      <button className="text-gray-500 text-sm hover:underline" onClick={() => setEditing(e)}>تعديل</button>
+                  <td className="whitespace-nowrap">
+                    {canEdit && (
+                      <button className="text-gray-500 text-sm hover:underline ms-2" onClick={() => setEditing(e)}>تعديل</button>
+                    )}
+                    {canDelete && (
+                      <button className="text-red-500 text-sm hover:underline ms-2" disabled={deletingId === e.id} onClick={() => handleDelete(e)}>
+                        {deletingId === e.id ? "جاري الحذف..." : "حذف"}
+                      </button>
                     )}
                   </td>
                 </tr>

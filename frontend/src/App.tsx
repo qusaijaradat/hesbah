@@ -7,6 +7,8 @@ import { LoginPage } from "./pages/LoginPage";
 import { ChangePasswordPage } from "./pages/ChangePasswordPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { PartnersPage } from "./pages/PartnersPage";
+import { FarmerGoodsPage } from "./pages/FarmerGoodsPage";
+import { DebtsOverviewPage } from "./pages/DebtsOverviewPage";
 import { ItemsPage } from "./pages/ItemsPage";
 import { FarmerAccountPage, MerchantAccountPage } from "./pages/PartnerAccountPage";
 import { InvoicesPage } from "./pages/InvoicesPage";
@@ -48,16 +50,18 @@ export default function App() {
           <Route path="/invoices/:id/edit" element={<Protected permission="invoices.edit"><InvoiceEditPage /></Protected>} />
           <Route path="/invoices/:id" element={<Protected permission="invoices.view"><InvoiceDetailPage /></Protected>} />
           <Route path="/partners" element={<Protected permission="partners.view"><PartnersPage /></Protected>} />
-          <Route path="/items" element={<Protected permission="invoices.view"><ItemsPage /></Protected>} />
+          <Route path="/farmers-goods" element={<Protected permission="invoices.view"><FarmerGoodsPage /></Protected>} />
+          <Route path="/debts" element={<Protected permission="partners.view"><DebtsOverviewPage /></Protected>} />
+          <Route path="/items" element={<Protected permission="items.view"><ItemsPage /></Protected>} />
           <Route path="/partners/:id/farmer-account" element={<Protected permission="partners.view"><FarmerAccountPage /></Protected>} />
           <Route path="/partners/:id/merchant-account" element={<Protected permission="partners.view"><MerchantAccountPage /></Protected>} />
           <Route path="/payments" element={<Protected permission="payments.view"><PaymentsPage /></Protected>} />
-          <Route path="/employees" element={<Protected permission="employees.manage"><EmployeesPage /></Protected>} />
+          <Route path="/employees" element={<Protected permission="employees.view"><EmployeesPage /></Protected>} />
           <Route path="/reports" element={<Protected permission="reports.view"><ReportsPage /></Protected>} />
           <Route path="/daily-closing" element={<Protected permission="reports.view"><DailyClosingPage /></Protected>} />
-          <Route path="/settings" element={<Protected permission="settings.manage"><SettingsPage /></Protected>} />
-          <Route path="/users" element={<Protected permission="users.manage"><UsersPage /></Protected>} />
-          <Route path="/roles" element={<Protected permission="users.manage"><RolesPage /></Protected>} />
+          <Route path="/settings" element={<Protected permission="settings.view"><SettingsPage /></Protected>} />
+          <Route path="/users" element={<Protected permission="users.view"><UsersPage /></Protected>} />
+          <Route path="/roles" element={<Protected permission="roles.view"><RolesPage /></Protected>} />
           <Route path="/audit-log" element={<Protected permission="audit.view"><AuditLogPage /></Protected>} />
         </Routes>
       </AuthProvider>

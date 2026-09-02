@@ -37,8 +37,13 @@ export interface PartnerDto {
   name: string;
   type: PartnerType | null;
   whatsAppNumber?: string | null;
+  /** "العنوان" — plain optional free text, purely informational. */
+  address?: string | null;
   notes?: string | null;
   creditLimit?: number | null;
+  /** "الرصيد الافتتاحي" — manually-entered starting balance from before this system was in use.
+   * See backend Partner.OpeningBalance's doc comment for the sign convention. */
+  openingBalance?: number | null;
 }
 
 export interface PartnerSuggestionDto {
@@ -52,11 +57,21 @@ export interface ItemDto {
   name: string;
 }
 
+// "الكشف المفصل" — every optional field is populated only when relevant to this line's kind (see
+// backend StatementLineDto's doc comment): invoiceId/invoiceNumber link back to the actual invoice
+// (any line type), saleValue/commission break a farmer's Sale line into gross value vs. the market's
+// cut (amount = saleValue - commission), method/notes carry a payment's recorded method/free text.
 export interface StatementLineDto {
   date: string;
   description: string;
   amount: number;
   runningBalance: number;
+  invoiceId?: number | null;
+  invoiceNumber?: string | null;
+  saleValue?: number | null;
+  commission?: number | null;
+  method?: string | null;
+  notes?: string | null;
 }
 
 export interface MerchantAccountDto {
@@ -67,17 +82,25 @@ export interface MerchantAccountDto {
   remaining: number;
   creditLimit?: number | null;
   isOverCreditLimit: boolean;
+  /** Already folded into `remaining` — shown separately so the numbers stay traceable. */
+  openingBalance?: number | null;
   statement: StatementLineDto[];
 }
 
 export interface FarmerAccountDto {
   partnerId: number;
   name: string;
+  /** Lets the page title say "بائع" or "سائق" specifically instead of a blanket "بائع/سائق". */
+  type: PartnerType | null;
   totalSalesValue: number;
   totalCommission: number;
+  /** Sale (farmer) + TransportFee (driver) rows combined — a pure driver has totalSalesValue/
+   * totalCommission at 0 while this still reflects their transport-fee earnings. */
   totalNetDue: number;
   totalPaid: number;
   remaining: number;
+  /** Already folded into `remaining` — shown separately so the numbers stay traceable. */
+  openingBalance?: number | null;
   statement: StatementLineDto[];
 }
 
@@ -143,6 +166,19 @@ export interface InvoiceListItemDto {
   totalValue: number;
   transportFee: number;
   grandTotal: number;
+  /** "، "-joined distinct item names on this invoice (e.g. "طماطم، خيار") — see backend
+   * InvoiceListItemDto's doc comment. */
+  itemsSummary: string;
+  /** Already folded into grandTotal — broken out on its own so "طباعة الفواتير" can show
+   * "سعر الخشب" as an explicit visible figure instead of it disappearing into the total. */
+  woodTotal: number;
+  /** This row's merchant's CURRENT overall account balance (same "المتبقي" their own كشف حساب
+   * page shows) — shown on every one of their invoice rows on "طباعة الفواتير", not just once. */
+  merchantRemaining: number;
+  /** Same idea as merchantRemaining but for the farmer/driver side — null when this invoice has
+   * no farmer/driver attached. */
+  farmerRemaining?: number | null;
+  driverRemaining?: number | null;
 }
 
 export interface InvoiceFilter {
@@ -151,6 +187,10 @@ export interface InvoiceFilter {
   merchantId?: number;
   farmerId?: number;
   driverId?: number;
+  /** "طباعة الفواتير" per-role sections: true = only invoices that have a farmer/driver attached
+   * at all — used when that section's own picker is left blank. See backend InvoiceFilterRequest. */
+  hasFarmer?: boolean;
+  hasDriver?: boolean;
   itemName?: string;
   invoiceNumber?: string;
   invoiceNumberFrom?: string;
@@ -209,19 +249,55 @@ export interface FarmerReportRow {
   farmerName: string;
   invoiceCount: number;
   totalWeightKg: number;
+  totalBoxes: number;
   totalSalesValue: number;
   totalCommission: number;
+  netDue: number;
   totalPaid: number;
   remaining: number;
+  openingBalance: number;
+  lastInvoiceDate?: string | null;
 }
 
 export interface MerchantReportRow {
   merchantId: number;
   merchantName: string;
   invoiceCount: number;
+  totalWeightKg: number;
+  totalBoxes: number;
   totalPurchases: number;
+  totalWoodTotal: number;
+  totalTransportFee: number;
+  grandTotal: number;
   totalPaid: number;
   remaining: number;
+  openingBalance: number;
+  lastInvoiceDate?: string | null;
+}
+
+// Counterpart to FarmerReportRow for the transport side of the ledger — see backend
+// DriverReportRow's doc comment. No sale/commission concept for a driver: TotalTransportFee is
+// everything earned across every matching invoice.
+export interface DriverReportRow {
+  driverId: number;
+  driverName: string;
+  invoiceCount: number;
+  totalTransportFee: number;
+  totalPaid: number;
+  remaining: number;
+  openingBalance: number;
+  lastInvoiceDate?: string | null;
+}
+
+// Dashboard "كشف المشترين حسب الفترة" per-item breakdown — one row per (merchant, item). See backend
+// MerchantItemBreakdownRow's doc comment: totalValue excludes WoodPrice (a separate flat add-on).
+export interface MerchantItemBreakdownRow {
+  merchantId: number;
+  merchantName: string;
+  itemName: string;
+  unit: UnitOfMeasure;
+  totalQuantity: number;
+  totalValue: number;
 }
 
 export interface MarketReportRow {
@@ -268,6 +344,38 @@ export interface DailyClosingDto {
   netProfit: number;
   paymentsReceivedFromMerchants: number;
   paymentsPaidToFarmers: number;
+}
+
+// "بضاعة الباعة" page — mirrors backend FarmerGoodsRow/FarmerGoodsDto. TotalQuantity is everything
+// of that item the farmer brought that day; WoodQuantity is the portion of TotalQuantity that came
+// from lines with a wood price (a separate figure, not a flag — e.g. 20 total boxes, 5 of them wood).
+export interface FarmerGoodsRow {
+  date: string;
+  itemName: string;
+  unit: UnitOfMeasure;
+  totalQuantity: number;
+  woodQuantity: number;
+}
+
+export interface FarmerGoodsDto {
+  farmerId: number;
+  farmerName: string;
+  rows: FarmerGoodsRow[];
+}
+
+// "قيمة الدين" overview page — mirrors backend PartnerDebtRow/DebtsOverviewDto. Remaining uses the
+// exact same sign convention as MerchantAccountDto.remaining / FarmerAccountDto.remaining (positive
+// or negative depending on who owes whom); rows with remaining === 0 are already excluded server-side.
+export interface PartnerDebtRow {
+  partnerId: number;
+  name: string;
+  remaining: number;
+}
+
+export interface DebtsOverviewDto {
+  farmers: PartnerDebtRow[];
+  drivers: PartnerDebtRow[];
+  merchants: PartnerDebtRow[];
 }
 
 export interface SettingDto {

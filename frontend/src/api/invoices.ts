@@ -1,5 +1,5 @@
 import { apiClient } from "./client";
-import type { InvoiceDto, InvoiceFilter, InvoiceItemInput, InvoiceListItemDto, PagedResult } from "../types";
+import type { FarmerGoodsDto, InvoiceDto, InvoiceFilter, InvoiceItemInput, InvoiceListItemDto, PagedResult } from "../types";
 
 export async function listInvoices(filter: InvoiceFilter) {
   const { data } = await apiClient.get<PagedResult<InvoiceListItemDto>>("/invoices", { params: filter });
@@ -89,6 +89,15 @@ export async function printFarmerStatementPdf(farmerId: number, dateFrom: string
     responseType: "blob",
   });
   return data as Blob;
+}
+
+// Standalone "بضاعة الباعة" page: one farmer's goods, grouped by day + item + unit, over an
+// optional date range (omit both for his entire history at once).
+export async function getFarmerGoods(farmerId: number, dateFrom?: string, dateTo?: string) {
+  const { data } = await apiClient.get<FarmerGoodsDto>("/invoices/farmer-goods", {
+    params: { farmerId, dateFrom, dateTo },
+  });
+  return data;
 }
 
 export function triggerBlobDownload(blob: Blob, fileName: string) {

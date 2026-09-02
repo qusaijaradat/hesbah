@@ -39,17 +39,32 @@ public class PartnersController : ControllerBase
         return parsed.Count > 0 ? parsed : null;
     }
 
+    /// <summary>"قيمة الدين" overview page: everyone with a non-zero balance, split into بائع/سائق/مشتري.
+    /// Placed before {id:int} for the same reason "suggest" is — "debts-overview" would otherwise
+    /// never match the int-constrained route anyway, but this keeps the literal routes grouped.</summary>
+    [HttpGet("debts-overview")]
+    [RequirePermission(PermissionKeys.PartnersView)]
+    public async Task<ActionResult<DebtsOverviewDto>> DebtsOverview() => Ok(await _partnerService.GetDebtsOverviewAsync());
+
     [HttpGet("{id:int}")]
     [RequirePermission(PermissionKeys.PartnersView)]
     public async Task<ActionResult<PartnerDto>> Get(int id) => Ok(await _partnerService.GetAsync(id));
 
     [HttpPost]
-    [RequirePermission(PermissionKeys.PartnersManage)]
+    [RequirePermission(PermissionKeys.PartnersCreate)]
     public async Task<ActionResult<PartnerDto>> Create(CreatePartnerRequest request) => Ok(await _partnerService.CreateAsync(request));
 
     [HttpPut("{id:int}")]
-    [RequirePermission(PermissionKeys.PartnersManage)]
+    [RequirePermission(PermissionKeys.PartnersEdit)]
     public async Task<ActionResult<PartnerDto>> Update(int id, UpdatePartnerRequest request) => Ok(await _partnerService.UpdateAsync(id, request));
+
+    [HttpDelete("{id:int}")]
+    [RequirePermission(PermissionKeys.PartnersDelete)]
+    public async Task<IActionResult> Delete(int id)
+    {
+        await _partnerService.DeleteAsync(id);
+        return NoContent();
+    }
 
     [HttpGet("{id:int}/merchant-account")]
     [RequirePermission(PermissionKeys.PartnersView)]

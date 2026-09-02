@@ -16,19 +16,27 @@ public class EmployeesController : ControllerBase
     public EmployeesController(IEmployeeService employeeService) => _employeeService = employeeService;
 
     [HttpGet]
-    [RequirePermission(PermissionKeys.EmployeesManage)]
+    [RequirePermission(PermissionKeys.EmployeesView)]
     public async Task<ActionResult<IReadOnlyList<EmployeeDto>>> List(bool activeOnly = false) =>
         Ok(await _employeeService.ListAsync(activeOnly));
 
     [HttpGet("{id:int}")]
-    [RequirePermission(PermissionKeys.EmployeesManage)]
+    [RequirePermission(PermissionKeys.EmployeesView)]
     public async Task<ActionResult<EmployeeDto>> Get(int id) => Ok(await _employeeService.GetAsync(id));
 
     [HttpPost]
-    [RequirePermission(PermissionKeys.EmployeesManage)]
+    [RequirePermission(PermissionKeys.EmployeesCreate)]
     public async Task<ActionResult<EmployeeDto>> Create(CreateEmployeeRequest request) => Ok(await _employeeService.CreateAsync(request));
 
     [HttpPut("{id:int}")]
-    [RequirePermission(PermissionKeys.EmployeesManage)]
+    [RequirePermission(PermissionKeys.EmployeesEdit)]
     public async Task<ActionResult<EmployeeDto>> Update(int id, UpdateEmployeeRequest request) => Ok(await _employeeService.UpdateAsync(id, request));
+
+    [HttpDelete("{id:int}")]
+    [RequirePermission(PermissionKeys.EmployeesDelete)]
+    public async Task<IActionResult> Delete(int id)
+    {
+        await _employeeService.DeleteAsync(id);
+        return NoContent();
+    }
 }

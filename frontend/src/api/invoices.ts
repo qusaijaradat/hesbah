@@ -18,6 +18,9 @@ export async function createInvoice(payload: {
   driverId?: number; driverName?: string;
   transportFee?: number;
   items: InvoiceItemInput[];
+  /** Optional "المبلغ المدفوع" — records a linked FromMerchant payment right when the invoice is
+   * created (see backend CreateInvoiceRequest.PaidAmount). Omit/0 = nothing paid yet. */
+  paidAmount?: number;
 }) {
   const { data } = await apiClient.post<InvoiceDto>("/invoices", payload);
   return data;

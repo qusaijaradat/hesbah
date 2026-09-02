@@ -116,14 +116,11 @@ export function InvoiceDetailPage() {
           </span>
         </div>
 
+        {/* البائع/السائق deليberately لا يظهروا هون — هاي الفاتورة اللي بتوصل للمشتري، وما لازم
+            يشوف مين جاب/وصّل البضاعة (طلب صريح). لسا ظاهرين بنموذج إدخال الفاتورة وبأزرار
+            الواتساب تحت لأنها أدوات داخلية للموظف، مش عرض على الفاتورة نفسها. */}
         <div className="grid grid-cols-2 gap-4 mb-4 text-sm">
           <div><span className="text-gray-500">المطلوب من:</span> <span className="font-medium">{invoice.merchantName}</span></div>
-          {invoice.farmerName && (
-            <div><span className="text-gray-500">البائع:</span> <span className="font-medium">{invoice.farmerName}</span></div>
-          )}
-          {invoice.driverName && (
-            <div><span className="text-gray-500">السائق:</span> <span className="font-medium">{invoice.driverName}</span></div>
-          )}
         </div>
 
         {/* العدد/الوزن يحلّان محل عمود "الكمية" المدمج — مشتقّان مباشرة من الكمية/الوحدة (نفس
@@ -166,6 +163,16 @@ export function InvoiceDetailPage() {
           </div>
           <div className="text-lg font-bold text-brand-700">{formatCurrency(invoice.grandTotal)}</div>
         </div>
+
+        {/* الرصيد السابق: ما تبقى على هذا المشتري من كل فواتيره الفعّالة الأخرى مطروحًا منه كل
+            دفعاته (انظر InvoiceService.ComputePreviousBalanceAsync) — نفس السطر الظاهر على
+            الفاتورة المطبوعة (ExportService.GenerateInvoicePdf). */}
+        {invoice.previousBalance > 0 && (
+          <div className="flex flex-wrap justify-between gap-2 border-t pt-3 mt-3 text-sm">
+            <div className="text-gray-500">الرصيد السابق: <span className="font-semibold text-gray-900">{formatCurrency(invoice.previousBalance)}</span></div>
+            <div className="text-lg font-bold text-red-700">الإجمالي المستحق: {formatCurrency(invoice.grandTotal + invoice.previousBalance)}</div>
+          </div>
+        )}
 
         {/* Note: no commission line here — requirement doc §5, the market's commission never
             appears on the merchant-facing invoice. */}

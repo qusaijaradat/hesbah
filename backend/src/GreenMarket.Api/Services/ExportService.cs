@@ -207,10 +207,8 @@ public class ExportService : IExportService
                     col.Item().PaddingTop(6).Text("فاتورة مشتري").Bold().FontSize(thermalWidth ? 10 : 13);
                     col.Item().PaddingTop(2).Text($"التاريخ: {invoice.Date:yyyy-MM-dd}").FontSize(thermalWidth ? 9 : 11);
                     col.Item().Text($"المطلوب من: {invoice.MerchantName}").FontSize(thermalWidth ? 9 : 11);
-                    if (!string.IsNullOrWhiteSpace(invoice.FarmerName))
-                        col.Item().Text($"البائع: {invoice.FarmerName}").FontSize(thermalWidth ? 9 : 11);
-                    if (!string.IsNullOrWhiteSpace(invoice.DriverName))
-                        col.Item().Text($"السائق: {invoice.DriverName}").FontSize(thermalWidth ? 9 : 11);
+                    // البائع/السائق deliberately NOT shown here — this document goes to the buyer,
+                    // who isn't shown who supplied/delivered the goods (explicit request).
                 });
 
                 page.Content().ContentFromRightToLeft().PaddingVertical(10).Table(table =>
@@ -304,6 +302,16 @@ public class ExportService : IExportService
                     if (invoice.TransportFee > 0)
                         col.Item().AlignRight().Text($"أجرة النقل: ₪ {invoice.TransportFee:0.##}").FontSize(thermalWidth ? 8 : 10);
                     col.Item().PaddingTop(4).AlignRight().Text($"الإجمالي: ₪ {invoice.GrandTotal:0.##}").Bold().FontSize(13);
+                    // What this merchant still owed BEFORE this invoice (computed in
+                    // InvoiceService — every OTHER Active invoice's total minus every payment
+                    // they've made, all-time), added on top so the printed total is what's
+                    // actually due right now, not just this invoice's own amount.
+                    if (invoice.PreviousBalance > 0)
+                    {
+                        col.Item().AlignRight().Text($"الرصيد السابق: ₪ {invoice.PreviousBalance:0.##}").FontSize(thermalWidth ? 9 : 11);
+                        col.Item().PaddingTop(2).AlignRight()
+                            .Text($"الإجمالي المستحق: ₪ {(invoice.GrandTotal + invoice.PreviousBalance):0.##}").Bold().FontSize(thermalWidth ? 11 : 14);
+                    }
                 });
             });
         });
@@ -564,10 +572,7 @@ public class ExportService : IExportService
             col.Item().Text("فاتورة مشتري").Bold().FontSize(9);
             col.Item().Text($"التاريخ: {invoice.Date:yyyy-MM-dd}").FontSize(8);
             col.Item().Text($"المطلوب من: {invoice.MerchantName}").FontSize(8);
-            if (!string.IsNullOrWhiteSpace(invoice.FarmerName))
-                col.Item().Text($"البائع: {invoice.FarmerName}").FontSize(8);
-            if (!string.IsNullOrWhiteSpace(invoice.DriverName))
-                col.Item().Text($"السائق: {invoice.DriverName}").FontSize(8);
+            // البائع/السائق deliberately NOT shown here — same reasoning as GenerateInvoicePdf.
             col.Item().PaddingTop(4).LineHorizontal(0.5f).LineColor(Colors.Grey.Lighten1);
 
             col.Item().PaddingTop(4).Table(table =>

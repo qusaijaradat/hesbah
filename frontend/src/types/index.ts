@@ -118,6 +118,10 @@ export interface InvoiceDto {
   woodTotal: number;
   /** totalValue + transportFee + woodTotal — the actual amount charged to the merchant. */
   grandTotal: number;
+  /** "الرصيد السابق" — what this merchant still owed from every one of their OTHER active
+   * invoices minus every payment they've made, all-time (never negative — see backend
+   * InvoiceService.ComputePreviousBalanceAsync). Add to grandTotal for the actual amount due now. */
+  previousBalance: number;
   items: InvoiceItemDto[];
 }
 

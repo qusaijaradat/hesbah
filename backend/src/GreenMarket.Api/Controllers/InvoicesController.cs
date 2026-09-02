@@ -37,7 +37,8 @@ public class InvoicesController : ControllerBase
 
     [HttpPost]
     [RequirePermission(PermissionKeys.InvoicesCreate)]
-    public async Task<ActionResult<InvoiceDto>> Create(CreateInvoiceRequest request) => Ok(await _invoiceService.CreateAsync(request));
+    public async Task<ActionResult<InvoiceDto>> Create(CreateInvoiceRequest request) =>
+        Ok(await _invoiceService.CreateAsync(request, CurrentUserId.Require(User)));
 
     /// <summary>Corrects an Active invoice's date/merchant/farmer/items in place (recomputing
     /// totals and commission, and keeping the linked farmer ledger row in sync) instead of forcing

@@ -56,13 +56,17 @@ export function InvoiceNewPage() {
   const [driverText, setDriverText] = useState("");
   // Optional flat transport/delivery fee for the whole invoice ("أجرة النقل").
   const [transportFee, setTransportFee] = useState("");
+  // Optional "دفع كم؟" shortcut — records a linked payment right when the invoice is saved
+  // instead of a separate trip to the Payments page (see api/invoices.ts createInvoice's
+  // paidAmount doc). "" = nothing paid yet.
+  const [paidAmount, setPaidAmount] = useState("");
   const [rows, setRows] = useState<Row[]>([emptyRow()]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   // Requirement: after saving, jump straight into a fresh invoice instead of navigating
   // away — the market enters invoices back-to-back all day, so staying on this screen
   // (with a quick link to the one just saved) beats re-clicking "new invoice" every time.
-  const [lastSaved, setLastSaved] = useState<{ id: number; invoiceNumber: string } | null>(null);
+  const [lastSaved, setLastSaved] = useState<{ id: number; invoiceNumber: string; remaining: number } | null>(null);
 
   const parsedRows = rows.map((r) => ({
     itemName: r.itemName,
@@ -81,6 +85,8 @@ export function InvoiceNewPage() {
   const woodTotal = parsedRows.reduce((sum, r) => sum + r.woodPrice, 0);
   const transportFeeValue = parseFloat(transportFee) || 0;
   const grandTotal = totalValue + woodTotal + transportFeeValue;
+  const paidAmountValue = parseFloat(paidAmount) || 0;
+  const remainingOnThisInvoice = grandTotal - paidAmountValue;
 
   useEffect(() => {
     if (!merchant) { setMerchantAccount(null); return; }
@@ -115,6 +121,7 @@ export function InvoiceNewPage() {
     setDriver(null);
     setDriverText("");
     setTransportFee("");
+    setPaidAmount("");
     setRows([emptyRow()]);
   }
 
@@ -143,8 +150,9 @@ export function InvoiceNewPage() {
         driverName: driver ? undefined : (driverName || undefined),
         transportFee: transportFeeValue,
         items,
+        paidAmount: paidAmountValue > 0 ? paidAmountValue : undefined,
       });
-      setLastSaved({ id: invoice.id, invoiceNumber: invoice.invoiceNumber });
+      setLastSaved({ id: invoice.id, invoiceNumber: invoice.invoiceNumber, remaining: remainingOnThisInvoice });
       resetForm();
     } catch (err) {
       setError(apiErrorMessage(err, "فشل إنشاء الفاتورة"));
@@ -159,7 +167,10 @@ export function InvoiceNewPage() {
 
       {lastSaved && (
         <div className="text-sm text-brand-800 bg-brand-50 border border-brand-200 rounded-md p-3 mb-4 flex items-center justify-between flex-wrap gap-2">
-          <span>✅ تم حفظ الفاتورة {lastSaved.invoiceNumber} — جاهز لإدخال فاتورة جديدة.</span>
+          <span>
+            ✅ تم حفظ الفاتورة {lastSaved.invoiceNumber} — جاهز لإدخال فاتورة جديدة.
+            {lastSaved.remaining > 0 && ` الباقي على هذه الفاتورة: ${formatCurrency(lastSaved.remaining)}.`}
+          </span>
           <Link to={`/invoices/${lastSaved.id}`} className="text-brand-700 font-medium hover:underline">
             عرض / طباعة الفاتورة ←
           </Link>
@@ -265,11 +276,23 @@ export function InvoiceNewPage() {
       </div>
 
       <div className="card p-5 mb-4 space-y-4">
-        <div className="max-w-xs">
-          <label className="label">أجرة النقل (₪، اختياري)</label>
-          <input className="input" type="number" min="0" step="0.01" value={transportFee}
-            onChange={(e) => setTransportFee(e.target.value)} placeholder="اتركه فارغًا إن لم يوجد" />
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-md">
+          <div>
+            <label className="label">أجرة النقل (₪، اختياري)</label>
+            <input className="input" type="number" min="0" step="0.01" value={transportFee}
+              onChange={(e) => setTransportFee(e.target.value)} placeholder="اتركه فارغًا إن لم يوجد" />
+          </div>
+          <div>
+            <label className="label">المبلغ المدفوع الآن (₪، اختياري)</label>
+            <input className="input" type="number" min="0" step="0.01" value={paidAmount}
+              onChange={(e) => setPaidAmount(e.target.value)} placeholder="اتركه فارغًا إذا لم يدفع شيء" />
+          </div>
         </div>
+        {paidAmountValue > 0 && (
+          <div className="text-sm text-gray-600">
+            الباقي على هذه الفاتورة بعد هذه الدفعة: <span className="font-semibold">{formatCurrency(remainingOnThisInvoice)}</span>
+          </div>
+        )}
         <div className="flex flex-wrap gap-4 justify-between text-sm">
           {totalWeight > 0 && (
             <div>

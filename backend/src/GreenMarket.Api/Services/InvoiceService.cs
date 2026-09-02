@@ -10,7 +10,7 @@ namespace GreenMarket.Api.Services;
 
 public interface IInvoiceService
 {
-    Task<InvoiceDto> CreateAsync(CreateInvoiceRequest request);
+    Task<InvoiceDto> CreateAsync(CreateInvoiceRequest request, int recordedByUserId);
     Task<InvoiceDto> UpdateAsync(int id, CreateInvoiceRequest request);
     Task<InvoiceDto> GetAsync(int id);
     Task<PagedResult<InvoiceListItemDto>> ListAsync(InvoiceFilterRequest filter);
@@ -39,10 +39,13 @@ public class InvoiceService : IInvoiceService
         _items = items;
     }
 
-    public async Task<InvoiceDto> CreateAsync(CreateInvoiceRequest request)
+    public async Task<InvoiceDto> CreateAsync(CreateInvoiceRequest request, int recordedByUserId)
     {
         if (request.Items is null || request.Items.Count == 0)
             throw new ValidationAppException("An invoice must have at least one item.");
+
+        if (request.PaidAmount is < 0)
+            throw new ValidationAppException("Paid amount cannot be negative.");
 
         var merchant = await ResolvePartnerAsync(request.MerchantId, request.MerchantName, PartnerType.Merchant, "merchant");
         // Seller (Farmer) and Driver are both optional and independent of each other — an invoice
@@ -102,6 +105,25 @@ public class InvoiceService : IInvoiceService
                 Commission = commissionResult.Commission,
                 Amount = commissionResult.NetDueToFarmer,
                 Notes = $"Auto-generated from invoice {invoice.InvoiceNumber}"
+            });
+            await _db.SaveChangesAsync();
+        }
+
+        // Optional "المبلغ المدفوع" shortcut (see CreateInvoiceRequest.PaidAmount doc): records a
+        // FromMerchant payment linked to this invoice right away, exactly as if it had been
+        // entered separately on the Payments page — same PartnerService.GetMerchantAccountAsync/
+        // ComputePreviousBalanceAsync below immediately reflect it.
+        if (request.PaidAmount is > 0)
+        {
+            _db.Payments.Add(new Payment
+            {
+                PartnerId = merchant.Id,
+                Direction = PaymentDirection.FromMerchant,
+                Amount = request.PaidAmount.Value,
+                Date = invoice.Date,
+                InvoiceId = invoice.Id,
+                Notes = $"دفعة عند إصدار الفاتورة {invoice.InvoiceNumber}",
+                RecordedByUserId = recordedByUserId
             });
             await _db.SaveChangesAsync();
         }
@@ -220,7 +242,8 @@ public class InvoiceService : IInvoiceService
             .SingleOrDefaultAsync(i => i.Id == id)
             ?? throw new NotFoundAppException("Invoice", id);
 
-        return ToDto(invoice);
+        var previousBalance = await ComputePreviousBalanceAsync(invoice.MerchantId, invoice.Id);
+        return ToDto(invoice, previousBalance);
     }
 
     public async Task<IReadOnlyList<InvoiceDto>> GetManyAsync(IReadOnlyList<int> ids)
@@ -236,7 +259,38 @@ public class InvoiceService : IInvoiceService
         // Preserve the caller's requested order (e.g. the filtered/selected print order)
         // rather than whatever order the DB happened to return rows in.
         var byId = invoices.ToDictionary(i => i.Id);
-        return ids.Where(byId.ContainsKey).Select(id => ToDto(byId[id])).ToList();
+        var result = new List<InvoiceDto>();
+        foreach (var id in ids.Where(byId.ContainsKey))
+        {
+            var invoice = byId[id];
+            var previousBalance = await ComputePreviousBalanceAsync(invoice.MerchantId, invoice.Id);
+            result.Add(ToDto(invoice, previousBalance));
+        }
+        return result;
+    }
+
+    /// <summary>
+    /// "الرصيد السابق" on a printed invoice: what this merchant still owes from every one of their
+    /// OTHER Active invoices (GrandTotal — TotalValue + TransportFee + per-line WoodPrice, same as
+    /// ToDto computes for a single invoice) minus every FromMerchant payment they've ever made,
+    /// all-time — never date-scoped, since the point is "what's actually still owed right now",
+    /// not a snapshot frozen at some past invoice date. Clamped to 0 so a merchant who has
+    /// overpaid never shows a negative "balance owed" on their next invoice (that's a credit
+    /// situation, a different feature not covered here).
+    /// </summary>
+    private async Task<decimal> ComputePreviousBalanceAsync(int merchantId, int excludeInvoiceId)
+    {
+        var otherInvoices = await _db.Invoices
+            .Where(i => i.MerchantId == merchantId && i.Status == InvoiceStatus.Active && i.Id != excludeInvoiceId)
+            .Select(i => new { i.TotalValue, i.TransportFee, WoodTotal = i.Items.Sum(it => it.WoodPrice) })
+            .ToListAsync();
+        var totalOwed = otherInvoices.Sum(i => i.TotalValue + i.TransportFee + i.WoodTotal);
+
+        var totalPaid = await _db.Payments
+            .Where(p => p.PartnerId == merchantId && p.Direction == PaymentDirection.FromMerchant)
+            .SumAsync(p => (decimal?)p.Amount) ?? 0;
+
+        return Math.Max(0, totalOwed - totalPaid);
     }
 
     public async Task<PagedResult<InvoiceListItemDto>> ListAsync(InvoiceFilterRequest filter)
@@ -314,7 +368,8 @@ public class InvoiceService : IInvoiceService
         }
 
         await _db.SaveChangesAsync();
-        return ToDto(invoice);
+        var previousBalance = await ComputePreviousBalanceAsync(invoice.MerchantId, invoice.Id);
+        return ToDto(invoice, previousBalance);
     }
 
     /// <summary>An Id reuses an existing partner exactly; a Name resolves via find-or-create so a
@@ -354,7 +409,7 @@ public class InvoiceService : IInvoiceService
         return $"INV-{year}-{(countThisYear + 1):D6}";
     }
 
-    private static InvoiceDto ToDto(Invoice i)
+    private static InvoiceDto ToDto(Invoice i, decimal previousBalance)
     {
         // Sum() on an empty in-memory List<decimal> is fine (returns 0, doesn't throw) — this is
         // LINQ-to-Objects over an already-materialized navigation, not a translated SQL query.
@@ -368,6 +423,7 @@ public class InvoiceService : IInvoiceService
             i.DriverId, i.Driver?.Name, i.Driver?.WhatsAppNumber,
             i.Status,
             i.TotalWeightKg, i.TotalValue, i.TransportFee, woodTotal, grandTotal,
+            previousBalance,
             i.Items.Select(it => new InvoiceItemDto(it.Id, it.ItemName, it.Quantity, it.Unit, it.PricePerUnit, it.WoodPrice, it.LineTotal)).ToList());
     }
 }

@@ -13,6 +13,11 @@ public record InvoiceItemInput(string ItemName, decimal Quantity, UnitOfMeasure 
 /// every invoice would just get in the way. Exactly one of {Id, Name} must be supplied for each
 /// side that's being set at all. FarmerId/DriverId are independent of each other — an invoice can
 /// have either, both, or neither. TransportFee ("أجرة النقل") is optional, defaulting to 0.
+/// PaidAmount ("المبلغ المدفوع") is optional: when set and greater than 0, InvoiceService records
+/// it as a Payment (direction FromMerchant, linked to this invoice) right when the invoice is
+/// created — a shortcut for the common "he paid on the spot" case that skips a separate trip to
+/// the Payments page. Only honored on CreateAsync, not UpdateAsync (editing an invoice never
+/// touches payments — corrections to what's been paid go through the Payments page itself).
 /// </summary>
 public record CreateInvoiceRequest(
     DateTimeOffset Date,
@@ -23,7 +28,8 @@ public record CreateInvoiceRequest(
     int? DriverId,
     string? DriverName,
     IReadOnlyList<InvoiceItemInput> Items,
-    decimal TransportFee = 0);
+    decimal TransportFee = 0,
+    decimal? PaidAmount = null);
 
 public record InvoiceItemDto(int Id, string ItemName, decimal Quantity, UnitOfMeasure Unit, decimal PricePerUnit, decimal WoodPrice, decimal LineTotal);
 
@@ -32,7 +38,11 @@ public record InvoiceItemDto(int Id, string ItemName, decimal Quantity, UnitOfMe
 /// "the market's commission does not appear on the merchant's invoice." GrandTotal =
 /// TotalValue + TransportFee + WoodTotal (sum of every item's WoodPrice) — the actual amount the
 /// merchant pays, including the pass-through transport/crate costs that are excluded from
-/// TotalValue specifically so they never inflate the commission base.
+/// TotalValue specifically so they never inflate the commission base. PreviousBalance is computed
+/// (not stored) in InvoiceService — what this merchant still owed from every one of their OTHER
+/// Active invoices, minus every payment they've ever made, clamped to 0 (never shown negative even
+/// if they're in credit). Printed on the invoice as "الرصيد السابق" added on top of GrandTotal, so
+/// a newly-printed invoice always shows the full amount actually due, not just this one sale.
 /// </summary>
 public record InvoiceDto(
     int Id, string InvoiceNumber, DateTimeOffset Date,
@@ -41,6 +51,7 @@ public record InvoiceDto(
     int? DriverId, string? DriverName, string? DriverWhatsApp,
     InvoiceStatus Status,
     decimal TotalWeightKg, decimal TotalValue, decimal TransportFee, decimal WoodTotal, decimal GrandTotal,
+    decimal PreviousBalance,
     IReadOnlyList<InvoiceItemDto> Items);
 
 /// <summary>

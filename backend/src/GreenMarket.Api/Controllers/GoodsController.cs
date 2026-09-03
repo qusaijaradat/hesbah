@@ -21,6 +21,14 @@ public class GoodsController : ControllerBase
     public async Task<ActionResult<FarmerGoodsStockDto>> GetForFarmer(int farmerId) =>
         Ok(await _goodsService.GetForFarmerAsync(farmerId));
 
+    /// <summary>"البضاعة المتوفرة حاليًا" summed across ALL farmers — shown at the bottom of
+    /// "بضاعة الباعة" itself. See ReportsController.GoodsGlobalStock for the same data reached from
+    /// "الإغلاق اليومي" under its own reports.view permission instead.</summary>
+    [HttpGet("stock")]
+    [RequirePermission(PermissionKeys.FarmerGoodsView)]
+    public async Task<ActionResult<IReadOnlyList<GoodsStockRow>>> GetGlobalStock() =>
+        Ok(await _goodsService.GetGlobalStockAsync());
+
     [HttpPost]
     [RequirePermission(PermissionKeys.FarmerGoodsCreate)]
     public async Task<ActionResult<GoodsEntryDto>> Create(CreateGoodsEntryRequest request) =>

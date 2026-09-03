@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react";
 import { getFarmerGoods } from "../api/invoices";
-import { createGoodsEntry, deleteGoodsEntry, getFarmerGoodsStock, updateGoodsEntry } from "../api/goods";
+import { createGoodsEntry, deleteGoodsEntry, getFarmerGoodsStock, getGoodsGlobalStock, updateGoodsEntry } from "../api/goods";
 import { apiErrorMessage } from "../api/client";
 import { PartnerAutocomplete } from "../components/PartnerAutocomplete";
 import { ItemAutocomplete } from "../components/ItemAutocomplete";
+import { GoodsGlobalStockCard } from "../components/GoodsGlobalStockCard";
 import { formatDate, formatQuantity, todayLocalDateString } from "../lib/format";
 import { useAuth } from "../auth/AuthContext";
-import type { FarmerGoodsRow, FarmerGoodsStockDto, GoodsEntryDto, UnitOfMeasure } from "../types";
+import type { FarmerGoodsRow, FarmerGoodsStockDto, GoodsEntryDto, GoodsStockRow, UnitOfMeasure } from "../types";
 
 const UNIT_OPTIONS: { value: UnitOfMeasure; label: string }[] = [
   { value: "Kg", label: "كيلو" },
@@ -31,6 +32,19 @@ export function FarmerGoodsPage() {
   const canDelete = hasPermission("farmerGoods.delete");
 
   const [farmerPick, setFarmerPick] = useState<{ id: number; name: string } | null>(null);
+
+  // "البضاعة المتوفرة حاليًا — كل الباعة": a global summary across every farmer, independent of
+  // whichever single farmer is picked above — loads once on mount, shown at the end of the page.
+  const [globalStock, setGlobalStock] = useState<GoodsStockRow[]>([]);
+  const [globalStockLoading, setGlobalStockLoading] = useState(true);
+  const [globalStockError, setGlobalStockError] = useState<string | null>(null);
+
+  useEffect(() => {
+    getGoodsGlobalStock()
+      .then((rows) => setGlobalStock(rows))
+      .catch((err) => setGlobalStockError(apiErrorMessage(err, "فشل تحميل البضاعة المتوفرة")))
+      .finally(() => setGlobalStockLoading(false));
+  }, []);
 
   // Stock (intake entries + computed available-per-item) — loads automatically as soon as a
   // farmer is picked, independent of the sales-history date filter below.
@@ -227,8 +241,10 @@ export function FarmerGoodsPage() {
                   <input type="number" step="0.001" min="0" className="input w-32" value={entryQuantity} onChange={(e) => setEntryQuantity(e.target.value)} />
                 </div>
                 <div>
-                  <label className="label">منها صناديق خشب (اختياري)</label>
-                  <input type="number" step="0.001" min="0" className="input w-32" value={entryWoodQuantity} onChange={(e) => setEntryWoodQuantity(e.target.value)} placeholder="0" />
+                  {/* فيلد مستقل عن "العدد"/"الوزن" أعلاه — عدد صناديق الخشب الفعلي المستخدم بنقل
+                      هالبضاعة، مش جزء أو نسبة من الكمية (ممكن ٥٠ كغم بس ٣ صناديق خشب). */}
+                  <label className="label">صناديق خشب (اختياري)</label>
+                  <input type="number" step="1" min="0" className="input w-32" value={entryWoodQuantity} onChange={(e) => setEntryWoodQuantity(e.target.value)} placeholder="0" />
                 </div>
                 <div className="w-full max-w-xs">
                   <label className="label">ملاحظات (اختياري)</label>
@@ -250,13 +266,16 @@ export function FarmerGoodsPage() {
             {stockError && <div className="text-sm text-red-600 bg-red-50 rounded-md p-2 mx-4">{stockError}</div>}
             <table className="table-base">
               <thead>
-                <tr><th>الصنف</th><th>الوحدة</th><th>الوارد</th><th>المباع</th><th>المتوفر</th></tr>
+                {/* صناديق خشب فيلد مستقل تمامًا عن الوارد/المباع/المتوفر (اللي هني بوحدة الصنف
+                    نفسها كيلو أو صندوق) — هاد عدد صناديق الخشب الفعلي المسجّل، دايمًا "صندوق"
+                    بغض النظر عن وحدة الصنف. */}
+                <tr><th>الصنف</th><th>الوحدة</th><th>الوارد</th><th>المباع</th><th>المتوفر</th><th>صناديق خشب</th></tr>
               </thead>
               <tbody>
                 {stockLoading ? (
-                  <tr><td colSpan={5} className="text-center text-gray-400 py-6">جاري التحميل...</td></tr>
+                  <tr><td colSpan={6} className="text-center text-gray-400 py-6">جاري التحميل...</td></tr>
                 ) : !stockData || stockData.stock.length === 0 ? (
-                  <tr><td colSpan={5} className="text-center text-gray-400 py-6">لا توجد بضاعة مسجلة لهذا البائع بعد</td></tr>
+                  <tr><td colSpan={6} className="text-center text-gray-400 py-6">لا توجد بضاعة مسجلة لهذا البائع بعد</td></tr>
                 ) : (
                   stockData.stock.map((r, idx) => (
                     <tr key={idx}>
@@ -265,6 +284,7 @@ export function FarmerGoodsPage() {
                       <td>{formatQuantity(r.totalReceived, r.unit)}</td>
                       <td>{formatQuantity(r.totalSold, r.unit)}</td>
                       <td className={`font-semibold ${r.available < 0 ? "text-red-600" : ""}`}>{formatQuantity(r.available, r.unit)}</td>
+                      <td>{r.woodReceived > 0 ? formatQuantity(r.woodReceived, "Box") : "—"}</td>
                     </tr>
                   ))
                 )}
@@ -277,7 +297,8 @@ export function FarmerGoodsPage() {
             <table className="table-base">
               <thead>
                 <tr>
-                  <th>التاريخ</th><th>الصنف</th><th>الكمية</th><th>منها صندوق خشب</th><th>ملاحظات</th>
+                  {/* "صناديق خشب" فيلد مستقل — دايمًا عدد صناديق (مش وحدة الصنف e.unit) */}
+                  <th>التاريخ</th><th>الصنف</th><th>الكمية</th><th>صناديق خشب</th><th>ملاحظات</th>
                   {(canEdit || canDelete) && <th></th>}
                 </tr>
               </thead>
@@ -290,7 +311,7 @@ export function FarmerGoodsPage() {
                       <td>{formatDate(e.date)}</td>
                       <td className="font-medium">{e.itemName}</td>
                       <td>{formatQuantity(e.quantity, e.unit)}</td>
-                      <td>{e.woodQuantity > 0 ? formatQuantity(e.woodQuantity, e.unit) : "—"}</td>
+                      <td>{e.woodQuantity > 0 ? formatQuantity(e.woodQuantity, "Box") : "—"}</td>
                       <td className="text-gray-500 text-sm">{e.notes ?? "—"}</td>
                       {(canEdit || canDelete) && (
                         <td className="whitespace-nowrap">
@@ -367,6 +388,8 @@ export function FarmerGoodsPage() {
           )}
         </>
       )}
+
+      <GoodsGlobalStockCard rows={globalStock} loading={globalStockLoading} error={globalStockError} />
     </div>
   );
 }

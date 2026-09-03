@@ -1,11 +1,13 @@
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { getInvoicesBatch, getMerchantGroupPreviousBalance, listInvoices, printDriverManifestPdf, printFarmerStatementPdf, printInvoicesBulkPdf, triggerBlobDownload } from "../api/invoices";
 import { apiErrorMessage } from "../api/client";
 import { getFarmerAccount } from "../api/partners";
+import { driverItemsBreakdown, farmerItemsBreakdown, merchantItemsBreakdown, printBuyerStatementPdf, printDriverItemsStatementPdf, printFarmerItemsStatementPdf } from "../api/reports";
+import type { ReportFilter } from "../api/reports";
 import { listSettings } from "../api/settings";
 import { PartnerAutocomplete } from "../components/PartnerAutocomplete";
 import { buildStatementMessage, buildWhatsAppLink, formatCurrency, formatDate, formatQuantity, formatWeight, todayLocalDateString } from "../lib/format";
-import type { InvoiceFilter, InvoiceListItemDto, PartnerType } from "../types";
+import type { DriverItemBreakdownRow, FarmerItemBreakdownRow, InvoiceFilter, InvoiceListItemDto, MerchantItemBreakdownRow, PartnerType, UnitOfMeasure } from "../types";
 
 function startOfDay(d: Date) {
   const x = new Date(d);
@@ -171,6 +173,39 @@ function useRoleSection(role: Role) {
 
 type RoleSection = ReturnType<typeof useRoleSection>;
 
+/**
+ * Derives a "كشف ... حسب الفترة" report filter straight from a section's OWN period/person filter
+ * (quickRange/customFrom/customTo/partnerPick) — deliberately no separate/duplicate date picker for
+ * these breakdown cards, per the explicit design decision to reuse each tab's existing filter bar.
+ */
+function periodFilterFor(section: RoleSection): ReportFilter {
+  const f = section.buildFilter();
+  return { dateFrom: f.dateFrom, dateTo: f.dateTo, partnerId: section.partnerPick?.id };
+}
+
+/**
+ * Backs each tab's "كشف ... حسب الفترة" card — refetches whenever the section's own period/person
+ * filter changes (see periodFilterFor), independent of the section's invoice list/selection above it.
+ */
+function useItemsBreakdown<T>(section: RoleSection, fetchRows: (filter: ReportFilter) => Promise<T[]>) {
+  const [rows, setRows] = useState<T[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [printing, setPrinting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setLoading(true);
+    setError(null);
+    fetchRows(periodFilterFor(section))
+      .then((data) => setRows(data))
+      .catch(() => setError("فشل تحميل الكشف"))
+      .finally(() => setLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [section.quickRange, section.customFrom, section.customTo, section.partnerPick?.id]);
+
+  return { rows, loading, printing, setPrinting, error, setError };
+}
+
 /** Shared filter bar (period + invoice-number range + optional person picker) used by all 3 sections. */
 function SectionFilters({ section }: { section: RoleSection }) {
   return (
@@ -321,6 +356,156 @@ function SectionPrintBar({ section }: { section: RoleSection }) {
   );
 }
 
+interface BreakdownItem {
+  itemName: string;
+  unit: UnitOfMeasure;
+  totalQuantity: number;
+}
+
+/**
+ * "كشف مشتري/بائع حسب الفترة" card — one row per (person, item) grouped under a shaded bold
+ * subtotal, same layout as DashboardPage's "كشف المشترين حسب الفترة" widget, reused here for both
+ * the Merchant and Farmer tabs since both carry a genuine per-item price (see
+ * Merchant/FarmerItemBreakdownRow's doc comments).
+ */
+function ItemValueBreakdownCard({
+  title, nameLabel, groups, grandTotal, loading, printing, error, onPrint,
+}: {
+  title: string;
+  nameLabel: string;
+  groups: { id: number; name: string; items: (BreakdownItem & { totalValue: number })[]; subtotal: number }[];
+  grandTotal: number;
+  loading: boolean;
+  printing: boolean;
+  error: string | null;
+  onPrint: () => void;
+}) {
+  return (
+    <div className="card p-4 mb-4">
+      <div className="flex items-center justify-between flex-wrap gap-3 mb-3">
+        <h2 className="font-semibold">{title}</h2>
+        {!loading && groups.length > 0 && (
+          <button className="btn-secondary" disabled={printing} onClick={onPrint}>
+            {printing ? "جاري التجهيز..." : "🖨️ طباعة"}
+          </button>
+        )}
+      </div>
+      <div className="overflow-x-auto">
+        <table className="table-base">
+          <thead>
+            <tr><th>{nameLabel}</th><th>الصنف</th><th>العدد</th><th>الوزن</th><th>السعر</th></tr>
+          </thead>
+          <tbody>
+            {loading ? (
+              <tr><td colSpan={5} className="text-center text-gray-400 py-6">جاري التحميل...</td></tr>
+            ) : groups.length === 0 ? (
+              <tr><td colSpan={5} className="text-center text-gray-400 py-6">لا توجد بيانات لهذه الفترة</td></tr>
+            ) : (
+              groups.map((group) => (
+                <Fragment key={group.id}>
+                  {group.items.map((item, idx) => (
+                    <tr key={idx}>
+                      <td className="font-medium">{group.name}</td>
+                      <td>{item.itemName}</td>
+                      <td>{item.unit === "Box" ? formatQuantity(item.totalQuantity, "Box") : "—"}</td>
+                      <td>{item.unit === "Kg" ? formatQuantity(item.totalQuantity, "Kg") : "—"}</td>
+                      <td>{formatCurrency(item.totalValue)}</td>
+                    </tr>
+                  ))}
+                  <tr className="bg-gray-50">
+                    <td colSpan={4} className="font-semibold text-gray-600">إجمالي {group.name}</td>
+                    <td className="font-semibold">{formatCurrency(group.subtotal)}</td>
+                  </tr>
+                </Fragment>
+              ))
+            )}
+          </tbody>
+          {!loading && groups.length > 0 && (
+            <tfoot>
+              <tr>
+                <td colSpan={4} className="font-semibold">الإجمالي الكلي</td>
+                <td className="font-bold">{formatCurrency(grandTotal)}</td>
+              </tr>
+            </tfoot>
+          )}
+        </table>
+      </div>
+      {error && <div className="text-sm text-red-600 bg-red-50 rounded-md p-2 mt-3">{error}</div>}
+    </div>
+  );
+}
+
+/**
+ * "كشف سائق حسب الفترة" card — a driver has NO per-item price (flat أجرة نقل per invoice), so the
+ * item rows carry only العدد/الوزن and the "أجرة النقل" column stays blank except on each driver's
+ * own subtotal row, which shows that driver's WHOLE-period fee exactly once (never summed per item —
+ * see DriverItemBreakdownRow's doc comment).
+ */
+function DriverItemBreakdownCard({
+  groups, grandTotal, loading, printing, error, onPrint,
+}: {
+  groups: { id: number; name: string; items: BreakdownItem[]; transportFee: number }[];
+  grandTotal: number;
+  loading: boolean;
+  printing: boolean;
+  error: string | null;
+  onPrint: () => void;
+}) {
+  return (
+    <div className="card p-4 mb-4">
+      <div className="flex items-center justify-between flex-wrap gap-3 mb-3">
+        <h2 className="font-semibold">كشف سائق حسب الفترة</h2>
+        {!loading && groups.length > 0 && (
+          <button className="btn-secondary" disabled={printing} onClick={onPrint}>
+            {printing ? "جاري التجهيز..." : "🖨️ طباعة"}
+          </button>
+        )}
+      </div>
+      <div className="overflow-x-auto">
+        <table className="table-base">
+          <thead>
+            <tr><th>السائق</th><th>الصنف</th><th>العدد</th><th>الوزن</th><th>أجرة النقل</th></tr>
+          </thead>
+          <tbody>
+            {loading ? (
+              <tr><td colSpan={5} className="text-center text-gray-400 py-6">جاري التحميل...</td></tr>
+            ) : groups.length === 0 ? (
+              <tr><td colSpan={5} className="text-center text-gray-400 py-6">لا توجد بيانات لهذه الفترة</td></tr>
+            ) : (
+              groups.map((group) => (
+                <Fragment key={group.id}>
+                  {group.items.map((item, idx) => (
+                    <tr key={idx}>
+                      <td className="font-medium">{group.name}</td>
+                      <td>{item.itemName}</td>
+                      <td>{item.unit === "Box" ? formatQuantity(item.totalQuantity, "Box") : "—"}</td>
+                      <td>{item.unit === "Kg" ? formatQuantity(item.totalQuantity, "Kg") : "—"}</td>
+                      <td>—</td>
+                    </tr>
+                  ))}
+                  <tr className="bg-gray-50">
+                    <td colSpan={4} className="font-semibold text-gray-600">إجمالي أجرة نقل {group.name}</td>
+                    <td className="font-semibold">{formatCurrency(group.transportFee)}</td>
+                  </tr>
+                </Fragment>
+              ))
+            )}
+          </tbody>
+          {!loading && groups.length > 0 && (
+            <tfoot>
+              <tr>
+                <td colSpan={4} className="font-semibold">إجمالي أجرة النقل</td>
+                <td className="font-bold">{formatCurrency(grandTotal)}</td>
+              </tr>
+            </tfoot>
+          )}
+        </table>
+      </div>
+      {error && <div className="text-sm text-red-600 bg-red-50 rounded-md p-2 mt-3">{error}</div>}
+    </div>
+  );
+}
+
 export function BulkPrintPage() {
   const [activeTab, setActiveTab] = useState<Role>("Merchant");
 
@@ -329,6 +514,89 @@ export function BulkPrintPage() {
   const driverSection = useRoleSection("Driver");
   const sections: Record<Role, RoleSection> = { Merchant: merchantSection, Farmer: farmerSection, Driver: driverSection };
   const active = sections[activeTab];
+
+  // "كشف [مشتري/بائع/سائق] حسب الفترة" — one per tab, scoped to that tab's OWN period/person filter
+  // (see periodFilterFor), fully independent of the invoice table/selection above it.
+  const merchantBreakdown = useItemsBreakdown(merchantSection, merchantItemsBreakdown);
+  const farmerBreakdown = useItemsBreakdown(farmerSection, farmerItemsBreakdown);
+  const driverBreakdown = useItemsBreakdown(driverSection, driverItemsBreakdown);
+
+  const merchantBreakdownGroups = useMemo(() => {
+    const byId = new Map<number, { id: number; name: string; items: MerchantItemBreakdownRow[]; subtotal: number }>();
+    for (const row of merchantBreakdown.rows) {
+      let g = byId.get(row.merchantId);
+      if (!g) { g = { id: row.merchantId, name: row.merchantName, items: [], subtotal: 0 }; byId.set(row.merchantId, g); }
+      g.items.push(row);
+      g.subtotal += row.totalValue;
+    }
+    return Array.from(byId.values());
+  }, [merchantBreakdown.rows]);
+
+  const farmerBreakdownGroups = useMemo(() => {
+    const byId = new Map<number, { id: number; name: string; items: FarmerItemBreakdownRow[]; subtotal: number }>();
+    for (const row of farmerBreakdown.rows) {
+      let g = byId.get(row.farmerId);
+      if (!g) { g = { id: row.farmerId, name: row.farmerName, items: [], subtotal: 0 }; byId.set(row.farmerId, g); }
+      g.items.push(row);
+      g.subtotal += row.totalValue;
+    }
+    return Array.from(byId.values());
+  }, [farmerBreakdown.rows]);
+
+  // transportFee is taken ONCE from the first row of each driver's group, never summed across item
+  // rows — see DriverItemBreakdownRow's doc comment.
+  const driverBreakdownGroups = useMemo(() => {
+    const byId = new Map<number, { id: number; name: string; items: DriverItemBreakdownRow[]; transportFee: number }>();
+    for (const row of driverBreakdown.rows) {
+      let g = byId.get(row.driverId);
+      if (!g) { g = { id: row.driverId, name: row.driverName, items: [], transportFee: row.totalTransportFee }; byId.set(row.driverId, g); }
+      g.items.push(row);
+    }
+    return Array.from(byId.values());
+  }, [driverBreakdown.rows]);
+
+  const merchantBreakdownTotal = useMemo(() => merchantBreakdown.rows.reduce((sum, r) => sum + r.totalValue, 0), [merchantBreakdown.rows]);
+  const farmerBreakdownTotal = useMemo(() => farmerBreakdown.rows.reduce((sum, r) => sum + r.totalValue, 0), [farmerBreakdown.rows]);
+  const driverBreakdownTotal = useMemo(() => driverBreakdownGroups.reduce((sum, g) => sum + g.transportFee, 0), [driverBreakdownGroups]);
+
+  async function handlePrintMerchantBreakdown() {
+    merchantBreakdown.setPrinting(true);
+    merchantBreakdown.setError(null);
+    try {
+      const blob = await printBuyerStatementPdf(periodFilterFor(merchantSection));
+      triggerBlobDownload(blob, `merchant-statement-by-period-${todayLocalDateString()}.pdf`);
+    } catch {
+      merchantBreakdown.setError("فشل إنشاء ملف الطباعة");
+    } finally {
+      merchantBreakdown.setPrinting(false);
+    }
+  }
+
+  async function handlePrintFarmerBreakdown() {
+    farmerBreakdown.setPrinting(true);
+    farmerBreakdown.setError(null);
+    try {
+      const blob = await printFarmerItemsStatementPdf(periodFilterFor(farmerSection));
+      triggerBlobDownload(blob, `farmer-statement-by-period-${todayLocalDateString()}.pdf`);
+    } catch {
+      farmerBreakdown.setError("فشل إنشاء ملف الطباعة");
+    } finally {
+      farmerBreakdown.setPrinting(false);
+    }
+  }
+
+  async function handlePrintDriverBreakdown() {
+    driverBreakdown.setPrinting(true);
+    driverBreakdown.setError(null);
+    try {
+      const blob = await printDriverItemsStatementPdf(periodFilterFor(driverSection));
+      triggerBlobDownload(blob, `driver-statement-by-period-${todayLocalDateString()}.pdf`);
+    } catch {
+      driverBreakdown.setError("فشل إنشاء ملف الطباعة");
+    } finally {
+      driverBreakdown.setPrinting(false);
+    }
+  }
 
   // Header info for the shared Arabic WhatsApp template (lib/format.ts buildStatementMessage) —
   // same company name/phone used on the printed PDF, so a trader's WhatsApp statement reads as
@@ -558,6 +826,43 @@ export function BulkPrintPage() {
       </div>
 
       <SectionFilters section={active} />
+
+      {activeTab === "Merchant" && (
+        <ItemValueBreakdownCard
+          title="كشف مشتري حسب الفترة"
+          nameLabel="المشتري"
+          groups={merchantBreakdownGroups}
+          grandTotal={merchantBreakdownTotal}
+          loading={merchantBreakdown.loading}
+          printing={merchantBreakdown.printing}
+          error={merchantBreakdown.error}
+          onPrint={handlePrintMerchantBreakdown}
+        />
+      )}
+
+      {activeTab === "Farmer" && (
+        <ItemValueBreakdownCard
+          title="كشف بائع حسب الفترة"
+          nameLabel="البائع"
+          groups={farmerBreakdownGroups}
+          grandTotal={farmerBreakdownTotal}
+          loading={farmerBreakdown.loading}
+          printing={farmerBreakdown.printing}
+          error={farmerBreakdown.error}
+          onPrint={handlePrintFarmerBreakdown}
+        />
+      )}
+
+      {activeTab === "Driver" && (
+        <DriverItemBreakdownCard
+          groups={driverBreakdownGroups}
+          grandTotal={driverBreakdownTotal}
+          loading={driverBreakdown.loading}
+          printing={driverBreakdown.printing}
+          error={driverBreakdown.error}
+          onPrint={handlePrintDriverBreakdown}
+        />
+      )}
 
       {activeTab === "Driver" && (
         <div className="card p-4 mb-4">

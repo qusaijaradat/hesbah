@@ -145,15 +145,18 @@ export function DashboardPage() {
           <div className="overflow-x-auto">
             <table className="table-base">
               <thead>
-                <tr><th>المشتري</th><th>الصنف</th><th>الكمية</th><th>السعر</th></tr>
+                {/* العدد/الوزن فيلدين منفصلين (مش "الكمية" واحدة مدموجة) — نفس الأسلوب المتّبع
+                    بكل جدول أصناف تاني بالتطبيق: الصف دايمًا إما عدد (صندوق) أو وزن (كغم)، مش الاثنين
+                    معًا، فبيطلع "—" بالعمود الي ما ينطبق. نفس التقسيم موجود بالنسخة المطبوعة (PDF). */}
+                <tr><th>المشتري</th><th>الصنف</th><th>العدد</th><th>الوزن</th><th>السعر</th></tr>
               </thead>
               <tbody>
                 {!buyerPeriodChosen ? (
-                  <tr><td colSpan={4} className="text-center text-gray-400 py-6">اختر تاريخًا (من و/أو إلى) لعرض كشف المشترين</td></tr>
+                  <tr><td colSpan={5} className="text-center text-gray-400 py-6">اختر تاريخًا (من و/أو إلى) لعرض كشف المشترين</td></tr>
                 ) : buyerLoading ? (
-                  <tr><td colSpan={4} className="text-center text-gray-400 py-6">جاري التحميل...</td></tr>
+                  <tr><td colSpan={5} className="text-center text-gray-400 py-6">جاري التحميل...</td></tr>
                 ) : buyerMerchantGroups.length === 0 ? (
-                  <tr><td colSpan={4} className="text-center text-gray-400 py-6">لا توجد بيانات لهذه الفترة</td></tr>
+                  <tr><td colSpan={5} className="text-center text-gray-400 py-6">لا توجد بيانات لهذه الفترة</td></tr>
                 ) : (
                   buyerMerchantGroups.map((group) => (
                     <Fragment key={group.merchantId}>
@@ -161,12 +164,13 @@ export function DashboardPage() {
                         <tr key={idx}>
                           <td className="font-medium">{group.merchantName}</td>
                           <td>{item.itemName}</td>
-                          <td>{formatQuantity(item.totalQuantity, item.unit)}</td>
+                          <td>{item.unit === "Box" ? formatQuantity(item.totalQuantity, "Box") : "—"}</td>
+                          <td>{item.unit === "Kg" ? formatQuantity(item.totalQuantity, "Kg") : "—"}</td>
                           <td>{formatCurrency(item.totalValue)}</td>
                         </tr>
                       ))}
                       <tr className="bg-gray-50">
-                        <td colSpan={3} className="font-semibold text-gray-600">إجمالي {group.merchantName}</td>
+                        <td colSpan={4} className="font-semibold text-gray-600">إجمالي {group.merchantName}</td>
                         <td className="font-semibold">{formatCurrency(group.subtotal)}</td>
                       </tr>
                     </Fragment>
@@ -176,7 +180,7 @@ export function DashboardPage() {
               {buyerPeriodChosen && !buyerLoading && buyerMerchantGroups.length > 0 && (
                 <tfoot>
                   <tr>
-                    <td colSpan={3} className="font-semibold">الإجمالي الكلي</td>
+                    <td colSpan={4} className="font-semibold">الإجمالي الكلي</td>
                     <td className="font-bold">{formatCurrency(buyerValueTotal)}</td>
                   </tr>
                 </tfoot>

@@ -1,14 +1,29 @@
 import { useEffect, useState } from "react";
 import { StatCard } from "../components/StatCard";
-import { dailyClosingReport, exportDailyClosingPdf } from "../api/reports";
+import { GoodsGlobalStockCard } from "../components/GoodsGlobalStockCard";
+import { dailyClosingReport, exportDailyClosingPdf, getGoodsGlobalStockForReports } from "../api/reports";
 import { triggerBlobDownload } from "../api/invoices";
+import { apiErrorMessage } from "../api/client";
 import { formatCurrency, todayLocalDateString } from "../lib/format";
-import type { DailyClosingDto } from "../types";
+import type { DailyClosingDto, GoodsStockRow } from "../types";
 
 export function DailyClosingPage() {
   const [date, setDate] = useState(() => todayLocalDateString());
   const [closing, setClosing] = useState<DailyClosingDto | null>(null);
   const [loading, setLoading] = useState(true);
+
+  // "البضاعة المتوفرة حاليًا — كل الباعة": a live, all-farmers summary — loads once on mount,
+  // deliberately NOT re-fetched when the date above changes (see GoodsGlobalStockCard's doc comment).
+  const [globalStock, setGlobalStock] = useState<GoodsStockRow[]>([]);
+  const [globalStockLoading, setGlobalStockLoading] = useState(true);
+  const [globalStockError, setGlobalStockError] = useState<string | null>(null);
+
+  useEffect(() => {
+    getGoodsGlobalStockForReports()
+      .then((rows) => setGlobalStock(rows))
+      .catch((err) => setGlobalStockError(apiErrorMessage(err, "فشل تحميل البضاعة المتوفرة")))
+      .finally(() => setGlobalStockLoading(false));
+  }, []);
 
   useEffect(() => {
     setLoading(true);
@@ -76,6 +91,8 @@ export function DailyClosingPage() {
           </div>
         </>
       )}
+
+      <GoodsGlobalStockCard rows={globalStock} loading={globalStockLoading} error={globalStockError} />
     </div>
   );
 }

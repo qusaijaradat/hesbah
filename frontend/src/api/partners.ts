@@ -1,7 +1,7 @@
 import { apiClient } from "./client";
 import type {
   PartnerDto, PartnerSuggestionDto, PagedResult, PartnerType,
-  MerchantAccountDto, FarmerAccountDto, DebtsOverviewDto,
+  MerchantAccountDto, FarmerAccountDto, DebtsOverviewDto, PartnerInvoiceDetailDto,
 } from "../types";
 
 export async function listPartners(params: { search?: string; type?: PartnerType; page?: number; pageSize?: number }) {
@@ -48,6 +48,20 @@ export async function getFarmerAccount(id: number) {
 
 export async function getDebtsOverview() {
   const { data } = await apiClient.get<DebtsOverviewDto>("/partners/debts-overview");
+  return data;
+}
+
+/** "قيمة الديون" drill-down (بائع/سائق side) — every item line off every one of this partner's own
+ * invoices, all-time, so the amount on the debts overview is traceable back to exactly which
+ * invoices/items/quantities/prices make it up. */
+export async function getFarmerInvoiceDetail(id: number) {
+  const { data } = await apiClient.get<PartnerInvoiceDetailDto>(`/partners/${id}/farmer-invoice-detail`);
+  return data;
+}
+
+/** مشتري-side counterpart of getFarmerInvoiceDetail above. */
+export async function getMerchantInvoiceDetail(id: number) {
+  const { data } = await apiClient.get<PartnerInvoiceDetailDto>(`/partners/${id}/merchant-invoice-detail`);
   return data;
 }
 

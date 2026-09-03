@@ -48,6 +48,14 @@ public interface IPartnerService
     /// GetMerchantAccountAsync (bulk-aggregated instead of one DB round-trip per partner) so the
     /// numbers here always match what you'd see drilling into any one person's own account page.</summary>
     Task<DebtsOverviewDto> GetDebtsOverviewAsync();
+
+    /// <summary>"قيمة الديون" drill-down, seller side (see PartnerInvoiceDetailDto's doc comment).
+    /// Shares FarmerAccountPage's own farmer-and-driver-on-one-page convention: a Driver partner is
+    /// matched by Invoice.DriverId, a Farmer/Both partner by Invoice.FarmerId.</summary>
+    Task<PartnerInvoiceDetailDto> GetFarmerInvoiceDetailAsync(int id);
+
+    /// <summary>Buyer-side counterpart of GetFarmerInvoiceDetailAsync — matched by Invoice.MerchantId.</summary>
+    Task<PartnerInvoiceDetailDto> GetMerchantInvoiceDetailAsync(int id);
 }
 
 public class PartnerService : IPartnerService
@@ -65,10 +73,44 @@ public class PartnerService : IPartnerService
             query = query.Where(p => p.Type == type);
 
         var total = await query.CountAsync();
-        var items = await query.OrderBy(p => p.Name)
+        var pageItems = await query.OrderBy(p => p.Name)
             .Skip((page - 1) * pageSize).Take(pageSize)
-            .Select(p => ToDto(p))
             .ToListAsync();
+
+        // "الرصيد" column on this list: same bulk-aggregated Remaining formulas as
+        // GetDebtsOverviewAsync (one grouped query across this page's ids, not one DB round trip
+        // per row) — see PartnerDto's doc comment for why Farmer/Merchant sides stay separate.
+        var sellerIds = pageItems.Where(p => p.Type is PartnerType.Farmer or PartnerType.Driver or PartnerType.Both).Select(p => p.Id).ToList();
+        var merchantIds = pageItems.Where(p => p.Type is PartnerType.Merchant or PartnerType.Both).Select(p => p.Id).ToList();
+
+        var netAmountBySeller = await _db.FarmerTransactions
+            .Where(t => sellerIds.Contains(t.FarmerId))
+            .GroupBy(t => t.FarmerId)
+            .Select(g => new { FarmerId = g.Key, Total = g.Sum(t => t.Amount) })
+            .ToDictionaryAsync(x => x.FarmerId, x => x.Total);
+
+        var purchasesByMerchant = await _db.Invoices
+            .Where(i => merchantIds.Contains(i.MerchantId) && i.Status == InvoiceStatus.Active)
+            .GroupBy(i => i.MerchantId)
+            .Select(g => new { MerchantId = g.Key, Total = g.Sum(i => i.TotalValue) })
+            .ToDictionaryAsync(x => x.MerchantId, x => x.Total);
+
+        var paidByMerchant = await _db.Payments
+            .Where(p => merchantIds.Contains(p.PartnerId) && p.Direction == PaymentDirection.FromMerchant)
+            .GroupBy(p => p.PartnerId)
+            .Select(g => new { PartnerId = g.Key, Total = g.Sum(p => p.Amount) })
+            .ToDictionaryAsync(x => x.PartnerId, x => x.Total);
+
+        var items = pageItems.Select(p =>
+        {
+            decimal? farmerRemaining = p.Type is PartnerType.Farmer or PartnerType.Driver or PartnerType.Both
+                ? (p.OpeningBalance ?? 0) + netAmountBySeller.GetValueOrDefault(p.Id)
+                : null;
+            decimal? merchantRemaining = p.Type is PartnerType.Merchant or PartnerType.Both
+                ? (p.OpeningBalance ?? 0) + purchasesByMerchant.GetValueOrDefault(p.Id) - paidByMerchant.GetValueOrDefault(p.Id)
+                : null;
+            return ToDto(p, farmerRemaining, merchantRemaining);
+        }).ToList();
 
         return new PagedResult<PartnerDto> { Items = items, TotalCount = total, Page = page, PageSize = pageSize };
     }
@@ -330,6 +372,55 @@ public class PartnerService : IPartnerService
         return new DebtsOverviewDto(farmers, drivers, merchants);
     }
 
+    /// <summary>See the interface doc comment — matches Invoice.DriverId for a Driver partner,
+    /// Invoice.FarmerId for a Farmer/Both partner (same split as GetFarmerAccountAsync's own ledger
+    /// query, just against Invoices+Items directly instead of FarmerTransactions, since this needs
+    /// each item's own name/quantity/price, not just the ledger's already-netted amounts).</summary>
+    public async Task<PartnerInvoiceDetailDto> GetFarmerInvoiceDetailAsync(int id)
+    {
+        var partner = await _db.Partners.FindAsync(id) ?? throw new NotFoundAppException("Partner", id);
+
+        var query = partner.Type == PartnerType.Driver
+            ? _db.Invoices.Where(i => i.DriverId == id && i.Status == InvoiceStatus.Active)
+            : _db.Invoices.Where(i => i.FarmerId == id && i.Status == InvoiceStatus.Active);
+
+        var invoices = await query.Include(i => i.Items)
+            .OrderByDescending(i => i.Date).ThenByDescending(i => i.Id)
+            .ToListAsync();
+
+        return new PartnerInvoiceDetailDto(partner.Id, partner.Name, BuildInvoiceItemLines(invoices));
+    }
+
+    /// <summary>See the interface doc comment — matches Invoice.MerchantId.</summary>
+    public async Task<PartnerInvoiceDetailDto> GetMerchantInvoiceDetailAsync(int id)
+    {
+        var partner = await _db.Partners.FindAsync(id) ?? throw new NotFoundAppException("Partner", id);
+
+        var invoices = await _db.Invoices
+            .Where(i => i.MerchantId == id && i.Status == InvoiceStatus.Active)
+            .Include(i => i.Items)
+            .OrderByDescending(i => i.Date).ThenByDescending(i => i.Id)
+            .ToListAsync();
+
+        return new PartnerInvoiceDetailDto(partner.Id, partner.Name, BuildInvoiceItemLines(invoices));
+    }
+
+    /// <summary>Flattens invoices (Items already loaded) into one row per item line — TransportFee/
+    /// GrandTotal are computed once per invoice and repeated across that invoice's own item rows, same
+    /// "invoice-level figure, not per-item" convention as PartnerInvoiceItemLineDto's doc comment
+    /// warns about (mirrors InvoiceService.ListAsync's own WoodTotal/GrandTotal formula exactly, so
+    /// this can never silently drift out of sync with what the invoice itself shows).</summary>
+    private static List<PartnerInvoiceItemLineDto> BuildInvoiceItemLines(List<Invoice> invoices) =>
+        invoices.SelectMany(i =>
+        {
+            var woodTotal = i.Items.Sum(it => it.WoodPrice);
+            var grandTotal = i.TotalValue + i.TransportFee + woodTotal;
+            return i.Items.Select(it => new PartnerInvoiceItemLineDto(
+                i.Id, i.InvoiceNumber, i.Date,
+                it.ItemName, it.Unit, it.Quantity, it.PricePerUnit, it.WoodPrice, it.LineTotal,
+                i.TransportFee, grandTotal));
+        }).ToList();
+
     /// <summary>See the interface doc comment: a hard, permanent removal, but only ever reachable
     /// on a partner that has never actually been used for anything — every AuditableEntity query
     /// (Invoices, Payments) is globally filtered to exclude soft-deleted rows, and deleting a
@@ -360,7 +451,8 @@ public class PartnerService : IPartnerService
         new(line.Date, line.Description, line.SignedAmount, line.RunningBalance,
             line.InvoiceId, line.InvoiceNumber, line.SaleValue, line.Commission, line.Method, line.Notes);
 
-    private static PartnerDto ToDto(Partner p) => new(p.Id, p.Name, p.Type, p.WhatsAppNumber, p.Address, p.Notes, p.CreditLimit, p.OpeningBalance);
+    private static PartnerDto ToDto(Partner p, decimal? farmerRemaining = null, decimal? merchantRemaining = null) =>
+        new(p.Id, p.Name, p.Type, p.WhatsAppNumber, p.Address, p.Notes, p.CreditLimit, p.OpeningBalance, farmerRemaining, merchantRemaining);
 
     /// <summary>Minimal projection used only inside GetDebtsOverviewAsync — a typed stand-in for an
     /// anonymous type so it can be passed around a local helper function.</summary>

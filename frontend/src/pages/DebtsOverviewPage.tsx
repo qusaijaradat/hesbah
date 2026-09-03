@@ -47,6 +47,7 @@ export function DebtsOverviewPage() {
           title="الباعة"
           rows={farmers}
           linkFor={(id) => `/partners/${id}/farmer-account`}
+          detailLinkFor={(id) => `/partners/${id}/farmer-invoice-detail`}
           owedToThemLabel="له من السوق"
           owedByThemLabel="عليه للسوق"
           emptyText="لا يوجد باعة عليهم أو لهم رصيد حاليًا"
@@ -55,6 +56,7 @@ export function DebtsOverviewPage() {
           title="السواق"
           rows={drivers}
           linkFor={(id) => `/partners/${id}/farmer-account`}
+          detailLinkFor={(id) => `/partners/${id}/farmer-invoice-detail`}
           owedToThemLabel="له من السوق"
           owedByThemLabel="عليه للسوق"
           emptyText="لا يوجد سواق عليهم أو لهم رصيد حاليًا"
@@ -63,6 +65,7 @@ export function DebtsOverviewPage() {
           title="المشترين"
           rows={merchants}
           linkFor={(id) => `/partners/${id}/merchant-account`}
+          detailLinkFor={(id) => `/partners/${id}/merchant-invoice-detail`}
           owedToThemLabel="له رصيد زائد (دفع أكتر)"
           owedByThemLabel="عليه دين للسوق"
           emptyText="لا يوجد مشترين عليهم أو لهم رصيد حاليًا"
@@ -73,11 +76,14 @@ export function DebtsOverviewPage() {
 }
 
 function DebtSection({
-  title, rows, linkFor, owedToThemLabel, owedByThemLabel, emptyText,
+  title, rows, linkFor, detailLinkFor, owedToThemLabel, owedByThemLabel, emptyText,
 }: {
   title: string;
   rows: PartnerDebtRow[];
   linkFor: (id: number) => string;
+  /** Opens (in a new tab, per explicit request) the full invoice/item-level breakdown behind this
+   * person's amount — see PartnerInvoiceDetailPage. */
+  detailLinkFor: (id: number) => string;
   /** Shown when remaining > 0 — for باعة/سواق that means the market owes them; for مشتري that means they owe the market. */
   owedByThemLabel: string;
   /** Shown when remaining < 0 — the mirror-image case of the above. */
@@ -96,11 +102,12 @@ function DebtSection({
               <th>الاسم</th>
               <th>المبلغ</th>
               <th></th>
+              <th></th>
             </tr>
           </thead>
           <tbody>
             {rows.length === 0 ? (
-              <tr><td colSpan={3} className="text-center text-gray-400 py-6">{emptyText}</td></tr>
+              <tr><td colSpan={4} className="text-center text-gray-400 py-6">{emptyText}</td></tr>
             ) : (
               rows.map((r) => (
                 <tr key={r.partnerId}>
@@ -111,6 +118,11 @@ function DebtSection({
                     {formatCurrency(Math.abs(r.remaining))}
                   </td>
                   <td className="text-xs text-gray-400">{r.remaining > 0 ? owedByThemLabel : owedToThemLabel}</td>
+                  <td>
+                    <a href={detailLinkFor(r.partnerId)} target="_blank" rel="noopener noreferrer" className="text-xs text-brand-700 hover:underline whitespace-nowrap">
+                      عرض التفاصيل ↗
+                    </a>
+                  </td>
                 </tr>
               ))
             )}
@@ -119,7 +131,7 @@ function DebtSection({
             <tfoot>
               <tr className="font-semibold border-t">
                 <td className="text-gray-500">الصافي الإجمالي</td>
-                <td colSpan={2} className={total > 0 ? "text-red-700" : total < 0 ? "text-brand-700" : ""}>
+                <td colSpan={3} className={total > 0 ? "text-red-700" : total < 0 ? "text-brand-700" : ""}>
                   {formatCurrency(total)}
                 </td>
               </tr>

@@ -18,13 +18,15 @@ public class ReportsController : ControllerBase
     private readonly IExportService _exportService;
     private readonly ISettingsService _settingsService;
     private readonly ICompanyLogoService _logoService;
+    private readonly IGoodsService _goodsService;
 
-    public ReportsController(IReportService reportService, IExportService exportService, ISettingsService settingsService, ICompanyLogoService logoService)
+    public ReportsController(IReportService reportService, IExportService exportService, ISettingsService settingsService, ICompanyLogoService logoService, IGoodsService goodsService)
     {
         _reportService = reportService;
         _exportService = exportService;
         _settingsService = settingsService;
         _logoService = logoService;
+        _goodsService = goodsService;
     }
 
     [HttpGet("daily-closing")]
@@ -40,6 +42,17 @@ public class ReportsController : ControllerBase
         var marketName = (await _settingsService.ListAsync()).FirstOrDefault(s => s.Key == Setting.Keys.MarketName)?.Value ?? "Green Market";
         return PdfFile(_exportService.DailyClosingToPdf(closing, marketName), $"daily-closing-{closing.Date:yyyy-MM-dd}.pdf");
     }
+
+    /// <summary>"البضاعة المتوفرة حاليًا" summed across ALL farmers, shown at the bottom of "الإغلاق
+    /// اليومي" — same GoodsService.GetGlobalStockAsync computation as GoodsController.GetGlobalStock,
+    /// exposed again here under reports.view so a user who can see Daily Closing but not "بضاعة
+    /// الباعة" itself can still see it (see the two controllers' doc comments on this endpoint).
+    /// Deliberately not scoped to the closing date picked above it — like every other "متوفر حاليًا"
+    /// figure in this app, it's always a live all-time running total, not a historical as-of-date one.</summary>
+    [HttpGet("goods/stock")]
+    [RequirePermission(PermissionKeys.ReportsView)]
+    public async Task<ActionResult<IReadOnlyList<GoodsStockRow>>> GoodsGlobalStock() =>
+        Ok(await _goodsService.GetGlobalStockAsync());
 
     [HttpGet("farmers")]
     [RequirePermission(PermissionKeys.ReportsView)]
@@ -63,17 +76,55 @@ public class ReportsController : ControllerBase
     public async Task<ActionResult<IReadOnlyList<MerchantItemBreakdownRow>>> MerchantsItemsBreakdown([FromQuery] ReportFilterRequest filter) =>
         Ok(await _reportService.MerchantItemBreakdownAsync(filter));
 
-    /// <summary>Dashboard "كشف المشترين حسب الفترة" print button — same period filter as the
-    /// on-screen list, printed as اسم المشتري + المبلغ only (see ExportService.
-    /// GenerateBuyerStatementPdf for why عدد الفواتير/المدفوع/المتبقي are left out).</summary>
+    /// <summary>Dashboard "كشف المشترين حسب الفترة" print button — same period filter and the same
+    /// per-(merchant, item) breakdown as the on-screen list right above it (see ExportService.
+    /// GenerateBuyerStatementPdf), not just a flat اسم المشتري + المبلغ list.</summary>
     [HttpGet("merchants/print/pdf")]
     [RequirePermission(PermissionKeys.ReportsView)]
     public async Task<IActionResult> MerchantsPrintPdf([FromQuery] ReportFilterRequest filter)
     {
-        var rows = await _reportService.MerchantReportAsync(filter);
+        var rows = await _reportService.MerchantItemBreakdownAsync(filter);
         var company = await GetCompanyInfoAsync();
         var bytes = _exportService.GenerateBuyerStatementPdf(rows, filter.DateFrom, filter.DateTo, company);
         return PdfFile(bytes, "buyer-statement.pdf");
+    }
+
+    /// <summary>"طباعة الفواتير" → قسم البائع's "كشف بائع حسب الفترة" — farmer counterpart to
+    /// MerchantsItemsBreakdown above.</summary>
+    [HttpGet("farmers/items-breakdown")]
+    [RequirePermission(PermissionKeys.ReportsView)]
+    public async Task<ActionResult<IReadOnlyList<FarmerItemBreakdownRow>>> FarmersItemsBreakdown([FromQuery] ReportFilterRequest filter) =>
+        Ok(await _reportService.FarmerItemBreakdownAsync(filter));
+
+    /// <summary>Farmer counterpart to MerchantsPrintPdf above — see ExportService.
+    /// GenerateFarmerItemsStatementPdf.</summary>
+    [HttpGet("farmers/items-breakdown/print/pdf")]
+    [RequirePermission(PermissionKeys.ReportsView)]
+    public async Task<IActionResult> FarmersItemsBreakdownPrintPdf([FromQuery] ReportFilterRequest filter)
+    {
+        var rows = await _reportService.FarmerItemBreakdownAsync(filter);
+        var company = await GetCompanyInfoAsync();
+        var bytes = _exportService.GenerateFarmerItemsStatementPdf(rows, filter.DateFrom, filter.DateTo, company);
+        return PdfFile(bytes, "farmer-statement-by-period.pdf");
+    }
+
+    /// <summary>"طباعة الفواتير" → قسم السائق's "كشف سائق حسب الفترة" — driver counterpart to
+    /// MerchantsItemsBreakdown above.</summary>
+    [HttpGet("drivers/items-breakdown")]
+    [RequirePermission(PermissionKeys.ReportsView)]
+    public async Task<ActionResult<IReadOnlyList<DriverItemBreakdownRow>>> DriversItemsBreakdown([FromQuery] ReportFilterRequest filter) =>
+        Ok(await _reportService.DriverItemBreakdownAsync(filter));
+
+    /// <summary>Driver counterpart to MerchantsPrintPdf above — see ExportService.
+    /// GenerateDriverItemsStatementPdf.</summary>
+    [HttpGet("drivers/items-breakdown/print/pdf")]
+    [RequirePermission(PermissionKeys.ReportsView)]
+    public async Task<IActionResult> DriversItemsBreakdownPrintPdf([FromQuery] ReportFilterRequest filter)
+    {
+        var rows = await _reportService.DriverItemBreakdownAsync(filter);
+        var company = await GetCompanyInfoAsync();
+        var bytes = _exportService.GenerateDriverItemsStatementPdf(rows, filter.DateFrom, filter.DateTo, company);
+        return PdfFile(bytes, "driver-statement-by-period.pdf");
     }
 
     [HttpGet("market")]

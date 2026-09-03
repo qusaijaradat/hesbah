@@ -2,7 +2,12 @@ using GreenMarket.Domain.Enums;
 
 namespace GreenMarket.Api.DTOs;
 
-/// <summary>One "إضافة بضاعة" intake record, as shown/edited on the "بضاعة الباعة" page.</summary>
+/// <summary>One "إضافة بضاعة" intake record, as shown/edited on the "بضاعة الباعة" page.
+/// WoodQuantity is a physical count of wooden crates used to carry this delivery — a field
+/// entirely independent of Quantity/Unit (a farmer can bring 50 كغم of tomatoes using 3 wooden
+/// crates; "3" is a crate count, not "3 كغم"), so it's always a plain count regardless of whether
+/// Unit is Kg or Box, and is never validated against or displayed using Quantity/Unit — see
+/// GoodsService.ValidateLine and FarmerGoodsPage.tsx.</summary>
 public record GoodsEntryDto(
     int Id, int FarmerId, string FarmerName, DateTimeOffset Date,
     string ItemName, UnitOfMeasure Unit, decimal Quantity, decimal WoodQuantity, string? Notes);
@@ -27,8 +32,14 @@ public record UpdateGoodsEntryRequest(
 /// app does that. Available going negative (sold more than was ever logged as received) is never
 /// blocked anywhere — see FarmerGoodsEntry's doc comment — just shown so staff can spot and fix a
 /// missed intake entry.
+///
+/// WoodReceived is a SEPARATE, independent figure — the running total of wooden-crate counts
+/// logged against this item's intake entries (GoodsEntryDto.WoodQuantity), always a plain box/crate
+/// count regardless of this row's own Unit (Kg or Box). It is never netted against TotalSold —
+/// there is no "wood crates sold" concept on the invoice side — so it simply reflects every wood
+/// crate ever logged as received for this item, updating the moment a new intake entry adds to it.
 /// </summary>
-public record GoodsStockRow(string ItemName, UnitOfMeasure Unit, decimal TotalReceived, decimal TotalSold, decimal Available);
+public record GoodsStockRow(string ItemName, UnitOfMeasure Unit, decimal TotalReceived, decimal TotalSold, decimal Available, decimal WoodReceived);
 
 /// <summary>Wraps a farmer's own name with both halves of the "بضاعة الباعة" page: the raw intake
 /// log (Entries, newest first — editable/deletable) and the computed per-item stock summary

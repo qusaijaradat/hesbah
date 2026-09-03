@@ -44,6 +44,11 @@ export interface PartnerDto {
   /** "الرصيد الافتتاحي" — manually-entered starting balance from before this system was in use.
    * See backend Partner.OpeningBalance's doc comment for the sign convention. */
   openingBalance?: number | null;
+  /** "الرصيد" on the partners list (PartnersPage) — only populated by the list endpoint, and only
+   * for the side that applies to this partner's type. A Both partner (farmer+merchant) can have
+   * BOTH non-null at once — two entirely separate balances, never combined into one number. */
+  farmerRemaining?: number | null;
+  merchantRemaining?: number | null;
 }
 
 export interface PartnerSuggestionDto {
@@ -302,6 +307,31 @@ export interface MerchantItemBreakdownRow {
   totalValue: number;
 }
 
+// "طباعة الفواتير" → قسم البائع's "كشف بائع حسب الفترة" — farmer counterpart to
+// MerchantItemBreakdownRow. See backend FarmerItemBreakdownRow's doc comment: totalValue is the
+// item's raw gross sale value, not the farmer's net-after-commission figure.
+export interface FarmerItemBreakdownRow {
+  farmerId: number;
+  farmerName: string;
+  itemName: string;
+  unit: UnitOfMeasure;
+  totalQuantity: number;
+  totalValue: number;
+}
+
+// "طباعة الفواتير" → قسم السائق's "كشف سائق حسب الفترة". No per-item price — see backend
+// DriverItemBreakdownRow's doc comment: totalTransportFee is this driver's WHOLE-period transport
+// fee (summed once per invoice), repeated identically across every one of that driver's rows — read
+// it once per driver (e.g. from the first row), never sum it across rows.
+export interface DriverItemBreakdownRow {
+  driverId: number;
+  driverName: string;
+  itemName: string;
+  unit: UnitOfMeasure;
+  totalQuantity: number;
+  totalTransportFee: number;
+}
+
 export interface MarketReportRow {
   period: string;
   totalSalesValue: number;
@@ -405,6 +435,10 @@ export interface GoodsStockRow {
   totalReceived: number;
   totalSold: number;
   available: number;
+  /** Independent running total of wooden-crate counts logged against this item's intake entries
+   * (GoodsEntryDto.woodQuantity) — always a plain crate count, never in this row's own `unit`
+   * (Kg/Box), and never netted against totalSold (no "wood crates sold" concept exists). */
+  woodReceived: number;
 }
 
 export interface FarmerGoodsStockDto {
@@ -427,6 +461,30 @@ export interface DebtsOverviewDto {
   farmers: PartnerDebtRow[];
   drivers: PartnerDebtRow[];
   merchants: PartnerDebtRow[];
+}
+
+// "قيمة الديون" drill-down — one item line off one of this partner's own invoices, all-time (no
+// date filter). transportFee/grandTotal are INVOICE-level figures repeated identically across every
+// one of that invoice's own item rows — read them once per invoice (e.g. its first row), never sum
+// them across item rows, same convention as DriverItemBreakdownRow.totalTransportFee.
+export interface PartnerInvoiceItemLineDto {
+  invoiceId: number;
+  invoiceNumber: string;
+  date: string;
+  itemName: string;
+  unit: UnitOfMeasure;
+  quantity: number;
+  pricePerUnit: number;
+  woodPrice: number;
+  lineTotal: number;
+  transportFee: number;
+  grandTotal: number;
+}
+
+export interface PartnerInvoiceDetailDto {
+  partnerId: number;
+  partnerName: string;
+  lines: PartnerInvoiceItemLineDto[];
 }
 
 export interface SettingDto {

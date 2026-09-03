@@ -15,6 +15,14 @@ public interface IReportService
     /// <summary>See DriverReportRow's doc comment — the transport-side counterpart to FarmerReportAsync.</summary>
     Task<IReadOnlyList<DriverReportRow>> DriverReportAsync(ReportFilterRequest filter);
     Task<IReadOnlyList<MerchantItemBreakdownRow>> MerchantItemBreakdownAsync(ReportFilterRequest filter);
+
+    /// <summary>See FarmerItemBreakdownRow's doc comment — the farmer-side counterpart to
+    /// MerchantItemBreakdownAsync, used by "طباعة الفواتير"'s قسم البائع.</summary>
+    Task<IReadOnlyList<FarmerItemBreakdownRow>> FarmerItemBreakdownAsync(ReportFilterRequest filter);
+
+    /// <summary>See DriverItemBreakdownRow's doc comment — the driver-side counterpart, used by
+    /// "طباعة الفواتير"'s قسم السائق.</summary>
+    Task<IReadOnlyList<DriverItemBreakdownRow>> DriverItemBreakdownAsync(ReportFilterRequest filter);
     Task<IReadOnlyList<MarketReportRow>> MarketReportAsync(ReportFilterRequest filter);
     Task<DailyClosingDto> DailyClosingAsync(DateTimeOffset date);
     Task<IReadOnlyList<AgingReportRow>> AgingReportAsync(ReportFilterRequest filter);
@@ -252,6 +260,56 @@ public class ReportService : IReportService
             .GroupBy(x => new { x.MerchantId, x.MerchantName, x.ItemName, x.Unit })
             .Select(g => new MerchantItemBreakdownRow(g.Key.MerchantId, g.Key.MerchantName, g.Key.ItemName, g.Key.Unit, g.Sum(x => x.Quantity), g.Sum(x => x.LineTotal)))
             .OrderBy(r => r.MerchantName).ThenBy(r => r.ItemName)
+            .ToList();
+    }
+
+    /// <summary>Farmer counterpart to MerchantItemBreakdownAsync above — see FarmerItemBreakdownRow's
+    /// doc comment. Same in-memory grouping choice and same reasoning (a navigation-property column
+    /// inside a composite GroupBy key doesn't reliably translate to SQL).</summary>
+    public async Task<IReadOnlyList<FarmerItemBreakdownRow>> FarmerItemBreakdownAsync(ReportFilterRequest filter)
+    {
+        var query = _db.Invoices.Where(i => i.Status == InvoiceStatus.Active && i.FarmerId != null);
+        if (filter.DateFrom is not null) query = query.Where(i => i.Date >= filter.DateFrom);
+        if (filter.DateTo is not null) query = query.Where(i => i.Date <= filter.DateTo);
+        if (filter.PartnerId is not null) query = query.Where(i => i.FarmerId == filter.PartnerId);
+
+        var invoices = await query
+            .Include(i => i.Farmer)
+            .Include(i => i.Items)
+            .ToListAsync();
+
+        return invoices
+            .SelectMany(i => i.Items.Select(it => new { FarmerId = i.FarmerId!.Value, FarmerName = i.Farmer!.Name, it.ItemName, it.Unit, it.Quantity, it.LineTotal }))
+            .GroupBy(x => new { x.FarmerId, x.FarmerName, x.ItemName, x.Unit })
+            .Select(g => new FarmerItemBreakdownRow(g.Key.FarmerId, g.Key.FarmerName, g.Key.ItemName, g.Key.Unit, g.Sum(x => x.Quantity), g.Sum(x => x.LineTotal)))
+            .OrderBy(r => r.FarmerName).ThenBy(r => r.ItemName)
+            .ToList();
+    }
+
+    /// <summary>Driver counterpart — see DriverItemBreakdownRow's doc comment for why
+    /// TotalTransportFee is computed once per INVOICE (never per item line) and then simply repeated
+    /// across that driver's rows rather than summed per item.</summary>
+    public async Task<IReadOnlyList<DriverItemBreakdownRow>> DriverItemBreakdownAsync(ReportFilterRequest filter)
+    {
+        var query = _db.Invoices.Where(i => i.Status == InvoiceStatus.Active && i.DriverId != null);
+        if (filter.DateFrom is not null) query = query.Where(i => i.Date >= filter.DateFrom);
+        if (filter.DateTo is not null) query = query.Where(i => i.Date <= filter.DateTo);
+        if (filter.PartnerId is not null) query = query.Where(i => i.DriverId == filter.PartnerId);
+
+        var invoices = await query
+            .Include(i => i.Driver)
+            .Include(i => i.Items)
+            .ToListAsync();
+
+        var feeByDriver = invoices
+            .GroupBy(i => i.DriverId!.Value)
+            .ToDictionary(g => g.Key, g => g.Sum(i => i.TransportFee));
+
+        return invoices
+            .SelectMany(i => i.Items.Select(it => new { DriverId = i.DriverId!.Value, DriverName = i.Driver!.Name, it.ItemName, it.Unit, it.Quantity }))
+            .GroupBy(x => new { x.DriverId, x.DriverName, x.ItemName, x.Unit })
+            .Select(g => new DriverItemBreakdownRow(g.Key.DriverId, g.Key.DriverName, g.Key.ItemName, g.Key.Unit, g.Sum(x => x.Quantity), feeByDriver.GetValueOrDefault(g.Key.DriverId)))
+            .OrderBy(r => r.DriverName).ThenBy(r => r.ItemName)
             .ToList();
     }
 

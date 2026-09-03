@@ -16,6 +16,13 @@ namespace GreenMarket.Api.Services;
 public interface IGoodsService
 {
     Task<FarmerGoodsStockDto> GetForFarmerAsync(int farmerId);
+
+    /// <summary>Same "received minus sold, live, all-time" computation as GetForFarmerAsync's Stock
+    /// list, but summed across EVERY farmer at once — one row per item+unit, used by the
+    /// "البضاعة المتوفرة حاليًا" section shown at the end of both "بضاعة الباعة" and "الإغلاق
+    /// اليومي" (each page reaches it through its own controller/permission — see
+    /// GoodsController.GlobalStock / ReportsController.GoodsGlobalStock).</summary>
+    Task<IReadOnlyList<GoodsStockRow>> GetGlobalStockAsync();
     Task<GoodsEntryDto> CreateAsync(CreateGoodsEntryRequest request, int recordedByUserId);
     Task<GoodsEntryDto> UpdateAsync(int id, UpdateGoodsEntryRequest request);
     Task DeleteAsync(int id);
@@ -49,9 +56,11 @@ public class GoodsService : IGoodsService
             .OrderByDescending(e => e.Date).ThenByDescending(e => e.Id)
             .ToListAsync();
 
+        // Wood is summed here too (independent of Total — a plain crate count, never bounded by or
+        // compared against Quantity/Unit — see GoodsStockRow's doc comment).
         var receivedByKey = entries
             .GroupBy(e => (Name: e.ItemName.Trim().ToLowerInvariant(), e.Unit))
-            .ToDictionary(g => g.Key, g => (Display: g.First().ItemName.Trim(), Total: g.Sum(e => e.Quantity)));
+            .ToDictionary(g => g.Key, g => (Display: g.First().ItemName.Trim(), Total: g.Sum(e => e.Quantity), Wood: g.Sum(e => e.WoodQuantity)));
 
         // Same "materialize then group in memory" choice as GetFarmerGoodsAsync — only ever this
         // one farmer's Active invoices, so it's cheap and side-steps translating a correlated
@@ -69,10 +78,12 @@ public class GoodsService : IGoodsService
         var allKeys = receivedByKey.Keys.Union(soldByKey.Keys);
         var stock = allKeys.Select(key =>
         {
-            var received = receivedByKey.GetValueOrDefault(key).Total;
+            var receivedAgg = receivedByKey.GetValueOrDefault(key);
+            var received = receivedAgg.Total;
+            var wood = receivedAgg.Wood;
             var sold = soldByKey.GetValueOrDefault(key).Total;
             var display = receivedByKey.TryGetValue(key, out var r) ? r.Display : soldByKey[key].Display;
-            return new GoodsStockRow(display, key.Unit, received, sold, received - sold);
+            return new GoodsStockRow(display, key.Unit, received, sold, received - sold, wood);
         })
         .OrderBy(r => r.ItemName)
         .ToList();
@@ -81,6 +92,49 @@ public class GoodsService : IGoodsService
             e.Id, e.FarmerId, farmer.Name, e.Date, e.ItemName, e.Unit, e.Quantity, e.WoodQuantity, e.Notes)).ToList();
 
         return new FarmerGoodsStockDto(farmer.Id, farmer.Name, entryDtos, stock);
+    }
+
+    /// <summary>
+    /// Global counterpart of GetForFarmerAsync's Stock list — same received/sold/available-per-
+    /// (item, unit) logic, but pooling EVERY farmer's intake entries and EVERY farmer-linked Active
+    /// invoice's items together instead of scoping to one farmer. Matches items across different
+    /// farmers by the same trimmed/case-insensitive ItemName+Unit key already used elsewhere, since
+    /// two farmers logging "بندورة" are the same market-wide item as far as this summary cares.
+    /// Sold is scoped to invoices that actually have a farmer attached (i.FarmerId != null) — the
+    /// same set of invoices that ever deduct from ANY farmer's goods — so a merchant-only invoice
+    /// with no farmer never appears here, consistent with the per-farmer version only ever counting
+    /// that farmer's own invoices.
+    /// </summary>
+    public async Task<IReadOnlyList<GoodsStockRow>> GetGlobalStockAsync()
+    {
+        var entries = await _db.FarmerGoodsEntries.ToListAsync();
+
+        var receivedByKey = entries
+            .GroupBy(e => (Name: e.ItemName.Trim().ToLowerInvariant(), e.Unit))
+            .ToDictionary(g => g.Key, g => (Display: g.First().ItemName.Trim(), Total: g.Sum(e => e.Quantity), Wood: g.Sum(e => e.WoodQuantity)));
+
+        var soldLines = await _db.Invoices
+            .Where(i => i.FarmerId != null && i.Status == InvoiceStatus.Active)
+            .SelectMany(i => i.Items)
+            .Select(it => new { it.ItemName, it.Unit, it.Quantity })
+            .ToListAsync();
+
+        var soldByKey = soldLines
+            .GroupBy(l => (Name: l.ItemName.Trim().ToLowerInvariant(), l.Unit))
+            .ToDictionary(g => g.Key, g => (Display: g.First().ItemName.Trim(), Total: g.Sum(l => l.Quantity)));
+
+        var allKeys = receivedByKey.Keys.Union(soldByKey.Keys);
+        return allKeys.Select(key =>
+        {
+            var receivedAgg = receivedByKey.GetValueOrDefault(key);
+            var received = receivedAgg.Total;
+            var wood = receivedAgg.Wood;
+            var sold = soldByKey.GetValueOrDefault(key).Total;
+            var display = receivedByKey.TryGetValue(key, out var r) ? r.Display : soldByKey[key].Display;
+            return new GoodsStockRow(display, key.Unit, received, sold, received - sold, wood);
+        })
+        .OrderBy(r => r.ItemName)
+        .ToList();
     }
 
     public async Task<GoodsEntryDto> CreateAsync(CreateGoodsEntryRequest request, int recordedByUserId)
@@ -137,6 +191,10 @@ public class GoodsService : IGoodsService
         await _db.SaveChangesAsync();
     }
 
+    // WoodQuantity is a physical crate COUNT, independent of Quantity/Unit — e.g. 50 كغم of
+    // tomatoes carried in 3 wooden crates is a perfectly valid entry, and "3 > 50" was never a
+    // meaningful comparison to begin with (comparing a crate count to a weight). There is
+    // deliberately no upper bound tying it to Quantity — see GoodsEntryDto's doc comment.
     private static void ValidateLine(string itemName, decimal quantity, decimal woodQuantity)
     {
         if (string.IsNullOrWhiteSpace(itemName))
@@ -145,7 +203,5 @@ public class GoodsService : IGoodsService
             throw new ValidationAppException("Quantity must be greater than zero.");
         if (woodQuantity < 0)
             throw new ValidationAppException("Wood quantity cannot be negative.");
-        if (woodQuantity > quantity)
-            throw new ValidationAppException("Wood quantity cannot exceed the total quantity.");
     }
 }

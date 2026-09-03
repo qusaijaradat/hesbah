@@ -73,6 +73,33 @@ public record MerchantItemBreakdownRow(
     int MerchantId, string MerchantName, string ItemName, UnitOfMeasure Unit,
     decimal TotalQuantity, decimal TotalValue);
 
+/// <summary>
+/// "طباعة الفواتير" → قسم البائع's "كشف بائع حسب الفترة" — same per-item breakdown idea as
+/// MerchantItemBreakdownRow, one row per (farmer, item) instead of one row per farmer, scoped to
+/// whichever period that tab's own filter is already set to. TotalValue is that item's own gross
+/// LineTotal (Quantity × PricePerUnit) summed across every matching invoice — the same "raw sale
+/// value" convention as MerchantItemBreakdownRow.TotalValue, NOT the farmer's net-after-commission
+/// figure (see FarmerReportRow.NetDue for that number).
+/// </summary>
+public record FarmerItemBreakdownRow(
+    int FarmerId, string FarmerName, string ItemName, UnitOfMeasure Unit,
+    decimal TotalQuantity, decimal TotalValue);
+
+/// <summary>
+/// "طباعة الفواتير" → قسم السائق's "كشف سائق حسب الفترة" — one row per (driver, item) carried
+/// during the period. Unlike Merchant/FarmerItemBreakdownRow there is deliberately NO per-item price
+/// here — a driver earns a flat أجرة نقل per INVOICE, never a price per item, so attributing a value
+/// to "this many kg of tomatoes" would be meaningless. TotalTransportFee is instead this driver's
+/// total transport fee for the WHOLE period (summed once per invoice, matching every other
+/// invoice-level TransportFee total in this app) — the SAME number is repeated across every one of
+/// that driver's item rows purely so this can stay one flat list of rows; a caller must read it once
+/// per driver (e.g. from that driver's first row), never sum it across rows, or it will be counted
+/// once per item instead of once per invoice.
+/// </summary>
+public record DriverItemBreakdownRow(
+    int DriverId, string DriverName, string ItemName, UnitOfMeasure Unit,
+    decimal TotalQuantity, decimal TotalTransportFee);
+
 /// <summary>Requirement doc §8: market reports — daily/monthly profits/commissions, or a specified period.</summary>
 public record MarketReportRow(
     string Period, decimal TotalSalesValue, decimal TotalCommission, decimal TotalExpenses, decimal NetProfit);

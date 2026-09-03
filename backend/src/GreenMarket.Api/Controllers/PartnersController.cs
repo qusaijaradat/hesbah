@@ -73,4 +73,16 @@ public class PartnersController : ControllerBase
     [HttpGet("{id:int}/farmer-account")]
     [RequirePermission(PermissionKeys.PartnersView)]
     public async Task<ActionResult<FarmerAccountDto>> FarmerAccount(int id) => Ok(await _partnerService.GetFarmerAccountAsync(id));
+
+    /// <summary>"قيمة الديون" drill-down page (بائع/سائق side) — every item line off every one of this
+    /// partner's own invoices, all-time, so the amount shown on the debts overview is traceable back
+    /// to exactly which invoices/items/quantities/prices make it up.</summary>
+    [HttpGet("{id:int}/farmer-invoice-detail")]
+    [RequirePermission(PermissionKeys.PartnersView)]
+    public async Task<ActionResult<PartnerInvoiceDetailDto>> FarmerInvoiceDetail(int id) => Ok(await _partnerService.GetFarmerInvoiceDetailAsync(id));
+
+    /// <summary>مشتري-side counterpart of FarmerInvoiceDetail above.</summary>
+    [HttpGet("{id:int}/merchant-invoice-detail")]
+    [RequirePermission(PermissionKeys.PartnersView)]
+    public async Task<ActionResult<PartnerInvoiceDetailDto>> MerchantInvoiceDetail(int id) => Ok(await _partnerService.GetMerchantInvoiceDetailAsync(id));
 }

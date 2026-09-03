@@ -32,7 +32,9 @@ public interface IExportService
     byte[] GenerateInvoicePdf(InvoiceDto invoice, CompanyInfo company, bool thermalWidth);
     byte[] GenerateInvoicesBulkPdf(IReadOnlyList<InvoiceDto> invoices, CompanyInfo company);
     byte[] GenerateDriverManifestPdf(string driverName, IReadOnlyList<InvoiceDto> invoices, CompanyInfo company, decimal previousBalance);
-    byte[] GenerateBuyerStatementPdf(IReadOnlyList<MerchantReportRow> rows, DateTimeOffset? dateFrom, DateTimeOffset? dateTo, CompanyInfo company);
+    byte[] GenerateBuyerStatementPdf(IReadOnlyList<MerchantItemBreakdownRow> rows, DateTimeOffset? dateFrom, DateTimeOffset? dateTo, CompanyInfo company);
+    byte[] GenerateFarmerItemsStatementPdf(IReadOnlyList<FarmerItemBreakdownRow> rows, DateTimeOffset? dateFrom, DateTimeOffset? dateTo, CompanyInfo company);
+    byte[] GenerateDriverItemsStatementPdf(IReadOnlyList<DriverItemBreakdownRow> rows, DateTimeOffset? dateFrom, DateTimeOffset? dateTo, CompanyInfo company);
     byte[] GenerateFarmerStatementPdf(FarmerStatementDto statement, DateTimeOffset? dateFrom, DateTimeOffset? dateTo, CompanyInfo company, decimal previousBalance);
     byte[] SimpleReportToPdf(string title, string[] headers, IEnumerable<string[]> rows);
     byte[] DailyClosingToPdf(DailyClosingDto closing, string marketName);
@@ -535,9 +537,24 @@ public class ExportService : IExportService
     /// style as the other printed documents, not the plain English SimpleReportToPdf used for the
     /// Reports page's internal Excel/PDF exports.
     /// </summary>
-    public byte[] GenerateBuyerStatementPdf(IReadOnlyList<MerchantReportRow> rows, DateTimeOffset? dateFrom, DateTimeOffset? dateTo, CompanyInfo company)
+    /// <summary>
+    /// Dashboard "كشف المشترين حسب الفترة" print button. Used to print only a flat "اسم المشتري +
+    /// المبلغ" list with no item detail at all — every item ever bought during the period silently
+    /// collapsed into one number, unlike the on-screen table right above the print button, which
+    /// already breaks it down per (merchant, item). Now mirrors that same breakdown: grouped by
+    /// merchant (rows already ordered by MerchantName then ItemName — see
+    /// ReportService.MerchantItemBreakdownAsync), each item on its own row with العدد/الوزن split
+    /// the same way every other item table in this app does (a row is always one or the other, never
+    /// both), then a shaded "إجمالي" subtotal row per merchant, and the same overall total in the
+    /// footer as before.
+    /// </summary>
+    public byte[] GenerateBuyerStatementPdf(IReadOnlyList<MerchantItemBreakdownRow> rows, DateTimeOffset? dateFrom, DateTimeOffset? dateTo, CompanyInfo company)
     {
-        var grandTotal = rows.Sum(r => r.TotalPurchases);
+        var grandTotal = rows.Sum(r => r.TotalValue);
+        var merchantGroups = rows
+            .GroupBy(r => (r.MerchantId, r.MerchantName))
+            .Select(g => (g.Key.MerchantId, g.Key.MerchantName, Items: g.ToList(), Subtotal: g.Sum(x => x.TotalValue)))
+            .ToList();
 
         var document = Document.Create(container =>
         {
@@ -570,22 +587,41 @@ public class ExportService : IExportService
                 {
                     table.ColumnsDefinition(columns =>
                     {
-                        columns.RelativeColumn(3);
-                        columns.RelativeColumn(2);
+                        columns.RelativeColumn(3);   // المشتري
+                        columns.RelativeColumn(3);   // الصنف
+                        columns.RelativeColumn(2);   // العدد
+                        columns.RelativeColumn(2);   // الوزن
+                        columns.RelativeColumn(2);   // السعر
                     });
 
                     table.Header(header =>
                     {
                         header.Cell().Element(HeaderCell).AlignRight().Text("المشتري");
-                        header.Cell().Element(HeaderCell).AlignRight().Text("المبلغ");
+                        header.Cell().Element(HeaderCell).AlignRight().Text("الصنف");
+                        header.Cell().Element(HeaderCell).AlignRight().Text("العدد");
+                        header.Cell().Element(HeaderCell).AlignRight().Text("الوزن");
+                        header.Cell().Element(HeaderCell).AlignRight().Text("السعر");
                     });
 
-                    for (var i = 0; i < rows.Count; i++)
+                    var rowIndex = 0;
+                    foreach (var group in merchantGroups)
                     {
-                        var row = rows[i];
-                        var shaded = i % 2 == 1;
-                        table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(row.MerchantName);
-                        table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(row.TotalPurchases.ToString("0.##"));
+                        foreach (var item in group.Items)
+                        {
+                            var shaded = rowIndex % 2 == 1;
+                            table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(group.MerchantName);
+                            table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(item.ItemName);
+                            table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(item.Unit == UnitOfMeasure.Box ? item.TotalQuantity.ToString("0.###") : "—");
+                            table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(item.Unit == UnitOfMeasure.Kg ? $"{item.TotalQuantity:0.###} كغم" : "—");
+                            table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(item.TotalValue.ToString("0.##"));
+                            rowIndex++;
+                        }
+                        // Subtotal row for this merchant — shaded regardless of the alternating
+                        // stripe above it, so it always reads as a distinct summary line, same
+                        // "إجمالي <name>" convention as the Dashboard's own on-screen grouping.
+                        table.Cell().ColumnSpan(4).Element(c => DataCell(c, true)).AlignRight().Text($"إجمالي {group.MerchantName}").Bold();
+                        table.Cell().Element(c => DataCell(c, true)).AlignRight().Text(group.Subtotal.ToString("0.##")).Bold();
+                        rowIndex++;
                     }
                 });
 
@@ -593,6 +629,186 @@ public class ExportService : IExportService
                 {
                     col.Item().LineHorizontal(1).LineColor(Colors.Grey.Darken1);
                     col.Item().PaddingTop(4).AlignRight().Text($"الإجمالي: ₪ {grandTotal:0.##}").Bold().FontSize(13);
+                });
+            });
+        });
+
+        return document.GeneratePdf();
+    }
+
+    /// <summary>
+    /// "طباعة الفواتير" → قسم البائع's "كشف بائع حسب الفترة" print button — farmer counterpart to
+    /// GenerateBuyerStatementPdf right above, same layout and same grouped-by-person + subtotal
+    /// convention, just بائع instead of مشتري. See FarmerItemBreakdownRow's doc comment for what
+    /// TotalValue means here (raw sale value, not net-of-commission).
+    /// </summary>
+    public byte[] GenerateFarmerItemsStatementPdf(IReadOnlyList<FarmerItemBreakdownRow> rows, DateTimeOffset? dateFrom, DateTimeOffset? dateTo, CompanyInfo company)
+    {
+        var grandTotal = rows.Sum(r => r.TotalValue);
+        var farmerGroups = rows
+            .GroupBy(r => (r.FarmerId, r.FarmerName))
+            .Select(g => (g.Key.FarmerId, g.Key.FarmerName, Items: g.ToList(), Subtotal: g.Sum(x => x.TotalValue)))
+            .ToList();
+
+        var document = Document.Create(container =>
+        {
+            container.Page(page =>
+            {
+                page.Size(PageSizes.A4);
+                page.Margin(30);
+                page.DefaultTextStyle(x => x.FontSize(10).FontFamily(PdfFontFamily));
+
+                page.Header().ContentFromRightToLeft().Column(col =>
+                {
+                    CompanyHeaderBlock(col, company, 50f, textCol =>
+                    {
+                        textCol.Item().AlignCenter().Text(company.Name).Bold().FontSize(15);
+                        if (!string.IsNullOrWhiteSpace(company.Phone))
+                            textCol.Item().AlignCenter().Text($"هاتف: {company.Phone}").FontSize(9);
+                    });
+                    col.Item().PaddingTop(6).LineHorizontal(1).LineColor(Colors.Grey.Darken1);
+                    col.Item().PaddingTop(6).AlignCenter().Text("كشف الباعة").Bold().FontSize(14);
+                    if (dateFrom is not null || dateTo is not null)
+                    {
+                        var from = dateFrom is not null ? dateFrom.Value.ToString("yyyy-MM-dd") : "البداية";
+                        var to = dateTo is not null ? dateTo.Value.ToString("yyyy-MM-dd") : "اليوم";
+                        col.Item().Text($"الفترة: من {from} إلى {to}").FontSize(10);
+                    }
+                    col.Item().Text($"تاريخ الطباعة: {DateTimeOffset.Now:yyyy-MM-dd}").FontSize(9).FontColor(Colors.Grey.Darken1);
+                });
+
+                page.Content().ContentFromRightToLeft().PaddingVertical(10).Table(table =>
+                {
+                    table.ColumnsDefinition(columns =>
+                    {
+                        columns.RelativeColumn(3);   // البائع
+                        columns.RelativeColumn(3);   // الصنف
+                        columns.RelativeColumn(2);   // العدد
+                        columns.RelativeColumn(2);   // الوزن
+                        columns.RelativeColumn(2);   // السعر
+                    });
+
+                    table.Header(header =>
+                    {
+                        header.Cell().Element(HeaderCell).AlignRight().Text("البائع");
+                        header.Cell().Element(HeaderCell).AlignRight().Text("الصنف");
+                        header.Cell().Element(HeaderCell).AlignRight().Text("العدد");
+                        header.Cell().Element(HeaderCell).AlignRight().Text("الوزن");
+                        header.Cell().Element(HeaderCell).AlignRight().Text("السعر");
+                    });
+
+                    var rowIndex = 0;
+                    foreach (var group in farmerGroups)
+                    {
+                        foreach (var item in group.Items)
+                        {
+                            var shaded = rowIndex % 2 == 1;
+                            table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(group.FarmerName);
+                            table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(item.ItemName);
+                            table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(item.Unit == UnitOfMeasure.Box ? item.TotalQuantity.ToString("0.###") : "—");
+                            table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(item.Unit == UnitOfMeasure.Kg ? $"{item.TotalQuantity:0.###} كغم" : "—");
+                            table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(item.TotalValue.ToString("0.##"));
+                            rowIndex++;
+                        }
+                        table.Cell().ColumnSpan(4).Element(c => DataCell(c, true)).AlignRight().Text($"إجمالي {group.FarmerName}").Bold();
+                        table.Cell().Element(c => DataCell(c, true)).AlignRight().Text(group.Subtotal.ToString("0.##")).Bold();
+                        rowIndex++;
+                    }
+                });
+
+                page.Footer().ContentFromRightToLeft().Column(col =>
+                {
+                    col.Item().LineHorizontal(1).LineColor(Colors.Grey.Darken1);
+                    col.Item().PaddingTop(4).AlignRight().Text($"الإجمالي: ₪ {grandTotal:0.##}").Bold().FontSize(13);
+                });
+            });
+        });
+
+        return document.GeneratePdf();
+    }
+
+    /// <summary>
+    /// "طباعة الفواتير" → قسم السائق's "كشف سائق حسب الفترة" print button. No "السعر" column here —
+    /// see DriverItemBreakdownRow's doc comment for why a per-item price doesn't apply to a driver —
+    /// so the subtotal per driver shown in the footer of each group is that driver's own
+    /// TotalTransportFee (read once from that driver's first row, never summed across item rows,
+    /// which would multiply it by however many distinct items he carried).
+    /// </summary>
+    public byte[] GenerateDriverItemsStatementPdf(IReadOnlyList<DriverItemBreakdownRow> rows, DateTimeOffset? dateFrom, DateTimeOffset? dateTo, CompanyInfo company)
+    {
+        var driverGroups = rows
+            .GroupBy(r => (r.DriverId, r.DriverName))
+            .Select(g => (g.Key.DriverId, g.Key.DriverName, Items: g.ToList(), TransportFee: g.First().TotalTransportFee))
+            .ToList();
+        var grandTotal = driverGroups.Sum(g => g.TransportFee);
+
+        var document = Document.Create(container =>
+        {
+            container.Page(page =>
+            {
+                page.Size(PageSizes.A4);
+                page.Margin(30);
+                page.DefaultTextStyle(x => x.FontSize(10).FontFamily(PdfFontFamily));
+
+                page.Header().ContentFromRightToLeft().Column(col =>
+                {
+                    CompanyHeaderBlock(col, company, 50f, textCol =>
+                    {
+                        textCol.Item().AlignCenter().Text(company.Name).Bold().FontSize(15);
+                        if (!string.IsNullOrWhiteSpace(company.Phone))
+                            textCol.Item().AlignCenter().Text($"هاتف: {company.Phone}").FontSize(9);
+                    });
+                    col.Item().PaddingTop(6).LineHorizontal(1).LineColor(Colors.Grey.Darken1);
+                    col.Item().PaddingTop(6).AlignCenter().Text("كشف السواق").Bold().FontSize(14);
+                    if (dateFrom is not null || dateTo is not null)
+                    {
+                        var from = dateFrom is not null ? dateFrom.Value.ToString("yyyy-MM-dd") : "البداية";
+                        var to = dateTo is not null ? dateTo.Value.ToString("yyyy-MM-dd") : "اليوم";
+                        col.Item().Text($"الفترة: من {from} إلى {to}").FontSize(10);
+                    }
+                    col.Item().Text($"تاريخ الطباعة: {DateTimeOffset.Now:yyyy-MM-dd}").FontSize(9).FontColor(Colors.Grey.Darken1);
+                });
+
+                page.Content().ContentFromRightToLeft().PaddingVertical(10).Table(table =>
+                {
+                    table.ColumnsDefinition(columns =>
+                    {
+                        columns.RelativeColumn(3);   // السائق
+                        columns.RelativeColumn(3);   // الصنف
+                        columns.RelativeColumn(2);   // العدد
+                        columns.RelativeColumn(2);   // الوزن
+                    });
+
+                    table.Header(header =>
+                    {
+                        header.Cell().Element(HeaderCell).AlignRight().Text("السائق");
+                        header.Cell().Element(HeaderCell).AlignRight().Text("الصنف");
+                        header.Cell().Element(HeaderCell).AlignRight().Text("العدد");
+                        header.Cell().Element(HeaderCell).AlignRight().Text("الوزن");
+                    });
+
+                    var rowIndex = 0;
+                    foreach (var group in driverGroups)
+                    {
+                        foreach (var item in group.Items)
+                        {
+                            var shaded = rowIndex % 2 == 1;
+                            table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(group.DriverName);
+                            table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(item.ItemName);
+                            table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(item.Unit == UnitOfMeasure.Box ? item.TotalQuantity.ToString("0.###") : "—");
+                            table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(item.Unit == UnitOfMeasure.Kg ? $"{item.TotalQuantity:0.###} كغم" : "—");
+                            rowIndex++;
+                        }
+                        table.Cell().ColumnSpan(3).Element(c => DataCell(c, true)).AlignRight().Text($"إجمالي أجرة نقل {group.DriverName}").Bold();
+                        table.Cell().Element(c => DataCell(c, true)).AlignRight().Text(group.TransportFee.ToString("0.##")).Bold();
+                        rowIndex++;
+                    }
+                });
+
+                page.Footer().ContentFromRightToLeft().Column(col =>
+                {
+                    col.Item().LineHorizontal(1).LineColor(Colors.Grey.Darken1);
+                    col.Item().PaddingTop(4).AlignRight().Text($"إجمالي أجرة النقل: ₪ {grandTotal:0.##}").Bold().FontSize(13);
                 });
             });
         });

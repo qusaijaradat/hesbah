@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { createPartner, deletePartner, listPartners, updatePartner } from "../api/partners";
 import type { PartnerDto, PartnerType } from "../types";
@@ -32,6 +33,31 @@ export function PartnersPage() {
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search]);
+
+  // "الرصيد" column: a Both partner (farmer+merchant) has TWO independent balances — shown one
+  // under the other, each labeled, rather than combined into one misleading number. A single-role
+  // partner just shows their one figure with no label. Red when negative (mirrors every other
+  // "remaining" figure in the app — e.g. BulkPrintPage's SectionTable).
+  function renderRemaining(p: PartnerDto) {
+    const farmerLabel = p.type === "Driver" ? "سائق" : "بائع";
+    const isBoth = p.type === "Both";
+    const lines: ReactNode[] = [];
+    if (p.farmerRemaining != null) {
+      lines.push(
+        <div key="farmer" className={p.farmerRemaining < 0 ? "text-red-600" : ""}>
+          {isBoth && `${farmerLabel}: `}{formatCurrency(p.farmerRemaining)}
+        </div>
+      );
+    }
+    if (p.merchantRemaining != null) {
+      lines.push(
+        <div key="merchant" className={p.merchantRemaining < 0 ? "text-red-600" : ""}>
+          {isBoth && "مشتري: "}{formatCurrency(p.merchantRemaining)}
+        </div>
+      );
+    }
+    return lines.length > 0 ? <div className="font-semibold text-sm">{lines}</div> : <span className="text-gray-400">—</span>;
+  }
 
   async function handleDelete(p: PartnerDto) {
     if (!window.confirm(`حذف "${p.name}"؟ لا يمكن التراجع عن هذا.`)) return;
@@ -74,15 +100,16 @@ export function PartnersPage() {
               <th>رقم واتساب</th>
               <th>العنوان</th>
               <th>الحد الائتماني</th>
+              <th>الرصيد</th>
               <th>ملاحظات</th>
               <th></th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={7} className="text-center text-gray-400 py-6">جاري التحميل...</td></tr>
+              <tr><td colSpan={8} className="text-center text-gray-400 py-6">جاري التحميل...</td></tr>
             ) : partners.length === 0 ? (
-              <tr><td colSpan={7} className="text-center text-gray-400 py-6">لا يوجد نتائج</td></tr>
+              <tr><td colSpan={8} className="text-center text-gray-400 py-6">لا يوجد نتائج</td></tr>
             ) : (
               partners.map((p) => (
                 <tr key={p.id}>
@@ -91,6 +118,7 @@ export function PartnersPage() {
                   <td>{p.whatsAppNumber || "—"}</td>
                   <td className="text-gray-500">{p.address || "—"}</td>
                   <td>{p.creditLimit != null ? formatCurrency(p.creditLimit) : "—"}</td>
+                  <td>{renderRemaining(p)}</td>
                   <td className="text-gray-500">{p.notes || "—"}</td>
                   <td className="whitespace-nowrap">
                     {/* Label reflects this person's ACTUAL type — not a blanket "بائع/سائق" for

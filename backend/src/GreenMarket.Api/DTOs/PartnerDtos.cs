@@ -5,8 +5,20 @@ namespace GreenMarket.Api.DTOs;
 /// <summary>OpeningBalance ("الرصيد الافتتاحي") is a manually-entered starting balance for money
 /// already owed to/from this person before this system was in use — see Partner.OpeningBalance's
 /// doc comment for the sign convention. Address ("العنوان") is plain optional free text, purely
-/// informational — see Partner.Address's doc comment.</summary>
-public record PartnerDto(int Id, string Name, PartnerType? Type, string? WhatsAppNumber, string? Address, string? Notes, decimal? CreditLimit, decimal? OpeningBalance);
+/// informational — see Partner.Address's doc comment.
+///
+/// FarmerRemaining/MerchantRemaining ("الرصيد") are populated only by PartnerService.ListAsync (the
+/// "الباعة والسواق والمشترين" list page) — the same bulk-aggregated Remaining formula as
+/// GetFarmerAccountAsync/GetMerchantAccountAsync/GetDebtsOverviewAsync, one grouped query across the
+/// whole page instead of a round trip per row. They're two entirely separate figures, never combined
+/// into one number, because a Both partner (farmer+merchant) genuinely has two independent balances —
+/// same convention as their two separate "كشف حساب" links. Each is null when it doesn't apply to this
+/// partner's Type (e.g. MerchantRemaining is null for a pure Farmer/Driver), and both are null on
+/// GetAsync/CreateAsync/UpdateAsync, which don't compute this at all.</summary>
+public record PartnerDto(
+    int Id, string Name, PartnerType? Type, string? WhatsAppNumber, string? Address, string? Notes,
+    decimal? CreditLimit, decimal? OpeningBalance,
+    decimal? FarmerRemaining = null, decimal? MerchantRemaining = null);
 
 public record PartnerSuggestionDto(int Id, string Name, PartnerType? Type);
 
@@ -63,3 +75,26 @@ public record DebtsOverviewDto(
     IReadOnlyList<PartnerDebtRow> Farmers,
     IReadOnlyList<PartnerDebtRow> Drivers,
     IReadOnlyList<PartnerDebtRow> Merchants);
+
+/// <summary>
+/// "قيمة الديون" drill-down: one item line off one of this partner's own Active invoices — the
+/// un-aggregated, all-time detail behind that page's per-person amount (requirement: click through
+/// and see exactly which invoices/items/quantities/prices make up the number). No date filter, same
+/// convention as PartnerDebtRow.Remaining itself being an all-time running total.
+///
+/// TransportFee/GrandTotal are INVOICE-level figures, never per item — repeated identically across
+/// every one of that invoice's own item rows (an invoice can have more than one item line). Read
+/// them once per invoice (e.g. from that invoice's first row), never sum them across item rows, or
+/// a multi-item invoice's transport fee/grand total would be counted more than once — same
+/// convention as DriverItemBreakdownRow.TotalTransportFee.
+/// </summary>
+public record PartnerInvoiceItemLineDto(
+    int InvoiceId, string InvoiceNumber, DateTimeOffset Date,
+    string ItemName, UnitOfMeasure Unit, decimal Quantity, decimal PricePerUnit, decimal WoodPrice, decimal LineTotal,
+    decimal TransportFee, decimal GrandTotal);
+
+/// <summary>Wraps the itemized lines above with the partner's own id/name — see
+/// PartnerService.GetFarmerInvoiceDetailAsync (بائع/سائق side, matched by Invoice.FarmerId or
+/// Invoice.DriverId depending on partner Type — same page-sharing convention as
+/// GetFarmerAccountAsync) and GetMerchantInvoiceDetailAsync (مشتري side, Invoice.MerchantId).</summary>
+public record PartnerInvoiceDetailDto(int PartnerId, string PartnerName, IReadOnlyList<PartnerInvoiceItemLineDto> Lines);

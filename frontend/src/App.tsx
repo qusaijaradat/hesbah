@@ -11,6 +11,7 @@ import { FarmerGoodsPage } from "./pages/FarmerGoodsPage";
 import { DebtsOverviewPage } from "./pages/DebtsOverviewPage";
 import { ItemsPage } from "./pages/ItemsPage";
 import { FarmerAccountPage, MerchantAccountPage } from "./pages/PartnerAccountPage";
+import { FarmerInvoiceDetailPage, MerchantInvoiceDetailPage } from "./pages/PartnerInvoiceDetailPage";
 import { InvoicesPage } from "./pages/InvoicesPage";
 import { InvoiceNewPage } from "./pages/InvoiceNewPage";
 import { InvoiceEditPage } from "./pages/InvoiceEditPage";
@@ -55,6 +56,8 @@ export default function App() {
           <Route path="/items" element={<Protected permission="items.view"><ItemsPage /></Protected>} />
           <Route path="/partners/:id/farmer-account" element={<Protected permission="partners.view"><FarmerAccountPage /></Protected>} />
           <Route path="/partners/:id/merchant-account" element={<Protected permission="partners.view"><MerchantAccountPage /></Protected>} />
+          <Route path="/partners/:id/farmer-invoice-detail" element={<Protected permission="partners.view"><FarmerInvoiceDetailPage /></Protected>} />
+          <Route path="/partners/:id/merchant-invoice-detail" element={<Protected permission="partners.view"><MerchantInvoiceDetailPage /></Protected>} />
           <Route path="/payments" element={<Protected permission="payments.view"><PaymentsPage /></Protected>} />
           <Route path="/employees" element={<Protected permission="employees.view"><EmployeesPage /></Protected>} />
           <Route path="/reports" element={<Protected permission="reports.view"><ReportsPage /></Protected>} />

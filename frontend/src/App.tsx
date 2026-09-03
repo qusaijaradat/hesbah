@@ -50,7 +50,7 @@ export default function App() {
           <Route path="/invoices/:id/edit" element={<Protected permission="invoices.edit"><InvoiceEditPage /></Protected>} />
           <Route path="/invoices/:id" element={<Protected permission="invoices.view"><InvoiceDetailPage /></Protected>} />
           <Route path="/partners" element={<Protected permission="partners.view"><PartnersPage /></Protected>} />
-          <Route path="/farmers-goods" element={<Protected permission="invoices.view"><FarmerGoodsPage /></Protected>} />
+          <Route path="/farmers-goods" element={<Protected permission="farmerGoods.view"><FarmerGoodsPage /></Protected>} />
           <Route path="/debts" element={<Protected permission="partners.view"><DebtsOverviewPage /></Protected>} />
           <Route path="/items" element={<Protected permission="items.view"><ItemsPage /></Protected>} />
           <Route path="/partners/:id/farmer-account" element={<Protected permission="partners.view"><FarmerAccountPage /></Protected>} />

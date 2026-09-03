@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { cancelInvoice, downloadInvoicePdf, getInvoice, triggerBlobDownload } from "../api/invoices";
+import { getFarmerAccount } from "../api/partners";
 import { listSettings } from "../api/settings";
 import type { InvoiceDto } from "../types";
 import { buildStatementMessage, buildWhatsAppLink, formatCurrency, formatDate, formatQuantity, formatWeight } from "../lib/format";
@@ -21,6 +22,9 @@ export function InvoiceDetailPage() {
   const [companyPhone, setCompanyPhone] = useState<string | null>(null);
   const [printing, setPrinting] = useState(false);
   const [sharing, setSharing] = useState(false);
+  // Tracks which WhatsApp button is mid-send (fetching a farmer/driver's live account balance
+  // takes a round trip) so only that one button shows a busy state.
+  const [sendingRole, setSendingRole] = useState<"merchant" | "farmer" | "driver" | null>(null);
   // Informational (not an error) — e.g. "your browser can't share files, downloaded it instead".
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -36,10 +40,23 @@ export function InvoiceDetailPage() {
 
   // Sends the invoice details as a WhatsApp text message only — no PDF file, no download,
   // no manual attach step. Just the numbers, straight to WhatsApp in one click.
-  function handleSendWhatsApp(phone: string, partnerName: string) {
+  // "الرصيد السابق": for the merchant it's already computed on the invoice itself (excludes just
+  // this one invoice). For the farmer/driver it's their own account's current balance — same
+  // "كشف حساب" figure their account page shows, per the same convention used on InvoicesPage.tsx
+  // and BulkPrintPage.tsx.
+  async function handleSendWhatsApp(phone: string, partnerName: string, role: "merchant" | "farmer" | "driver") {
     if (!invoice) return;
-    const message = buildStatementMessage(companyName, companyPhone, partnerName, [invoice]);
-    window.open(buildWhatsAppLink(phone, message), "_blank");
+    setSendingRole(role);
+    try {
+      let previousBalance: number | undefined;
+      if (role === "merchant") previousBalance = invoice.previousBalance;
+      else if (role === "farmer" && invoice.farmerId) previousBalance = (await getFarmerAccount(invoice.farmerId)).remaining;
+      else if (role === "driver" && invoice.driverId) previousBalance = (await getFarmerAccount(invoice.driverId)).remaining;
+      const message = buildStatementMessage(companyName, companyPhone, partnerName, [invoice], previousBalance);
+      window.open(buildWhatsAppLink(phone, message), "_blank");
+    } finally {
+      setSendingRole(null);
+    }
   }
 
   // Opens the invoice's PDF (Arabic header, no invoice number, per lib/format.ts template) in a
@@ -202,18 +219,18 @@ export function InvoiceDetailPage() {
             {sharing ? "جاري التجهيز..." : "📎 مشاركة الفاتورة (ملف)"}
           </button>
           {invoice.merchantWhatsApp && (
-            <button className="btn-primary" onClick={() => handleSendWhatsApp(invoice.merchantWhatsApp!, invoice.merchantName)}>
-              📤 إرسال للمشتري عبر واتساب
+            <button className="btn-primary" disabled={sendingRole === "merchant"} onClick={() => handleSendWhatsApp(invoice.merchantWhatsApp!, invoice.merchantName, "merchant")}>
+              {sendingRole === "merchant" ? "جاري التجهيز..." : "📤 إرسال للمشتري عبر واتساب"}
             </button>
           )}
           {invoice.farmerWhatsApp && invoice.farmerName && (
-            <button className="btn-primary" onClick={() => handleSendWhatsApp(invoice.farmerWhatsApp!, invoice.farmerName!)}>
-              📤 إرسال للبائع عبر واتساب
+            <button className="btn-primary" disabled={sendingRole === "farmer"} onClick={() => handleSendWhatsApp(invoice.farmerWhatsApp!, invoice.farmerName!, "farmer")}>
+              {sendingRole === "farmer" ? "جاري التجهيز..." : "📤 إرسال للبائع عبر واتساب"}
             </button>
           )}
           {invoice.driverWhatsApp && invoice.driverName && (
-            <button className="btn-primary" onClick={() => handleSendWhatsApp(invoice.driverWhatsApp!, invoice.driverName!)}>
-              📤 إرسال للسائق عبر واتساب
+            <button className="btn-primary" disabled={sendingRole === "driver"} onClick={() => handleSendWhatsApp(invoice.driverWhatsApp!, invoice.driverName!, "driver")}>
+              {sendingRole === "driver" ? "جاري التجهيز..." : "📤 إرسال للسائق عبر واتساب"}
             </button>
           )}
           {invoice.status === "Active" && hasPermission("invoices.edit") && (

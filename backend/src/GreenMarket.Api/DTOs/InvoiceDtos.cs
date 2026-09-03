@@ -71,7 +71,9 @@ public record InvoiceDto(
 public record InvoiceListItemDto(
     int Id, string InvoiceNumber, DateTimeOffset Date,
     int MerchantId, string MerchantName, string? MerchantWhatsApp,
-    string? FarmerName, string? FarmerWhatsApp,
+    // FarmerId mirrors DriverId — the bulk-print page's farmer WhatsApp grouping needs a stable
+    // identity to group by (two farmers can share a display name), not just FarmerName/WhatsApp.
+    int? FarmerId, string? FarmerName, string? FarmerWhatsApp,
     int? DriverId, string? DriverName, string? DriverWhatsApp,
     InvoiceStatus Status,
     decimal TotalWeightKg, decimal TotalBoxes, decimal TotalValue, decimal TransportFee, decimal GrandTotal,

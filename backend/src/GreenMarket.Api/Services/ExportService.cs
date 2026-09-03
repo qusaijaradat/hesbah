@@ -31,9 +31,9 @@ public interface IExportService
 
     byte[] GenerateInvoicePdf(InvoiceDto invoice, CompanyInfo company, bool thermalWidth);
     byte[] GenerateInvoicesBulkPdf(IReadOnlyList<InvoiceDto> invoices, CompanyInfo company);
-    byte[] GenerateDriverManifestPdf(string driverName, IReadOnlyList<InvoiceDto> invoices, CompanyInfo company);
+    byte[] GenerateDriverManifestPdf(string driverName, IReadOnlyList<InvoiceDto> invoices, CompanyInfo company, decimal previousBalance);
     byte[] GenerateBuyerStatementPdf(IReadOnlyList<MerchantReportRow> rows, DateTimeOffset? dateFrom, DateTimeOffset? dateTo, CompanyInfo company);
-    byte[] GenerateFarmerStatementPdf(FarmerStatementDto statement, DateTimeOffset? dateFrom, DateTimeOffset? dateTo, CompanyInfo company);
+    byte[] GenerateFarmerStatementPdf(FarmerStatementDto statement, DateTimeOffset? dateFrom, DateTimeOffset? dateTo, CompanyInfo company, decimal previousBalance);
     byte[] SimpleReportToPdf(string title, string[] headers, IEnumerable<string[]> rows);
     byte[] DailyClosingToPdf(DailyClosingDto closing, string marketName);
 }
@@ -451,10 +451,15 @@ public class ExportService : IExportService
     /// with a grand total at the bottom. Replaces the earlier per-farmer itemized manifest design
     /// entirely.
     /// </summary>
-    public byte[] GenerateDriverManifestPdf(string driverName, IReadOnlyList<InvoiceDto> invoices, CompanyInfo company)
+    public byte[] GenerateDriverManifestPdf(string driverName, IReadOnlyList<InvoiceDto> invoices, CompanyInfo company, decimal previousBalance)
     {
         var orderedInvoices = invoices.OrderBy(i => i.Date).ToList();
         var grandTotal = orderedInvoices.Sum(i => i.TransportFee);
+        // Informational only — wood/crate price is charged to the MERCHANT, never owed to the
+        // driver, so it's shown per-invoice on this manifest (cargo detail) but deliberately kept
+        // OUT of grandTotal/الرصيد السابق below, unlike the merchant-facing PDFs where it's part
+        // of what's actually due.
+        var woodTotal = orderedInvoices.Sum(i => i.WoodTotal);
 
         var document = Document.Create(container =>
         {
@@ -484,12 +489,14 @@ public class ExportService : IExportService
                     {
                         columns.RelativeColumn(3);
                         columns.RelativeColumn(2);
+                        columns.RelativeColumn(2);
                     });
 
                     table.Header(header =>
                     {
                         header.Cell().Element(HeaderCell).AlignRight().Text("المشتري");
                         header.Cell().Element(HeaderCell).AlignRight().Text("أجرة النقل");
+                        header.Cell().Element(HeaderCell).AlignRight().Text("سعر الخشب");
                     });
 
                     for (var i = 0; i < orderedInvoices.Count; i++)
@@ -498,13 +505,21 @@ public class ExportService : IExportService
                         var shaded = i % 2 == 1;
                         table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(invoice.MerchantName);
                         table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(invoice.TransportFee.ToString("0.##"));
+                        table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(invoice.WoodTotal > 0 ? invoice.WoodTotal.ToString("0.##") : "—");
                     }
                 });
 
                 page.Footer().ContentFromRightToLeft().Column(col =>
                 {
                     col.Item().LineHorizontal(1).LineColor(Colors.Grey.Darken1);
-                    col.Item().PaddingTop(4).AlignRight().Text($"الإجمالي: ₪ {grandTotal:0.##}").Bold().FontSize(13);
+                    if (woodTotal > 0)
+                        col.Item().AlignRight().Text($"إجمالي سعر الخشب (للعلم فقط — ليس من مستحقات السائق): ₪ {woodTotal:0.##}").FontSize(9);
+                    col.Item().PaddingTop(4).AlignRight().Text($"إجمالي أجرة النقل: ₪ {grandTotal:0.##}").Bold().FontSize(13);
+                    if (previousBalance != 0)
+                    {
+                        col.Item().PaddingTop(2).AlignRight().Text($"الرصيد السابق (رصيد حساب السائق الحالي): ₪ {previousBalance:0.##}").FontSize(10);
+                        col.Item().PaddingTop(2).AlignRight().Text($"الإجمالي المستحق: ₪ {(grandTotal + previousBalance):0.##}").Bold().FontSize(13);
+                    }
                 });
             });
         });
@@ -597,7 +612,7 @@ public class ExportService : IExportService
     /// mirrors GrandTotal's TotalValue + WoodTotal (no TransportFee: that belongs to a driver
     /// statement, not this one).
     /// </summary>
-    public byte[] GenerateFarmerStatementPdf(FarmerStatementDto statement, DateTimeOffset? dateFrom, DateTimeOffset? dateTo, CompanyInfo company)
+    public byte[] GenerateFarmerStatementPdf(FarmerStatementDto statement, DateTimeOffset? dateFrom, DateTimeOffset? dateTo, CompanyInfo company, decimal previousBalance)
     {
         var lines = statement.Lines;
         var totalWeightKg = lines.Where(l => l.Unit == UnitOfMeasure.Kg).Sum(l => l.Quantity);
@@ -683,6 +698,11 @@ public class ExportService : IExportService
                     if (woodTotal > 0)
                         col.Item().AlignRight().Text($"إجمالي الخشب: ₪ {woodTotal:0.##}").FontSize(9);
                     col.Item().PaddingTop(4).AlignRight().Text($"المجموع: ₪ {grandTotal:0.##}").Bold().FontSize(13);
+                    if (previousBalance != 0)
+                    {
+                        col.Item().PaddingTop(2).AlignRight().Text($"الرصيد السابق (رصيد حساب البائع الحالي): ₪ {previousBalance:0.##}").FontSize(10);
+                        col.Item().PaddingTop(2).AlignRight().Text($"الإجمالي المستحق: ₪ {(grandTotal + previousBalance):0.##}").Bold().FontSize(13);
+                    }
                 });
             });
         });
@@ -755,8 +775,18 @@ public class ExportService : IExportService
             col.Item().PaddingTop(4).LineHorizontal(0.5f).LineColor(Colors.Grey.Lighten1);
             // Card is a quarter-page — a per-line wood/transport breakdown doesn't fit, so this
             // shows GrandTotal directly (product + wood + transport) rather than the sub-total
-            // breakdown the full single-invoice PDF shows above.
+            // breakdown the full single-invoice PDF shows above, plus a compact "منها سعر الخشب"
+            // line so the wood/crate charge stays visible instead of disappearing silently into
+            // GrandTotal. الرصيد السابق mirrors the single-invoice PDF's own treatment exactly
+            // (same InvoiceDto.PreviousBalance, same "add it on top of GrandTotal" behavior).
+            if (invoice.WoodTotal > 0)
+                col.Item().AlignRight().Text($"منها سعر الخشب: ₪ {invoice.WoodTotal:0.##}").FontSize(7);
             col.Item().PaddingTop(2).AlignRight().Text($"الإجمالي: ₪ {invoice.GrandTotal:0.##}").Bold().FontSize(10);
+            if (invoice.PreviousBalance > 0)
+            {
+                col.Item().AlignRight().Text($"الرصيد السابق: ₪ {invoice.PreviousBalance:0.##}").FontSize(7);
+                col.Item().PaddingTop(1).AlignRight().Text($"الإجمالي المستحق: ₪ {(invoice.GrandTotal + invoice.PreviousBalance):0.##}").Bold().FontSize(10);
+            }
         });
     }
 

@@ -42,6 +42,7 @@ builder.Services.AddScoped<IInvoiceService, InvoiceService>();
 builder.Services.AddScoped<IPaymentService, PaymentService>();
 builder.Services.AddScoped<IExpenseService, ExpenseService>();
 builder.Services.AddScoped<IEmployeeService, EmployeeService>();
+builder.Services.AddScoped<IGoodsService, GoodsService>();
 builder.Services.AddScoped<IReportService, ReportService>();
 builder.Services.AddScoped<ISettingsService, SettingsService>();
 builder.Services.AddScoped<ICompanyLogoService, CompanyLogoService>();
@@ -309,6 +310,38 @@ using (var scope = app.Services.CreateScope())
     catch (Exception ex)
     {
         app.Logger.LogError(ex, "Failed to add the partners.Address column — recording an address for a farmer/driver/merchant will not work until this is fixed.");
+    }
+
+    // Same EnsureCreated gap as "employees" above: the new "goods stock" feature (بضاعة الباعة —
+    // "إضافة بضاعة") needs a brand-new "farmer_goods_entries" table, which EnsureCreated will not
+    // add to an already-existing database. No FK constraint on FarmerId, same tradeoff already
+    // accepted for employees/expenses above.
+    try
+    {
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE TABLE IF NOT EXISTS farmer_goods_entries (
+                "Id" SERIAL PRIMARY KEY,
+                "FarmerId" integer NOT NULL,
+                "Date" timestamp with time zone NOT NULL,
+                "ItemName" character varying(200) NOT NULL,
+                "Unit" integer NOT NULL,
+                "Quantity" numeric(14,3) NOT NULL DEFAULT 0,
+                "WoodQuantity" numeric(14,3) NOT NULL DEFAULT 0,
+                "Notes" character varying(500) NULL,
+                "CreatedAt" timestamp with time zone NOT NULL DEFAULT now(),
+                "CreatedByUserId" integer NULL,
+                "UpdatedAt" timestamp with time zone NULL,
+                "UpdatedByUserId" integer NULL,
+                "IsDeleted" boolean NOT NULL DEFAULT FALSE
+            );
+            CREATE INDEX IF NOT EXISTS ix_farmer_goods_entries_farmerid ON farmer_goods_entries ("FarmerId");
+            CREATE INDEX IF NOT EXISTS ix_farmer_goods_entries_date ON farmer_goods_entries ("Date");
+            CREATE INDEX IF NOT EXISTS ix_farmer_goods_entries_itemname ON farmer_goods_entries ("ItemName");
+            """);
+    }
+    catch (Exception ex)
+    {
+        app.Logger.LogError(ex, "Failed to create the farmer_goods_entries table — recording/viewing a farmer's incoming goods stock will not work until this is fixed.");
     }
 
     await DbSeeder.SeedAsync(db);

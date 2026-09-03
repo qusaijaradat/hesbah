@@ -18,13 +18,15 @@ public class InvoicesController : ControllerBase
     private readonly IExportService _exportService;
     private readonly ISettingsService _settingsService;
     private readonly ICompanyLogoService _logoService;
+    private readonly IPartnerService _partnerService;
 
-    public InvoicesController(IInvoiceService invoiceService, IExportService exportService, ISettingsService settingsService, ICompanyLogoService logoService)
+    public InvoicesController(IInvoiceService invoiceService, IExportService exportService, ISettingsService settingsService, ICompanyLogoService logoService, IPartnerService partnerService)
     {
         _invoiceService = invoiceService;
         _exportService = exportService;
         _settingsService = settingsService;
         _logoService = logoService;
+        _partnerService = partnerService;
     }
 
     [HttpGet]
@@ -105,8 +107,13 @@ public class InvoicesController : ControllerBase
 
         var invoices = await _invoiceService.GetManyAsync(ids);
         var driverName = invoices.Select(i => i.DriverName).FirstOrDefault(n => !string.IsNullOrWhiteSpace(n)) ?? "غير محدد";
+        var driverId = invoices.Select(i => i.DriverId).FirstOrDefault(id => id is not null);
+        // "الرصيد السابق" here is this driver's own account balance right now — same كشف حساب
+        // Remaining their account page shows (see AskUserQuestion decision: farmer/driver previous
+        // balance means their CURRENT balance, not a batch-excluded figure like the merchant's).
+        var previousBalance = driverId is not null ? (await _partnerService.GetFarmerAccountAsync(driverId.Value)).Remaining : 0;
         var company = await GetCompanyInfoAsync();
-        var bytes = _exportService.GenerateDriverManifestPdf(driverName, invoices, company);
+        var bytes = _exportService.GenerateDriverManifestPdf(driverName, invoices, company, previousBalance);
         return File(bytes, "application/pdf", "driver-manifest.pdf");
     }
 
@@ -122,8 +129,10 @@ public class InvoicesController : ControllerBase
         if (statement.Lines.Count == 0)
             return BadRequest(new { error = "لا توجد فواتير لهذا البائع ضمن الفترة المحددة." });
 
+        // Same "current account balance right now" convention as the driver manifest above.
+        var previousBalance = (await _partnerService.GetFarmerAccountAsync(farmerId)).Remaining;
         var company = await GetCompanyInfoAsync();
-        var bytes = _exportService.GenerateFarmerStatementPdf(statement, dateFrom, dateTo, company);
+        var bytes = _exportService.GenerateFarmerStatementPdf(statement, dateFrom, dateTo, company, previousBalance);
         return File(bytes, "application/pdf", "farmer-statement.pdf");
     }
 
@@ -133,6 +142,15 @@ public class InvoicesController : ControllerBase
     [RequirePermission(PermissionKeys.InvoicesView)]
     public async Task<ActionResult<FarmerGoodsDto>> FarmerGoods([FromQuery] int farmerId, [FromQuery] DateTimeOffset? dateFrom, [FromQuery] DateTimeOffset? dateTo) =>
         Ok(await _invoiceService.GetFarmerGoodsAsync(farmerId, dateFrom, dateTo));
+
+    /// <summary>BulkPrintPage's merchant-section grouped WhatsApp send: "الرصيد السابق" for a
+    /// message bundling several of this merchant's invoices together (see
+    /// IInvoiceService.GetMerchantGroupPreviousBalanceAsync's doc comment for why this can't just
+    /// reuse one invoice's own PreviousBalance field).</summary>
+    [HttpGet("merchant-previous-balance")]
+    [RequirePermission(PermissionKeys.InvoicesView)]
+    public async Task<ActionResult<decimal>> MerchantGroupPreviousBalance([FromQuery] int merchantId, [FromQuery] List<int> invoiceIds) =>
+        Ok(await _invoiceService.GetMerchantGroupPreviousBalanceAsync(merchantId, invoiceIds ?? new List<int>()));
 
     /// <summary>Builds the printed header's company-identity block entirely from Settings, so the
     /// market can fill in its own name/address/phone/registration number without a code change.</summary>

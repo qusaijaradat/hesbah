@@ -155,6 +155,8 @@ export interface InvoiceListItemDto {
   merchantId: number;
   merchantName: string;
   merchantWhatsApp?: string | null;
+  /** Mirrors driverId — a stable identity to group by (two farmers can share a display name). */
+  farmerId?: number | null;
   farmerName?: string | null;
   farmerWhatsApp?: string | null;
   driverId?: number | null;
@@ -361,6 +363,55 @@ export interface FarmerGoodsDto {
   farmerId: number;
   farmerName: string;
   rows: FarmerGoodsRow[];
+}
+
+// "بضاعة الباعة" page's new "إضافة بضاعة" (goods stock intake) feature — mirrors backend
+// GoodsEntryDto/GoodsStockRow/FarmerGoodsStockDto. See backend FarmerGoodsEntry's doc comment:
+// Available is always computed live (TotalReceived - TotalSold), never a stored running balance.
+export interface GoodsEntryDto {
+  id: number;
+  farmerId: number;
+  farmerName: string;
+  date: string;
+  itemName: string;
+  unit: UnitOfMeasure;
+  quantity: number;
+  woodQuantity: number;
+  notes?: string | null;
+}
+
+export interface CreateGoodsEntryRequest {
+  farmerId: number;
+  date: string;
+  itemName: string;
+  unit: UnitOfMeasure;
+  quantity: number;
+  woodQuantity?: number;
+  notes?: string | null;
+}
+
+export interface UpdateGoodsEntryRequest {
+  date: string;
+  itemName: string;
+  unit: UnitOfMeasure;
+  quantity: number;
+  woodQuantity?: number;
+  notes?: string | null;
+}
+
+export interface GoodsStockRow {
+  itemName: string;
+  unit: UnitOfMeasure;
+  totalReceived: number;
+  totalSold: number;
+  available: number;
+}
+
+export interface FarmerGoodsStockDto {
+  farmerId: number;
+  farmerName: string;
+  entries: GoodsEntryDto[];
+  stock: GoodsStockRow[];
 }
 
 // "قيمة الدين" overview page — mirrors backend PartnerDebtRow/DebtsOverviewDto. Remaining uses the

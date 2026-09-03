@@ -9,7 +9,7 @@ const NAV_ITEMS = [
   { to: "/items", label: "الأصناف", permission: "items.view" },
   { to: "/daily-closing", label: "الإغلاق اليومي", permission: "reports.view" },
   { to: "/partners", label: "الباعة والسواق والمشترين", permission: "partners.view" },
-  { to: "/farmers-goods", label: "بضاعة الباعة", permission: "invoices.view" },
+  { to: "/farmers-goods", label: "بضاعة الباعة", permission: "farmerGoods.view" },
   { to: "/debts", label: "قيمة الديون", permission: "partners.view" },
   { to: "/payments", label: "الدفعات والمصاريف", permission: "payments.view" },
   { to: "/employees", label: "الموظفون", permission: "employees.view" },

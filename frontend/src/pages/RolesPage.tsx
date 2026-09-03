@@ -37,6 +37,11 @@ const PERMISSION_LABELS: Record<string, string> = {
   "employees.edit": "تعديل موظف",
   "employees.delete": "حذف موظف (فقط إن لم تُسجَّل له مصاريف)",
 
+  "farmerGoods.view": "إظهار بضاعة الباعة (المتوفر والمباع)",
+  "farmerGoods.create": "إضافة بضاعة لبائع",
+  "farmerGoods.edit": "تعديل بضاعة مضافة",
+  "farmerGoods.delete": "حذف بضاعة مضافة",
+
   "reports.view": "عرض التقارير",
   "reports.export": "تصدير التقارير (Excel/PDF)",
 
@@ -62,6 +67,7 @@ const GROUP_LABELS: Record<string, string> = {
   payments: "الدفعات",
   expenses: "المصاريف",
   employees: "الموظفون",
+  farmerGoods: "بضاعة الباعة",
   reports: "التقارير",
   settings: "الإعدادات",
   users: "المستخدمون",

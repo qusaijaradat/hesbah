@@ -71,8 +71,11 @@ export function buildWhatsAppLink(phone: string, message: string): string {
 interface StatementInvoiceLike {
   invoiceNumber: string;
   date: string;
-  items: { itemName: string; quantity: number; unit: "Kg" | "Box"; pricePerUnit: number; lineTotal: number }[];
+  items: { itemName: string; quantity: number; unit: "Kg" | "Box"; pricePerUnit: number; lineTotal: number; woodPrice: number }[];
   totalValue: number;
+  transportFee: number;
+  woodTotal: number;
+  grandTotal: number;
 }
 
 /**
@@ -83,12 +86,26 @@ interface StatementInvoiceLike {
  * consolidated bulk-print WhatsApp message (BulkPrintPage, called with all of that trader's
  * matching invoices) — same wording, same layout, whether the invoice count is one or many.
  * The printed PDF (ExportService.GenerateInvoicesBulkPdf) mirrors this same content.
+ *
+ * Sums each invoice's own GrandTotal (product + wood + transport) rather than just totalValue —
+ * this used to silently drop سعر الخشب/أجرة النقل from "الإجمالي الكلي", showing an amount smaller
+ * than what's actually owed. WoodPrice is also shown per line (and per-invoice, when nonzero) so
+ * it stays visible in detail instead of only folded into the total, matching every other item
+ * table in this app.
+ *
+ * previousBalance, when passed (and nonzero), is shown as its own line and added on top of the
+ * grand total for "الإجمالي المستحق" — same "add the previous balance on top" convention as the
+ * printed invoice PDF. Callers decide what "previous balance" means for who they're messaging
+ * (see BulkPrintPage.tsx: the merchant's is computed excluding this whole batch of invoices to
+ * avoid double-counting when several of their invoices are bundled into one message; the
+ * farmer's/driver's is simply their own account's current Remaining).
  */
 export function buildStatementMessage(
   companyName: string,
   companyPhone: string | undefined | null,
   partnerName: string,
   invoices: StatementInvoiceLike[],
+  previousBalance?: number,
 ): string {
   const lines: string[] = [companyName];
   if (companyPhone) lines.push(`هاتف: ${companyPhone}`);
@@ -100,12 +117,19 @@ export function buildStatementMessage(
     lines.push("");
     lines.push(`فاتورة ${inv.invoiceNumber} (${formatDate(inv.date)})`);
     for (const it of inv.items) {
-      lines.push(`- ${it.itemName}: ${formatQuantity(it.quantity, it.unit)} × ${formatCurrency(it.pricePerUnit)} = ${formatCurrency(it.lineTotal)}`);
+      const woodNote = it.woodPrice > 0 ? ` (منها سعر خشب: ${formatCurrency(it.woodPrice)})` : "";
+      lines.push(`- ${it.itemName}: ${formatQuantity(it.quantity, it.unit)} × ${formatCurrency(it.pricePerUnit)} = ${formatCurrency(it.lineTotal)}${woodNote}`);
     }
-    grandTotal += inv.totalValue;
+    if (inv.woodTotal > 0) lines.push(`  إجمالي سعر الخشب لهذه الفاتورة: ${formatCurrency(inv.woodTotal)}`);
+    if (inv.transportFee > 0) lines.push(`  أجرة النقل: ${formatCurrency(inv.transportFee)}`);
+    grandTotal += inv.grandTotal;
   }
 
   lines.push("");
   lines.push(`الإجمالي الكلي: ${formatCurrency(grandTotal)}`);
+  if (previousBalance !== undefined && previousBalance !== 0) {
+    lines.push(`الرصيد السابق: ${formatCurrency(previousBalance)}`);
+    lines.push(`الإجمالي المستحق: ${formatCurrency(grandTotal + previousBalance)}`);
+  }
   return lines.join("\n");
 }

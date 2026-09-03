@@ -18,6 +18,16 @@ public interface IInvoiceService
     Task<InvoiceDto> CancelAsync(int id, CancelInvoiceRequest request, int cancelledByUserId);
     Task<FarmerStatementDto> GetFarmerStatementAsync(int farmerId, DateTimeOffset? dateFrom, DateTimeOffset? dateTo);
     Task<FarmerGoodsDto> GetFarmerGoodsAsync(int farmerId, DateTimeOffset? dateFrom, DateTimeOffset? dateTo);
+
+    /// <summary>
+    /// BulkPrintPage's merchant-section grouped WhatsApp send: "الرصيد السابق" for a MESSAGE that
+    /// bundles several of this merchant's invoices together (same day, per the page's own
+    /// same-day grouping) has to exclude ALL of them at once, not just one — reusing
+    /// ComputePreviousBalanceAsync's single-id exclusion here would double-count every OTHER
+    /// invoice in the same group (each one's own total would still be sitting inside "what they
+    /// owe from every other Active invoice"). See ComputePreviousBalanceAsync's own doc comment.
+    /// </summary>
+    Task<decimal> GetMerchantGroupPreviousBalanceAsync(int merchantId, IReadOnlyList<int> invoiceIds);
 }
 
 /// <summary>
@@ -331,8 +341,15 @@ public class InvoiceService : IInvoiceService
     /// "what's actually still owed right now", not a snapshot frozen at some past invoice date.
     /// Clamped to 0 so a merchant who has overpaid never shows a negative "balance owed" on their
     /// next invoice (that's a credit situation, a different feature not covered here).
+    ///
+    /// Takes a SET of invoice ids to exclude, not just one — a single-invoice print/WhatsApp send
+    /// excludes just that invoice (see the single-id overload below), but a MULTI-invoice grouped
+    /// WhatsApp message (BulkPrintPage's merchant section, bundling several same-day invoices into
+    /// one text) has to exclude every invoice in that whole bundle at once — otherwise each
+    /// invoice's own total would still be sitting inside "every other Active invoice" and get
+    /// double-counted on top of itself already being summed into the message's own grand total.
     /// </summary>
-    private async Task<decimal> ComputePreviousBalanceAsync(int merchantId, int excludeInvoiceId)
+    private async Task<decimal> ComputePreviousBalanceAsync(int merchantId, IReadOnlyCollection<int> excludeInvoiceIds)
     {
         // FindAsync hits the DbContext's local tracking cache first — every caller of this method
         // already Included the Merchant navigation on the same context, so this is normally free.
@@ -340,7 +357,7 @@ public class InvoiceService : IInvoiceService
         var openingBalance = merchant?.OpeningBalance ?? 0;
 
         var otherInvoices = await _db.Invoices
-            .Where(i => i.MerchantId == merchantId && i.Status == InvoiceStatus.Active && i.Id != excludeInvoiceId)
+            .Where(i => i.MerchantId == merchantId && i.Status == InvoiceStatus.Active && !excludeInvoiceIds.Contains(i.Id))
             .Select(i => new { i.TotalValue, i.TransportFee, WoodTotal = i.Items.Sum(it => it.WoodPrice) })
             .ToListAsync();
         var totalOwed = otherInvoices.Sum(i => i.TotalValue + i.TransportFee + i.WoodTotal);
@@ -351,6 +368,13 @@ public class InvoiceService : IInvoiceService
 
         return Math.Max(0, openingBalance + totalOwed - totalPaid);
     }
+
+    private Task<decimal> ComputePreviousBalanceAsync(int merchantId, int excludeInvoiceId) =>
+        ComputePreviousBalanceAsync(merchantId, new[] { excludeInvoiceId });
+
+    /// <summary>See the interface doc comment.</summary>
+    public Task<decimal> GetMerchantGroupPreviousBalanceAsync(int merchantId, IReadOnlyList<int> invoiceIds) =>
+        ComputePreviousBalanceAsync(merchantId, invoiceIds);
 
     public async Task<PagedResult<InvoiceListItemDto>> ListAsync(InvoiceFilterRequest filter)
     {
@@ -422,7 +446,7 @@ public class InvoiceService : IInvoiceService
 
         var items = raw.Select(x => new InvoiceListItemDto(
                 x.Id, x.InvoiceNumber, x.Date, x.MerchantId, x.MerchantName, x.MerchantWhatsApp,
-                x.FarmerName, x.FarmerWhatsApp, x.DriverId, x.DriverName, x.DriverWhatsApp,
+                x.FarmerId, x.FarmerName, x.FarmerWhatsApp, x.DriverId, x.DriverName, x.DriverWhatsApp,
                 x.Status, x.TotalWeightKg, x.TotalBoxes, x.TotalValue, x.TransportFee,
                 x.TotalValue + x.TransportFee + x.WoodTotal,
                 string.Join("، ", x.ItemNames.Distinct()),

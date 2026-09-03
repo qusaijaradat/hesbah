@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
-import { getInvoicesBatch, listInvoices, printDriverManifestPdf, printFarmerStatementPdf, printInvoicesBulkPdf, triggerBlobDownload } from "../api/invoices";
+import { getInvoicesBatch, getMerchantGroupPreviousBalance, listInvoices, printDriverManifestPdf, printFarmerStatementPdf, printInvoicesBulkPdf, triggerBlobDownload } from "../api/invoices";
 import { apiErrorMessage } from "../api/client";
+import { getFarmerAccount } from "../api/partners";
 import { listSettings } from "../api/settings";
 import { PartnerAutocomplete } from "../components/PartnerAutocomplete";
 import { buildStatementMessage, buildWhatsAppLink, formatCurrency, formatDate, formatQuantity, formatWeight, todayLocalDateString } from "../lib/format";
@@ -334,8 +335,13 @@ export function BulkPrintPage() {
   // the same template as the print-out.
   const [companyName, setCompanyName] = useState("Green Market");
   const [companyPhone, setCompanyPhone] = useState<string | null>(null);
-  const [sendingTraderId, setSendingTraderId] = useState<number | null>(null);
+  // Keyed by "merchantId::day" — a merchant can now have more than one WhatsApp group (one per
+  // calendar day, see traderGroups below), so a plain merchantId can no longer identify "which
+  // button is busy" on its own.
+  const [sendingTraderKey, setSendingTraderKey] = useState<string | null>(null);
   const [printingDriverKey, setPrintingDriverKey] = useState<string | number | null>(null);
+  const [sendingDriverKey, setSendingDriverKey] = useState<string | number | null>(null);
+  const [sendingFarmerId, setSendingFarmerId] = useState<number | null>(null);
 
   // Driver tab's "طباعة فاتورة سائق" standalone shortcut — picks a driver directly and pulls every
   // one of HIS invoices within that tab's own period filter, independent of the table's selection.
@@ -359,49 +365,102 @@ export function BulkPrintPage() {
     });
   }, []);
 
-  // Merchant tab: grouped by trader to drive the per-trader WhatsApp statement button — the printed
-  // PDF itself prints each selected invoice separately, four per page (ExportService.GenerateInvoicesBulkPdf).
+  // Merchant tab: grouped by (trader + calendar day) to drive the per-trader WhatsApp statement
+  // button — one message per day, never merging invoices from different days into the same
+  // message (explicit requirement). The printed PDF itself is unaffected — it still prints each
+  // selected invoice separately, four per page (ExportService.GenerateInvoicesBulkPdf).
   const traderGroups = useMemo(() => {
     const selectedRows = merchantSection.result.filter((i) => merchantSection.selected.has(i.id));
-    const byTrader = new Map<number, { merchantId: number; merchantName: string; merchantWhatsApp?: string | null; invoiceIds: number[]; total: number }>();
+    const byTrader = new Map<string, { key: string; merchantId: number; merchantName: string; merchantWhatsApp?: string | null; day: string; invoiceIds: number[]; total: number }>();
     for (const inv of selectedRows) {
-      const existing = byTrader.get(inv.merchantId);
+      const day = formatDate(inv.date);
+      const key = `${inv.merchantId}::${day}`;
+      const existing = byTrader.get(key);
       if (existing) {
         existing.invoiceIds.push(inv.id);
         existing.total += inv.totalValue;
       } else {
-        byTrader.set(inv.merchantId, {
+        byTrader.set(key, {
+          key,
           merchantId: inv.merchantId,
           merchantName: inv.merchantName,
           merchantWhatsApp: inv.merchantWhatsApp,
+          day,
           invoiceIds: [inv.id],
           total: inv.totalValue,
         });
       }
     }
-    return Array.from(byTrader.values()).sort((a, b) => a.merchantName.localeCompare(b.merchantName, "ar"));
+    return Array.from(byTrader.values()).sort((a, b) => a.merchantName.localeCompare(b.merchantName, "ar") || a.day.localeCompare(b.day));
   }, [merchantSection.result, merchantSection.selected]);
 
-  async function handleSendTraderWhatsApp(traderId: number, phone: string, name: string, invoiceIds: number[]) {
-    setSendingTraderId(traderId);
+  // "الرصيد السابق" for this WhatsApp message has to exclude the WHOLE group of invoices being
+  // bundled into it, not just one — see backend GetMerchantGroupPreviousBalanceAsync's doc comment.
+  async function handleSendTraderWhatsApp(key: string, merchantId: number, phone: string, name: string, invoiceIds: number[]) {
+    setSendingTraderKey(key);
     merchantSection.setError(null);
     try {
-      const invoices = await getInvoicesBatch(invoiceIds);
-      const message = buildStatementMessage(companyName, companyPhone, name, invoices);
+      const [invoices, previousBalance] = await Promise.all([
+        getInvoicesBatch(invoiceIds),
+        getMerchantGroupPreviousBalance(merchantId, invoiceIds),
+      ]);
+      const message = buildStatementMessage(companyName, companyPhone, name, invoices, previousBalance);
       window.open(buildWhatsAppLink(phone, message), "_blank");
     } catch {
       merchantSection.setError("فشل تجهيز رسالة واتساب");
     } finally {
-      setSendingTraderId(null);
+      setSendingTraderKey(null);
+    }
+  }
+
+  // Farmer tab: grouped by farmer only (no day-split — that concern is specific to the merchant's
+  // previous-balance double-counting risk when several of THEIR invoices are bundled together;
+  // a farmer/driver's previous balance is just their own live account balance, so it doesn't
+  // change no matter how the invoices are grouped).
+  const farmerGroups = useMemo(() => {
+    const selectedRows = farmerSection.result.filter((i) => farmerSection.selected.has(i.id) && i.farmerId);
+    const byFarmer = new Map<number, { farmerId: number; farmerName: string; farmerWhatsApp?: string | null; invoiceIds: number[]; total: number }>();
+    for (const inv of selectedRows) {
+      const existing = byFarmer.get(inv.farmerId!);
+      if (existing) {
+        existing.invoiceIds.push(inv.id);
+        existing.total += inv.totalValue;
+      } else {
+        byFarmer.set(inv.farmerId!, {
+          farmerId: inv.farmerId!,
+          farmerName: inv.farmerName!,
+          farmerWhatsApp: inv.farmerWhatsApp,
+          invoiceIds: [inv.id],
+          total: inv.totalValue,
+        });
+      }
+    }
+    return Array.from(byFarmer.values()).sort((a, b) => a.farmerName.localeCompare(b.farmerName, "ar"));
+  }, [farmerSection.result, farmerSection.selected]);
+
+  // "الرصيد السابق" here per the answered decision: the farmer's own current account balance
+  // (same كشف حساب Remaining their account page shows), not a batch-excluded figure.
+  async function handleSendFarmerWhatsApp(farmerId: number, phone: string, name: string, invoiceIds: number[]) {
+    setSendingFarmerId(farmerId);
+    farmerSection.setError(null);
+    try {
+      const [invoices, account] = await Promise.all([getInvoicesBatch(invoiceIds), getFarmerAccount(farmerId)]);
+      const message = buildStatementMessage(companyName, companyPhone, name, invoices, account.remaining);
+      window.open(buildWhatsAppLink(phone, message), "_blank");
+    } catch {
+      farmerSection.setError("فشل تجهيز رسالة واتساب");
+    } finally {
+      setSendingFarmerId(null);
     }
   }
 
   // Driver tab: groups the selected invoices by driver so "تجميع حسب السائق" can hand each driver
   // ONE consolidated transport-fee sheet instead of one printout per invoice. Grouped by driverId
-  // (falling back to name only for invoices that predate that field).
+  // (falling back to name only for invoices that predate that field). driverWhatsApp/driverId are
+  // carried through too so the same group can also drive a WhatsApp send button.
   const driverGroups = useMemo(() => {
     const selectedRows = driverSection.result.filter((i) => driverSection.selected.has(i.id) && i.driverName);
-    const byDriver = new Map<string | number, { key: string | number; driverName: string; invoiceIds: number[]; totalTransportFee: number }>();
+    const byDriver = new Map<string | number, { key: string | number; driverId?: number | null; driverName: string; driverWhatsApp?: string | null; invoiceIds: number[]; totalTransportFee: number }>();
     for (const inv of selectedRows) {
       const key = inv.driverId ?? inv.driverName!;
       const existing = byDriver.get(key);
@@ -409,7 +468,7 @@ export function BulkPrintPage() {
         existing.invoiceIds.push(inv.id);
         existing.totalTransportFee += inv.transportFee;
       } else {
-        byDriver.set(key, { key, driverName: inv.driverName!, invoiceIds: [inv.id], totalTransportFee: inv.transportFee });
+        byDriver.set(key, { key, driverId: inv.driverId, driverName: inv.driverName!, driverWhatsApp: inv.driverWhatsApp, invoiceIds: [inv.id], totalTransportFee: inv.transportFee });
       }
     }
     return Array.from(byDriver.values()).sort((a, b) => a.driverName.localeCompare(b.driverName, "ar"));
@@ -425,6 +484,21 @@ export function BulkPrintPage() {
       driverSection.setError("فشل إنشاء كشف السائق");
     } finally {
       setPrintingDriverKey(null);
+    }
+  }
+
+  // Same "current account balance right now" convention as the farmer send above.
+  async function handleSendDriverWhatsApp(driverKey: string | number, driverId: number, phone: string, name: string, invoiceIds: number[]) {
+    setSendingDriverKey(driverKey);
+    driverSection.setError(null);
+    try {
+      const [invoices, account] = await Promise.all([getInvoicesBatch(invoiceIds), getFarmerAccount(driverId)]);
+      const message = buildStatementMessage(companyName, companyPhone, name, invoices, account.remaining);
+      window.open(buildWhatsAppLink(phone, message), "_blank");
+    } catch {
+      driverSection.setError("فشل تجهيز رسالة واتساب");
+    } finally {
+      setSendingDriverKey(null);
     }
   }
 
@@ -530,11 +604,12 @@ export function BulkPrintPage() {
 
       {activeTab === "Merchant" && traderGroups.length > 0 && (
         <div className="card overflow-x-auto mb-4">
-          <div className="px-4 pt-4 pb-1 text-sm font-semibold text-gray-700">تجميع حسب المشتري — نفس التجميع المستخدم في الطباعة</div>
+          <div className="px-4 pt-4 pb-1 text-sm font-semibold text-gray-700">تجميع حسب المشتري واليوم — كل يوم برسالة واتساب منفصلة</div>
           <table className="table-base">
             <thead>
               <tr>
                 <th>المشتري</th>
+                <th>اليوم</th>
                 <th>عدد الفواتير</th>
                 <th>الإجمالي</th>
                 <th></th>
@@ -542,18 +617,57 @@ export function BulkPrintPage() {
             </thead>
             <tbody>
               {traderGroups.map((g) => (
-                <tr key={g.merchantId}>
+                <tr key={g.key}>
                   <td>{g.merchantName}</td>
+                  <td className="text-sm text-gray-500">{g.day}</td>
                   <td>{g.invoiceIds.length}</td>
                   <td className="font-semibold">{formatCurrency(g.total)}</td>
                   <td>
                     {g.merchantWhatsApp ? (
                       <button
                         className="btn-secondary"
-                        disabled={sendingTraderId === g.merchantId}
-                        onClick={() => handleSendTraderWhatsApp(g.merchantId, g.merchantWhatsApp!, g.merchantName, g.invoiceIds)}
+                        disabled={sendingTraderKey === g.key}
+                        onClick={() => handleSendTraderWhatsApp(g.key, g.merchantId, g.merchantWhatsApp!, g.merchantName, g.invoiceIds)}
                       >
-                        {sendingTraderId === g.merchantId ? "جاري التجهيز..." : "📤 إرسال واتساب"}
+                        {sendingTraderKey === g.key ? "جاري التجهيز..." : "📤 إرسال واتساب"}
+                      </button>
+                    ) : (
+                      <span className="text-xs text-gray-400">لا يوجد رقم واتساب</span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {activeTab === "Farmer" && farmerGroups.length > 0 && (
+        <div className="card overflow-x-auto mb-4">
+          <div className="px-4 pt-4 pb-1 text-sm font-semibold text-gray-700">تجميع حسب البائع — إرسال كشف واتساب مفصّل (يشمل الرصيد السابق وسعر الخشب)</div>
+          <table className="table-base">
+            <thead>
+              <tr>
+                <th>البائع</th>
+                <th>عدد الفواتير</th>
+                <th>الإجمالي</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {farmerGroups.map((g) => (
+                <tr key={g.farmerId}>
+                  <td>{g.farmerName}</td>
+                  <td>{g.invoiceIds.length}</td>
+                  <td className="font-semibold">{formatCurrency(g.total)}</td>
+                  <td>
+                    {g.farmerWhatsApp ? (
+                      <button
+                        className="btn-secondary"
+                        disabled={sendingFarmerId === g.farmerId}
+                        onClick={() => handleSendFarmerWhatsApp(g.farmerId, g.farmerWhatsApp!, g.farmerName, g.invoiceIds)}
+                      >
+                        {sendingFarmerId === g.farmerId ? "جاري التجهيز..." : "📤 إرسال واتساب"}
                       </button>
                     ) : (
                       <span className="text-xs text-gray-400">لا يوجد رقم واتساب</span>
@@ -587,13 +701,26 @@ export function BulkPrintPage() {
                   <td>{g.invoiceIds.length}</td>
                   <td className="font-semibold">{formatCurrency(g.totalTransportFee)}</td>
                   <td>
-                    <button
-                      className="btn-secondary"
-                      disabled={printingDriverKey === g.key}
-                      onClick={() => handlePrintDriverManifest(g.key, g.driverName, g.invoiceIds)}
-                    >
-                      {printingDriverKey === g.key ? "جاري التجهيز..." : "🖨️ طباعة كشف السائق"}
-                    </button>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        className="btn-secondary"
+                        disabled={printingDriverKey === g.key}
+                        onClick={() => handlePrintDriverManifest(g.key, g.driverName, g.invoiceIds)}
+                      >
+                        {printingDriverKey === g.key ? "جاري التجهيز..." : "🖨️ طباعة كشف السائق"}
+                      </button>
+                      {g.driverId && g.driverWhatsApp ? (
+                        <button
+                          className="btn-secondary"
+                          disabled={sendingDriverKey === g.key}
+                          onClick={() => handleSendDriverWhatsApp(g.key, g.driverId!, g.driverWhatsApp!, g.driverName, g.invoiceIds)}
+                        >
+                          {sendingDriverKey === g.key ? "جاري التجهيز..." : "📤 إرسال واتساب"}
+                        </button>
+                      ) : (
+                        <span className="text-xs text-gray-400 self-center">لا يوجد رقم واتساب</span>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}

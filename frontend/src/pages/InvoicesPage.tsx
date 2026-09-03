@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { downloadInvoicePdf, downloadInvoicesExcel, getInvoice, listInvoices, triggerBlobDownload } from "../api/invoices";
+import { getFarmerAccount } from "../api/partners";
 import { listSettings } from "../api/settings";
 import type { InvoiceFilter, InvoiceListItemDto } from "../types";
 import { buildStatementMessage, buildWhatsAppLink, formatCurrency, formatDate, formatQuantity, formatWeight } from "../lib/format";
@@ -60,7 +61,15 @@ export function InvoicesPage() {
     setSendingKey(`${inv.id}-${role}`);
     try {
       const invoice = await getInvoice(inv.id);
-      const message = buildStatementMessage(companyName, companyPhone, name, [invoice]);
+      // "الرصيد السابق": for the merchant it's already computed on the invoice itself (excludes
+      // just this one invoice). For the farmer/driver it's their own account's current balance —
+      // same "كشف حساب" figure their account page shows, per the same convention BulkPrintPage
+      // uses for its per-farmer/per-driver WhatsApp sends.
+      let previousBalance: number | undefined;
+      if (role === "merchant") previousBalance = invoice.previousBalance;
+      else if (role === "farmer" && invoice.farmerId) previousBalance = (await getFarmerAccount(invoice.farmerId)).remaining;
+      else if (role === "driver" && invoice.driverId) previousBalance = (await getFarmerAccount(invoice.driverId)).remaining;
+      const message = buildStatementMessage(companyName, companyPhone, name, [invoice], previousBalance);
       window.open(buildWhatsAppLink(phone, message), "_blank");
     } finally {
       setSendingKey(null);

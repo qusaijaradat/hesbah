@@ -122,6 +122,15 @@ public static class PermissionKeys
     public const string EmployeesEdit = "employees.edit";
     public const string EmployeesDelete = "employees.delete";
 
+    /// <summary>"بضاعة الباعة" goods-stock intake (see FarmerGoodsEntry) — separate from Invoices*
+    /// so a role can log/correct what a farmer brought in without also being able to
+    /// create/edit invoices, or vice versa. View also covers seeing the computed "available"
+    /// stock and the existing sold-history breakdown on the same page.</summary>
+    public const string FarmerGoodsView = "farmerGoods.view";
+    public const string FarmerGoodsCreate = "farmerGoods.create";
+    public const string FarmerGoodsEdit = "farmerGoods.edit";
+    public const string FarmerGoodsDelete = "farmerGoods.delete";
+
     public const string ReportsView = "reports.view";
     public const string ReportsExport = "reports.export";
 
@@ -156,6 +165,7 @@ public static class PermissionKeys
         PaymentsView, PaymentsCreate, PaymentsEdit, PaymentsDelete,
         ExpensesView, ExpensesCreate, ExpensesEdit, ExpensesDelete,
         EmployeesView, EmployeesCreate, EmployeesEdit, EmployeesDelete,
+        FarmerGoodsView, FarmerGoodsCreate, FarmerGoodsEdit, FarmerGoodsDelete,
         ReportsView, ReportsExport,
         SettingsView, SettingsEdit,
         UsersView, UsersCreate, UsersEdit,

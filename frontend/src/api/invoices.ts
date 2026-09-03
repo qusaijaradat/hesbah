@@ -91,6 +91,17 @@ export async function printFarmerStatementPdf(farmerId: number, dateFrom: string
   return data as Blob;
 }
 
+// Bulk-print page's merchant-section grouped WhatsApp send: "الرصيد السابق" for a message
+// bundling several of this merchant's invoices together — excludes the WHOLE group at once
+// (see backend IInvoiceService.GetMerchantGroupPreviousBalanceAsync's doc comment for why this
+// can't just reuse one invoice's own PreviousBalance field). Same repeated-key query-string
+// reasoning as printInvoicesBulkPdf above.
+export async function getMerchantGroupPreviousBalance(merchantId: number, invoiceIds: number[]) {
+  const query = invoiceIds.map((id) => `invoiceIds=${id}`).join("&");
+  const { data } = await apiClient.get<number>(`/invoices/merchant-previous-balance?merchantId=${merchantId}&${query}`);
+  return data;
+}
+
 // Standalone "بضاعة الباعة" page: one farmer's goods, grouped by day + item + unit, over an
 // optional date range (omit both for his entire history at once).
 export async function getFarmerGoods(farmerId: number, dateFrom?: string, dateTo?: string) {

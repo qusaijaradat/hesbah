@@ -38,8 +38,15 @@ public record UpdateGoodsEntryRequest(
 /// count regardless of this row's own Unit (Kg or Box). It is never netted against TotalSold —
 /// there is no "wood crates sold" concept on the invoice side — so it simply reflects every wood
 /// crate ever logged as received for this item, updating the moment a new intake entry adds to it.
+///
+/// FarmerId/FarmerName are populated ONLY by GoodsService.GetGlobalStockAsync (the "كل الباعة"
+/// summary shown on "بضاعة الباعة"/"الإغلاق اليومي") — there, this row is scoped to one specific
+/// farmer's own item+unit, not summed across every farmer, so the table can show whose stock each
+/// row actually is. Both stay null on GetForFarmerAsync's own per-farmer Stock list, since that
+/// page already shows the farmer's name once in its own header — repeating it on every row there
+/// would be redundant.
 /// </summary>
-public record GoodsStockRow(string ItemName, UnitOfMeasure Unit, decimal TotalReceived, decimal TotalSold, decimal Available, decimal WoodReceived);
+public record GoodsStockRow(string ItemName, UnitOfMeasure Unit, decimal TotalReceived, decimal TotalSold, decimal Available, decimal WoodReceived, int? FarmerId = null, string? FarmerName = null);
 
 /// <summary>Wraps a farmer's own name with both halves of the "بضاعة الباعة" page: the raw intake
 /// log (Entries, newest first — editable/deletable) and the computed per-item stock summary

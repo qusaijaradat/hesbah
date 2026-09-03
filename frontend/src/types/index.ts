@@ -439,6 +439,13 @@ export interface GoodsStockRow {
    * (GoodsEntryDto.woodQuantity) — always a plain crate count, never in this row's own `unit`
    * (Kg/Box), and never netted against totalSold (no "wood crates sold" concept exists). */
   woodReceived: number;
+  /** Populated ONLY by the global "كل الباعة" stock summary (getGoodsGlobalStock/
+   * getGoodsGlobalStockForReports) — each row there is scoped to one specific farmer, not summed
+   * across every farmer, so the table can show whose stock it is. Both undefined on the per-farmer
+   * stock list (getFarmerGoodsStock), since that page already shows the farmer's name once in its
+   * own header. */
+  farmerId?: number | null;
+  farmerName?: string | null;
 }
 
 export interface FarmerGoodsStockDto {

@@ -95,33 +95,38 @@ public class GoodsService : IGoodsService
     }
 
     /// <summary>
-    /// Global counterpart of GetForFarmerAsync's Stock list — same received/sold/available-per-
-    /// (item, unit) logic, but pooling EVERY farmer's intake entries and EVERY farmer-linked Active
-    /// invoice's items together instead of scoping to one farmer. Matches items across different
-    /// farmers by the same trimmed/case-insensitive ItemName+Unit key already used elsewhere, since
-    /// two farmers logging "بندورة" are the same market-wide item as far as this summary cares.
-    /// Sold is scoped to invoices that actually have a farmer attached (i.FarmerId != null) — the
-    /// same set of invoices that ever deduct from ANY farmer's goods — so a merchant-only invoice
-    /// with no farmer never appears here, consistent with the per-farmer version only ever counting
-    /// that farmer's own invoices.
+    /// Global counterpart of GetForFarmerAsync's Stock list, shown on "بضاعة الباعة"/"الإغلاق
+    /// اليومي" — but unlike an earlier version of this method, it does NOT pool every farmer's
+    /// numbers into one combined row per item: each row is scoped to one (farmer, item, unit), with
+    /// FarmerId/FarmerName carried along, so the table can show whose stock every row actually is
+    /// (two different farmers both bringing "بندورة" show as two separate rows, never summed
+    /// together). Matches items within the SAME farmer by the same trimmed/case-insensitive
+    /// ItemName+Unit key already used elsewhere. Sold is scoped to invoices that actually have a
+    /// farmer attached (i.FarmerId != null) and joined back to that same farmer, consistent with the
+    /// per-farmer version only ever counting that farmer's own invoices.
     /// </summary>
     public async Task<IReadOnlyList<GoodsStockRow>> GetGlobalStockAsync()
     {
-        var entries = await _db.FarmerGoodsEntries.ToListAsync();
+        var entries = await _db.FarmerGoodsEntries
+            .Select(e => new { e.FarmerId, FarmerName = e.Farmer.Name, e.ItemName, e.Unit, e.Quantity, e.WoodQuantity })
+            .ToListAsync();
 
         var receivedByKey = entries
-            .GroupBy(e => (Name: e.ItemName.Trim().ToLowerInvariant(), e.Unit))
-            .ToDictionary(g => g.Key, g => (Display: g.First().ItemName.Trim(), Total: g.Sum(e => e.Quantity), Wood: g.Sum(e => e.WoodQuantity)));
+            .GroupBy(e => (e.FarmerId, Name: e.ItemName.Trim().ToLowerInvariant(), e.Unit))
+            .ToDictionary(g => g.Key, g => (
+                FarmerName: g.First().FarmerName,
+                Display: g.First().ItemName.Trim(),
+                Total: g.Sum(e => e.Quantity),
+                Wood: g.Sum(e => e.WoodQuantity)));
 
         var soldLines = await _db.Invoices
             .Where(i => i.FarmerId != null && i.Status == InvoiceStatus.Active)
-            .SelectMany(i => i.Items)
-            .Select(it => new { it.ItemName, it.Unit, it.Quantity })
+            .SelectMany(i => i.Items.Select(it => new { FarmerId = i.FarmerId!.Value, FarmerName = i.Farmer!.Name, it.ItemName, it.Unit, it.Quantity }))
             .ToListAsync();
 
         var soldByKey = soldLines
-            .GroupBy(l => (Name: l.ItemName.Trim().ToLowerInvariant(), l.Unit))
-            .ToDictionary(g => g.Key, g => (Display: g.First().ItemName.Trim(), Total: g.Sum(l => l.Quantity)));
+            .GroupBy(l => (l.FarmerId, Name: l.ItemName.Trim().ToLowerInvariant(), l.Unit))
+            .ToDictionary(g => g.Key, g => (FarmerName: g.First().FarmerName, Display: g.First().ItemName.Trim(), Total: g.Sum(l => l.Quantity)));
 
         var allKeys = receivedByKey.Keys.Union(soldByKey.Keys);
         return allKeys.Select(key =>
@@ -131,9 +136,10 @@ public class GoodsService : IGoodsService
             var wood = receivedAgg.Wood;
             var sold = soldByKey.GetValueOrDefault(key).Total;
             var display = receivedByKey.TryGetValue(key, out var r) ? r.Display : soldByKey[key].Display;
-            return new GoodsStockRow(display, key.Unit, received, sold, received - sold, wood);
+            var farmerName = receivedByKey.TryGetValue(key, out var r2) ? r2.FarmerName : soldByKey[key].FarmerName;
+            return new GoodsStockRow(display, key.Unit, received, sold, received - sold, wood, key.FarmerId, farmerName);
         })
-        .OrderBy(r => r.ItemName)
+        .OrderBy(r => r.FarmerName).ThenBy(r => r.ItemName)
         .ToList();
     }
 

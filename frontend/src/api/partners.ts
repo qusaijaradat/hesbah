@@ -51,6 +51,13 @@ export async function getDebtsOverview() {
   return data;
 }
 
+/** "قيمة الديون" print button — same 3 sections/numbers as getDebtsOverview above, rendered as one
+ * printable PDF (see ExportService.GenerateDebtsOverviewPdf). */
+export async function printDebtsOverviewPdf() {
+  const { data } = await apiClient.get("/partners/debts-overview/print/pdf", { responseType: "blob" });
+  return data as Blob;
+}
+
 /** "قيمة الديون" drill-down (بائع/سائق side) — every item line off every one of this partner's own
  * invoices, all-time, so the amount on the debts overview is traceable back to exactly which
  * invoices/items/quantities/prices make it up. */

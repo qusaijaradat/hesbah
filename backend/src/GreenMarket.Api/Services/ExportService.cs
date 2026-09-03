@@ -38,6 +38,9 @@ public interface IExportService
     byte[] GenerateFarmerStatementPdf(FarmerStatementDto statement, DateTimeOffset? dateFrom, DateTimeOffset? dateTo, CompanyInfo company, decimal previousBalance);
     byte[] SimpleReportToPdf(string title, string[] headers, IEnumerable<string[]> rows);
     byte[] DailyClosingToPdf(DailyClosingDto closing, string marketName);
+
+    /// <summary>"قيمة الديون" print button — see GenerateDebtsOverviewPdf's own doc comment.</summary>
+    byte[] GenerateDebtsOverviewPdf(DebtsOverviewDto data, CompanyInfo company);
 }
 
 public class ExportService : IExportService
@@ -1111,6 +1114,107 @@ public class ExportService : IExportService
         });
 
         return document.GeneratePdf();
+    }
+
+    /// <summary>
+    /// "قيمة الديون" print button — same 3 sections (الباعة/السواق/المشترين) and Remaining sign
+    /// convention as DebtsOverviewPage.tsx's own on-screen table (a section's own "الصافي الإجمالي"
+    /// footer is just the sum of that section's own Remaining values, same as the on-screen
+    /// DebtSection component computes it), so a full debts review no longer requires opening every
+    /// person's own account page one at a time. Same Arabic/RTL statement look as the other
+    /// company-header PDFs (GenerateFarmerItemsStatementPdf etc.), not the plain English
+    /// SimpleReportToPdf used for the Reports page's internal Excel/PDF exports.
+    /// </summary>
+    public byte[] GenerateDebtsOverviewPdf(DebtsOverviewDto data, CompanyInfo company)
+    {
+        var document = Document.Create(container =>
+        {
+            container.Page(page =>
+            {
+                page.Size(PageSizes.A4);
+                page.Margin(30);
+                page.DefaultTextStyle(x => x.FontSize(10).FontFamily(PdfFontFamily));
+
+                page.Header().ContentFromRightToLeft().Column(col =>
+                {
+                    CompanyHeaderBlock(col, company, 50f, textCol =>
+                    {
+                        textCol.Item().AlignCenter().Text(company.Name).Bold().FontSize(15);
+                    });
+                    col.Item().PaddingTop(6).LineHorizontal(1).LineColor(Colors.Grey.Darken1);
+                    col.Item().PaddingTop(6).AlignCenter().Text("كشف قيمة الديون").Bold().FontSize(14);
+                    col.Item().Text($"تاريخ الطباعة: {DateTimeOffset.Now:yyyy-MM-dd}").FontSize(9).FontColor(Colors.Grey.Darken1);
+                });
+
+                page.Content().ContentFromRightToLeft().PaddingVertical(10).Column(col =>
+                {
+                    col.Spacing(16);
+                    DebtsOverviewSection(col.Item(), "الباعة", data.Farmers, "عليه للسوق", "له من السوق");
+                    DebtsOverviewSection(col.Item(), "السواق", data.Drivers, "عليه للسوق", "له من السوق");
+                    DebtsOverviewSection(col.Item(), "المشترين", data.Merchants, "عليه دين للسوق", "له رصيد زائد (دفع أكتر)");
+                });
+
+                page.Footer().ContentFromRightToLeft().AlignCenter().Text(x =>
+                {
+                    x.Span("صفحة ");
+                    x.CurrentPageNumber();
+                    x.Span(" من ");
+                    x.TotalPages();
+                });
+            });
+        });
+
+        return document.GeneratePdf();
+    }
+
+    /// <summary>One section (الباعة/السواق/المشترين) of GenerateDebtsOverviewPdf — a labeled table
+    /// of everyone in that group with a non-zero balance, "الحالة" spelling out which of the two
+    /// owed-labels applies per Remaining's sign (same as DebtSection's own owedByThemLabel/
+    /// owedToThemLabel props), and a shaded "الصافي الإجمالي" total row.</summary>
+    private static void DebtsOverviewSection(IContainer container, string title, IReadOnlyList<PartnerDebtRow> rows, string owedByThemLabel, string owedToThemLabel)
+    {
+        container.Column(col =>
+        {
+            col.Item().Text($"{title} ({rows.Count})").Bold().FontSize(12);
+
+            if (rows.Count == 0)
+            {
+                col.Item().PaddingTop(2).Text("لا يوجد أحد عليه أو له رصيد حاليًا").FontSize(9).FontColor(Colors.Grey.Darken1);
+                return;
+            }
+
+            col.Item().PaddingTop(4).Table(table =>
+            {
+                table.ColumnsDefinition(columns =>
+                {
+                    columns.RelativeColumn(4); // الاسم
+                    columns.RelativeColumn(2); // المبلغ
+                    columns.RelativeColumn(3); // الحالة
+                });
+
+                table.Header(header =>
+                {
+                    header.Cell().Element(HeaderCell).AlignRight().Text("الاسم");
+                    header.Cell().Element(HeaderCell).AlignRight().Text("المبلغ");
+                    header.Cell().Element(HeaderCell).AlignRight().Text("الحالة");
+                });
+
+                var rowIndex = 0;
+                foreach (var r in rows)
+                {
+                    var shaded = rowIndex % 2 == 1;
+                    var status = r.Remaining > 0 ? owedByThemLabel : owedToThemLabel;
+                    table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(r.Name);
+                    table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text($"₪ {Math.Abs(r.Remaining):0.##}").Bold();
+                    table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(status).FontSize(9);
+                    rowIndex++;
+                }
+
+                var total = rows.Sum(r => r.Remaining);
+                table.Cell().Element(c => DataCell(c, true)).AlignRight().Text("الصافي الإجمالي").Bold();
+                table.Cell().ColumnSpan(2).Element(c => DataCell(c, true)).AlignRight().Text($"₪ {total:0.##}").Bold();
+            });
+        });
     }
 
     /// <summary>Generic tabular PDF for the three report types — one layout, headers/rows supplied by the caller.</summary>

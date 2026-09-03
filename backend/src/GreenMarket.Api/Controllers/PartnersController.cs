@@ -1,6 +1,7 @@
 using GreenMarket.Api.Auth;
 using GreenMarket.Api.DTOs;
 using GreenMarket.Api.Services;
+using GreenMarket.Domain.Entities;
 using GreenMarket.Domain.Enums;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -14,7 +15,17 @@ namespace GreenMarket.Api.Controllers;
 public class PartnersController : ControllerBase
 {
     private readonly IPartnerService _partnerService;
-    public PartnersController(IPartnerService partnerService) => _partnerService = partnerService;
+    private readonly IExportService _exportService;
+    private readonly ISettingsService _settingsService;
+    private readonly ICompanyLogoService _logoService;
+
+    public PartnersController(IPartnerService partnerService, IExportService exportService, ISettingsService settingsService, ICompanyLogoService logoService)
+    {
+        _partnerService = partnerService;
+        _exportService = exportService;
+        _settingsService = settingsService;
+        _logoService = logoService;
+    }
 
     [HttpGet]
     [RequirePermission(PermissionKeys.PartnersView)]
@@ -45,6 +56,18 @@ public class PartnersController : ControllerBase
     [HttpGet("debts-overview")]
     [RequirePermission(PermissionKeys.PartnersView)]
     public async Task<ActionResult<DebtsOverviewDto>> DebtsOverview() => Ok(await _partnerService.GetDebtsOverviewAsync());
+
+    /// <summary>"قيمة الديون" print button — see ExportService.GenerateDebtsOverviewPdf's own doc
+    /// comment. Same data as DebtsOverview() above, just rendered as one printable PDF.</summary>
+    [HttpGet("debts-overview/print/pdf")]
+    [RequirePermission(PermissionKeys.PartnersView)]
+    public async Task<IActionResult> DebtsOverviewPrintPdf()
+    {
+        var data = await _partnerService.GetDebtsOverviewAsync();
+        var company = await GetCompanyInfoAsync();
+        var bytes = _exportService.GenerateDebtsOverviewPdf(data, company);
+        return File(bytes, "application/pdf", "debts-overview.pdf");
+    }
 
     [HttpGet("{id:int}")]
     [RequirePermission(PermissionKeys.PartnersView)]
@@ -85,4 +108,26 @@ public class PartnersController : ControllerBase
     [HttpGet("{id:int}/merchant-invoice-detail")]
     [RequirePermission(PermissionKeys.PartnersView)]
     public async Task<ActionResult<PartnerInvoiceDetailDto>> MerchantInvoiceDetail(int id) => Ok(await _partnerService.GetMerchantInvoiceDetailAsync(id));
+
+    /// <summary>Same letterhead-building logic as ReportsController/InvoicesController's own copy —
+    /// kept as its own copy here rather than shared, matching how these controllers already don't
+    /// share a base class.</summary>
+    private async Task<CompanyInfo> GetCompanyInfoAsync()
+    {
+        var settings = await _settingsService.ListAsync();
+        string? Get(string key)
+        {
+            var value = settings.FirstOrDefault(s => s.Key == key)?.Value;
+            return string.IsNullOrWhiteSpace(value) ? null : value;
+        }
+
+        var (logoContent, _) = await _logoService.GetEffectiveLogoAsync();
+
+        return new CompanyInfo(
+            Get(Setting.Keys.MarketName) ?? "Green Market",
+            Get(Setting.Keys.Address),
+            Get(Setting.Keys.Phone),
+            Get(Setting.Keys.RegistrationNumber),
+            logoContent);
+    }
 }

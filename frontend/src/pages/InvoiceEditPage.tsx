@@ -7,6 +7,7 @@ import { getMerchantAccount } from "../api/partners";
 import { apiErrorMessage } from "../api/client";
 import { formatCurrency, formatQuantity, localDateInputValue } from "../lib/format";
 import type { MerchantAccountDto, UnitOfMeasure } from "../types";
+import { CREDIT_LIMIT_UI_ENABLED } from "../lib/featureFlags";
 
 interface Row {
   itemName: string;
@@ -227,7 +228,7 @@ export function InvoiceEditPage() {
             types={["Driver"]}
           />
         </div>
-        {wouldExceedCreditLimit && (
+        {CREDIT_LIMIT_UI_ENABLED && wouldExceedCreditLimit && (
           <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-md p-3">
             ⚠️ هذا المشتري سيتجاوز حده الائتماني ({formatCurrency(merchantAccount!.creditLimit ?? 0)}) بعد هذا التعديل —
             الرصيد المتوقع بعدها {formatCurrency(projectedRemaining)}. هذا تنبيه فقط ولا يمنع الحفظ.

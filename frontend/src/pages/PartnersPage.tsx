@@ -6,6 +6,7 @@ import type { PartnerDto, PartnerType } from "../types";
 import { apiErrorMessage } from "../api/client";
 import { formatCurrency } from "../lib/format";
 import { useAuth } from "../auth/AuthContext";
+import { CREDIT_LIMIT_UI_ENABLED } from "../lib/featureFlags";
 
 const TYPE_LABELS: Record<string, string> = { Farmer: "بائع", Driver: "سائق", Merchant: "مشتري", Both: "بائع/مشتري" };
 
@@ -99,7 +100,7 @@ export function PartnersPage() {
               <th>النوع</th>
               <th>رقم واتساب</th>
               <th>العنوان</th>
-              <th>الحد الائتماني</th>
+              {CREDIT_LIMIT_UI_ENABLED && <th>الحد الائتماني</th>}
               <th>الرصيد</th>
               <th>ملاحظات</th>
               <th></th>
@@ -107,9 +108,9 @@ export function PartnersPage() {
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={8} className="text-center text-gray-400 py-6">جاري التحميل...</td></tr>
+              <tr><td colSpan={CREDIT_LIMIT_UI_ENABLED ? 8 : 7} className="text-center text-gray-400 py-6">جاري التحميل...</td></tr>
             ) : partners.length === 0 ? (
-              <tr><td colSpan={8} className="text-center text-gray-400 py-6">لا يوجد نتائج</td></tr>
+              <tr><td colSpan={CREDIT_LIMIT_UI_ENABLED ? 8 : 7} className="text-center text-gray-400 py-6">لا يوجد نتائج</td></tr>
             ) : (
               partners.map((p) => (
                 <tr key={p.id}>
@@ -117,7 +118,7 @@ export function PartnersPage() {
                   <td>{p.type ? TYPE_LABELS[p.type] : "—"}</td>
                   <td>{p.whatsAppNumber || "—"}</td>
                   <td className="text-gray-500">{p.address || "—"}</td>
-                  <td>{p.creditLimit != null ? formatCurrency(p.creditLimit) : "—"}</td>
+                  {CREDIT_LIMIT_UI_ENABLED && <td>{p.creditLimit != null ? formatCurrency(p.creditLimit) : "—"}</td>}
                   <td>{renderRemaining(p)}</td>
                   <td className="text-gray-500">{p.notes || "—"}</td>
                   <td className="whitespace-nowrap">
@@ -232,12 +233,14 @@ function PartnerEditModal({ partner, onClose, onSaved }: {
             <label className="label">العنوان (اختياري)</label>
             <input className="input" value={address} onChange={(e) => setAddress(e.target.value)} placeholder="اتركه فارغًا إذا لا يوجد" />
           </div>
-          <div>
-            <label className="label">الحد الائتماني (₪، اختياري)</label>
-            <input className="input" type="number" min="0" step="0.01" value={creditLimit} onChange={(e) => setCreditLimit(e.target.value)}
-              placeholder="اتركه فارغًا لعدم وضع حد" />
-            <p className="text-xs text-gray-400 mt-1">عند تجاوز المشتري هذا الحد، سيظهر تنبيه في كشف حسابه وعند إصدار فاتورة جديدة له.</p>
-          </div>
+          {CREDIT_LIMIT_UI_ENABLED && (
+            <div>
+              <label className="label">الحد الائتماني (₪، اختياري)</label>
+              <input className="input" type="number" min="0" step="0.01" value={creditLimit} onChange={(e) => setCreditLimit(e.target.value)}
+                placeholder="اتركه فارغًا لعدم وضع حد" />
+              <p className="text-xs text-gray-400 mt-1">عند تجاوز المشتري هذا الحد، سيظهر تنبيه في كشف حسابه وعند إصدار فاتورة جديدة له.</p>
+            </div>
+          )}
           <div>
             <label className="label">الرصيد الافتتاحي (₪، اختياري)</label>
             <input className="input" type="number" step="0.01" value={openingBalance} onChange={(e) => setOpeningBalance(e.target.value)}

@@ -4,6 +4,7 @@ import { getFarmerAccount, getMerchantAccount } from "../api/partners";
 import type { FarmerAccountDto, MerchantAccountDto, StatementLineDto } from "../types";
 import { formatCurrency, formatDate } from "../lib/format";
 import { StatCard } from "../components/StatCard";
+import { CREDIT_LIMIT_UI_ENABLED } from "../lib/featureFlags";
 
 export function FarmerAccountPage() {
   const { id } = useParams();
@@ -57,7 +58,7 @@ export function MerchantAccountPage() {
       <Link to="/partners" className="text-sm text-brand-700 hover:underline">← رجوع إلى القائمة</Link>
       <h1 className="text-2xl font-bold mt-2 mb-6">كشف حساب مشتري: {account.name}</h1>
 
-      {account.isOverCreditLimit && (
+      {CREDIT_LIMIT_UI_ENABLED && account.isOverCreditLimit && (
         <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-md p-3 mb-4">
           ⚠️ هذا المشتري تجاوز الحد الائتماني المسموح ({formatCurrency(account.creditLimit ?? 0)}) — الرصيد المتبقي حاليًا {formatCurrency(account.remaining)}.
         </div>
@@ -67,7 +68,7 @@ export function MerchantAccountPage() {
         <StatCard label="إجمالي المشتريات" value={formatCurrency(account.totalPurchases)} />
         <StatCard label="المدفوع" value={formatCurrency(account.totalPaid)} tone="positive" />
         <StatCard label="المتبقي" value={formatCurrency(account.remaining)} tone="negative" />
-        {account.creditLimit != null && <StatCard label="الحد الائتماني" value={formatCurrency(account.creditLimit)} />}
+        {CREDIT_LIMIT_UI_ENABLED && account.creditLimit != null && <StatCard label="الحد الائتماني" value={formatCurrency(account.creditLimit)} />}
       </div>
       {!!account.openingBalance && (
         <div className="text-sm text-gray-500 mb-4">رصيد افتتاحي مدرج ضمن المتبقي: <span className="font-medium text-gray-800">{formatCurrency(account.openingBalance)}</span></div>

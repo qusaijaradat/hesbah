@@ -1,4 +1,5 @@
 using GreenMarket.Api.Auth;
+using GreenMarket.Api.Common;
 using GreenMarket.Api.DTOs;
 using GreenMarket.Api.Services;
 using GreenMarket.Domain.Entities;
@@ -93,7 +94,20 @@ public class InvoicesController : ControllerBase
     public async Task<ActionResult<IReadOnlyList<InvoiceDto>>> Batch([FromQuery] List<int> ids)
     {
         if (ids is null || ids.Count == 0) return Ok(Array.Empty<InvoiceDto>());
+        EnsureNotTooMany(ids);
         return Ok(await _invoiceService.GetManyAsync(ids));
+    }
+
+    /// <summary>Shared cap for every "ids" bulk endpoint below — previously unbounded, so an
+    /// arbitrarily long id list in the query string could force a single request to build a huge
+    /// query/PDF. 2000 comfortably covers BulkPrintPage's own largest fetch (pageSize 500) with
+    /// room to spare, while still rejecting a clearly pathological request with a clear message
+    /// instead of silently doing all of it (or crashing).</summary>
+    private const int MaxBulkIds = 2000;
+    private static void EnsureNotTooMany(List<int> ids)
+    {
+        if (ids.Count > MaxBulkIds)
+            throw new ValidationAppException($"عدد كبير جدًا من الفواتير المحددة ({ids.Count}) — الحد الأقصى {MaxBulkIds} فاتورة دفعة واحدة.");
     }
 
     /// <summary>Bulk-print page: the selected (already filtered) invoices, each printed as its
@@ -105,6 +119,7 @@ public class InvoicesController : ControllerBase
     {
         if (ids is null || ids.Count == 0)
             return BadRequest(new { error = "يرجى اختيار فاتورة واحدة على الأقل." });
+        EnsureNotTooMany(ids);
 
         var invoices = await _invoiceService.GetManyAsync(ids);
         var company = await GetCompanyInfoAsync();
@@ -125,6 +140,7 @@ public class InvoicesController : ControllerBase
     {
         if (ids is null || ids.Count == 0)
             return BadRequest(new { error = "يرجى اختيار فاتورة واحدة على الأقل." });
+        EnsureNotTooMany(ids);
 
         var invoices = await _invoiceService.GetManyAsync(ids);
         var groups = invoices
@@ -166,6 +182,7 @@ public class InvoicesController : ControllerBase
     {
         if (ids is null || ids.Count == 0)
             return BadRequest(new { error = "يرجى اختيار فاتورة واحدة على الأقل." });
+        EnsureNotTooMany(ids);
 
         var invoices = await _invoiceService.GetManyAsync(ids);
         var driverName = invoices.Select(i => i.DriverName).FirstOrDefault(n => !string.IsNullOrWhiteSpace(n)) ?? "غير محدد";
@@ -242,7 +259,12 @@ public class InvoicesController : ControllerBase
     public async Task<IActionResult> ExportExcel([FromQuery] InvoiceFilterRequest filter)
     {
         filter.Page = 1;
-        filter.PageSize = 10_000; // exports ignore pagination — requirement doc §7 "after filtering, export everything"
+        // Exports ignore pagination — requirement doc §7 "after filtering, export everything".
+        // Previously capped at 10,000 with no indication to the user that a bigger filtered result
+        // would come back silently truncated; raised well above any realistic market's invoice
+        // count while staying a bounded number rather than truly unlimited (see
+        // InvoiceService.ListAsync's own matching ceiling).
+        filter.PageSize = 50_000;
         var result = await _invoiceService.ListAsync(filter);
         var bytes = _exportService.InvoicesToExcel(result.Items.ToList());
         return File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "invoices.xlsx");

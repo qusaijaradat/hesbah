@@ -59,6 +59,11 @@ public class InvoiceService : IInvoiceService
         if (request.PaidAmount is < 0)
             throw new ValidationAppException("Paid amount cannot be negative.");
 
+        // Previously unchecked — a negative value here flowed straight into GrandTotal and the
+        // driver's FarmerTransaction Amount, quietly reducing what the driver is shown as owed.
+        if (request.TransportFee < 0)
+            throw new ValidationAppException("أجرة النقل لا يمكن أن تكون قيمة سالبة.");
+
         var merchant = await ResolvePartnerAsync(request.MerchantId, request.MerchantName, PartnerType.Merchant, "merchant");
         // Seller (Farmer) and Driver are both optional and independent of each other — an invoice
         // can have either, both, or neither attached.
@@ -90,7 +95,6 @@ public class InvoiceService : IInvoiceService
 
         var invoice = new Invoice
         {
-            InvoiceNumber = await GenerateInvoiceNumberAsync(request.Date),
             Date = request.Date,
             MerchantId = merchant.Id,
             FarmerId = farmer?.Id,
@@ -113,8 +117,40 @@ public class InvoiceService : IInvoiceService
             }).ToList()
         };
 
-        _db.Invoices.Add(invoice);
-        await _db.SaveChangesAsync(); // need invoice.Id before creating the linked ledger row
+        // The invoice row, its farmer ledger row, its driver ledger row, and its optional
+        // "paid at issuance" payment row below are up to FOUR separate SaveChangesAsync calls
+        // (each later one needs invoice.Id/payment linkage from the one before it) — wrapped in
+        // one DB transaction so an interruption partway through can never leave an invoice saved
+        // without its matching ledger rows, which is exactly the atomicity this method's own
+        // class-level doc comment already promises.
+        await using var transaction = await _db.Database.BeginTransactionAsync();
+
+        // GenerateInvoiceNumberAsync picks the next number by counting existing rows for the year
+        // — two requests landing at nearly the same moment can compute the same "next" number, and
+        // the unique index on InvoiceNumber then rejected the loser as an unhandled 500 instead of
+        // a clear retry. A savepoint lets just the failed insert be undone and retried with a fresh
+        // number, without losing the outer transaction (and everything already staged in it).
+        const int maxInvoiceNumberAttempts = 5;
+        for (var attempt = 1; ; attempt++)
+        {
+            invoice.InvoiceNumber = await GenerateInvoiceNumberAsync(request.Date);
+            await transaction.CreateSavepointAsync("before_invoice_insert");
+            try
+            {
+                _db.Invoices.Add(invoice);
+                await _db.SaveChangesAsync(); // need invoice.Id before creating the linked ledger row
+                break;
+            }
+            catch (DbUpdateException) when (attempt < maxInvoiceNumberAttempts)
+            {
+                await transaction.RollbackToSavepointAsync("before_invoice_insert");
+                // Clears every tracked entity, not just the invoice — Add() also cascaded onto
+                // invoice.Items, and detaching only the parent would leave those still tracked as
+                // Added on the retry's second Add() call. Safe here: only merchant.Id/farmer.Id/
+                // driver.Id (plain values, not the tracked references) are still needed below.
+                _db.ChangeTracker.Clear();
+            }
+        }
 
         // No farmer on this invoice → nothing to post to the farmer ledger (requirement doc
         // §5/§6 only apply once a farmer is actually attached to the sale).
@@ -178,6 +214,7 @@ public class InvoiceService : IInvoiceService
             await _db.SaveChangesAsync();
         }
 
+        await transaction.CommitAsync();
         return await GetAsync(invoice.Id);
     }
 
@@ -195,6 +232,17 @@ public class InvoiceService : IInvoiceService
     {
         if (request.Items is null || request.Items.Count == 0)
             throw new ValidationAppException("An invoice must have at least one item.");
+
+        if (request.TransportFee < 0)
+            throw new ValidationAppException("أجرة النقل لا يمكن أن تكون قيمة سالبة.");
+
+        // PaidAmount only ever means "record an automatic payment right now" (see CreateAsync) —
+        // there's no sensible "automatic payment" moment on an edit, and silently doing nothing
+        // with it left staff assuming a payment was recorded when it wasn't. Rejecting it here with
+        // a clear message replaces that silent no-op; the payment can still be recorded normally
+        // from the Payments page.
+        if (request.PaidAmount is > 0)
+            throw new ValidationAppException("لا يمكن تسجيل \"مبلغ مدفوع عند الإصدار\" عند تعديل فاتورة — سجّل الدفعة من شاشة الدفعات بدلاً من ذلك.");
 
         var invoice = await _db.Invoices.Include(i => i.Items)
             .SingleOrDefaultAsync(i => i.Id == id) ?? throw new NotFoundAppException("Invoice", id);
@@ -222,6 +270,7 @@ public class InvoiceService : IInvoiceService
         var driverBoxFee = await _settings.GetDecimalAsync(Setting.Keys.DriverBoxFee, 0m);
         var driverBoxFeeTotal = totals.TotalBoxes * driverBoxFee;
 
+        var previousMerchantId = invoice.MerchantId;
         var previousFarmerId = invoice.FarmerId;
         var previousDriverId = invoice.DriverId;
 
@@ -325,6 +374,20 @@ public class InvoiceService : IInvoiceService
             });
         }
 
+        // Merchant swapped for someone else — any payment already linked to THIS invoice (Payments
+        // page's "ربط بفاتورة محددة") was reducing the OLD merchant's balance, and would keep doing
+        // so forever even though the invoice is now billed to a different person. Move those
+        // payments onto the new merchant so the balance follows the corrected invoice, not the
+        // original typo.
+        if (previousMerchantId != merchant.Id)
+        {
+            var linkedPayments = await _db.Payments
+                .Where(p => p.InvoiceId == invoice.Id && p.Direction == PaymentDirection.FromMerchant)
+                .ToListAsync();
+            foreach (var linkedPayment in linkedPayments)
+                linkedPayment.PartnerId = merchant.Id;
+        }
+
         await _db.SaveChangesAsync();
         return await GetAsync(invoice.Id);
     }
@@ -403,8 +466,11 @@ public class InvoiceService : IInvoiceService
             .ToListAsync();
         var totalOwed = otherInvoices.Sum(i => i.TotalValue + i.TransportFee + i.WoodTotal + i.BoxFeeTotal);
 
+        // Bounced checks excluded — same reasoning as PartnerService's own "paid" total (see
+        // CheckClearanceStatus.Bounced's doc comment): a check that came back never actually paid
+        // anything, so it must not make the printed "previous balance" understate what's still owed.
         var totalPaid = await _db.Payments
-            .Where(p => p.PartnerId == merchantId && p.Direction == PaymentDirection.FromMerchant)
+            .Where(p => p.PartnerId == merchantId && p.Direction == PaymentDirection.FromMerchant && p.CheckStatus != CheckClearanceStatus.Bounced)
             .SumAsync(p => (decimal?)p.Amount) ?? 0;
 
         return Math.Max(0, openingBalance + totalOwed - totalPaid);
@@ -419,6 +485,12 @@ public class InvoiceService : IInvoiceService
 
     public async Task<PagedResult<InvoiceListItemDto>> ListAsync(InvoiceFilterRequest filter)
     {
+        // Same unbounded-pageSize gap as Expense/Partner/Item/Payment services — but BulkPrintPage
+        // deliberately requests pageSize=500 for a print run, and ExportExcel below requests up to
+        // 50,000 for a full filtered export, so the ceiling here is set well above both instead of
+        // the usual 200, to avoid silently truncating either legitimate use.
+        (filter.Page, filter.PageSize) = Paging.Clamp(filter.Page, filter.PageSize, maxPageSize: 50_000);
+
         var query = _db.Invoices.Include(i => i.Merchant).Include(i => i.Farmer).Include(i => i.Driver).AsQueryable();
 
         if (filter.DateFrom is not null) query = query.Where(i => i.Date >= filter.DateFrom);
@@ -542,6 +614,24 @@ public class InvoiceService : IInvoiceService
             });
         }
 
+        // Any payment linked to this invoice was real money already received/paid — cancelling the
+        // invoice must never make it vanish, but it also must not keep sitting attached to a total
+        // that no longer exists (previously it did exactly that: the invoice's own charge stopped
+        // counting once cancelled, while the linked payment kept reducing the partner's balance
+        // forever with nothing on the invoice itself explaining why). Unlinking it here means it
+        // still counts as a general credit against the partner's overall balance (exactly how an
+        // unlinked payment already behaves everywhere else), and the note makes the reason visible
+        // wherever that payment shows up (statements, the Payments list) instead of a silent drop.
+        var linkedPayments = await _db.Payments.Where(p => p.InvoiceId == invoice.Id).ToListAsync();
+        foreach (var linkedPayment in linkedPayments)
+        {
+            linkedPayment.InvoiceId = null;
+            var cancellationNote = $"كانت مرتبطة بالفاتورة رقم {invoice.InvoiceNumber} — أُلغيت الفاتورة، والدفعة باقية كرصيد عام";
+            linkedPayment.Notes = string.IsNullOrWhiteSpace(linkedPayment.Notes)
+                ? cancellationNote
+                : $"{linkedPayment.Notes} ({cancellationNote})";
+        }
+
         await _db.SaveChangesAsync();
         var previousBalance = await ComputePreviousBalanceAsync(invoice.MerchantId, invoice.Id);
         return ToDto(invoice, previousBalance);
@@ -609,13 +699,21 @@ public class InvoiceService : IInvoiceService
         return new FarmerGoodsDto(farmer.Id, farmer.Name, rows);
     }
 
-    /// <summary>An Id reuses an existing partner exactly; a Name resolves via find-or-create so a
-    /// brand new trader can be typed straight onto the invoice with no separate "add partner" step
-    /// first. Used for the merchant side, which is always required.</summary>
+    /// <summary>An Id reuses an existing partner exactly — but only after checking it's actually
+    /// the right kind of partner for this role (see PartnerTypeMatches's doc comment); previously
+    /// any partner id was accepted as-is, so a merchant id passed as FarmerId would silently get
+    /// charged a commission and posted onto the farmer ledger. A Name resolves via find-or-create
+    /// so a brand new trader can be typed straight onto the invoice with no separate "add partner"
+    /// step first. Used for the merchant side, which is always required.</summary>
     private async Task<Partner> ResolvePartnerAsync(int? id, string? name, PartnerType type, string role)
     {
         if (id is not null)
-            return await _db.Partners.FindAsync(id) ?? throw new NotFoundAppException($"Partner ({role})", id);
+        {
+            var existing = await _db.Partners.FindAsync(id) ?? throw new NotFoundAppException($"Partner ({role})", id);
+            if (!PartnerTypeMatches(existing.Type, type))
+                throw new ValidationAppException($"الشخص المحدد ({existing.Name}) ليس من نوع {PartnerTypeLabel(type)} — لا يمكن استخدامه كـ{role} على هذه الفاتورة.");
+            return existing;
+        }
 
         if (!string.IsNullOrWhiteSpace(name))
             return await _partners.FindOrCreateAsync(name, type);
@@ -623,13 +721,43 @@ public class InvoiceService : IInvoiceService
         throw new ValidationAppException($"Either an existing {role} or a {role} name is required.");
     }
 
+    /// <summary>Same "Both" allowance used everywhere a partner's type is checked (see
+    /// PartnerService.ListAsync's sellerIds/merchantIds grouping and PaymentService's own copy of
+    /// this same check): a partner marked Both can act as either Farmer or Merchant, since that's
+    /// exactly what Both means (requirement doc §3). Driver is its own type, never folded into
+    /// Both, so only an actual Driver partner satisfies a Driver expectation. Partner.Type itself
+    /// is nullable (staff can record a person before knowing their role — see
+    /// PartnerService.ValidateNameAndType/PartnersPage's "النوع (اختياري)" field): a still-unset
+    /// Type can't fail this check without also blocking that pre-existing, intentional flow, so it
+    /// is passed through here rather than rejected.</summary>
+    private static bool PartnerTypeMatches(PartnerType? actual, PartnerType expected) => actual is null || expected switch
+    {
+        PartnerType.Farmer => actual is PartnerType.Farmer or PartnerType.Both,
+        PartnerType.Merchant => actual is PartnerType.Merchant or PartnerType.Both,
+        PartnerType.Driver => actual is PartnerType.Driver,
+        _ => actual == expected
+    };
+
+    private static string PartnerTypeLabel(PartnerType type) => type switch
+    {
+        PartnerType.Farmer => "بائع",
+        PartnerType.Merchant => "مشتري",
+        PartnerType.Driver => "سائق",
+        _ => type.ToString()
+    };
+
     /// <summary>Same resolution as <see cref="ResolvePartnerAsync"/>, but returns null instead of
     /// throwing when neither an Id nor a name is supplied — used for the seller/driver sides, which
     /// are both optional (an invoice can be entered for the trader alone).</summary>
     private async Task<Partner?> ResolveOptionalPartnerAsync(int? id, string? name, PartnerType type, string role)
     {
         if (id is not null)
-            return await _db.Partners.FindAsync(id) ?? throw new NotFoundAppException($"Partner ({role})", id);
+        {
+            var existing = await _db.Partners.FindAsync(id) ?? throw new NotFoundAppException($"Partner ({role})", id);
+            if (!PartnerTypeMatches(existing.Type, type))
+                throw new ValidationAppException($"الشخص المحدد ({existing.Name}) ليس من نوع {PartnerTypeLabel(type)} — لا يمكن استخدامه كـ{role} على هذه الفاتورة.");
+            return existing;
+        }
 
         if (!string.IsNullOrWhiteSpace(name))
             return await _partners.FindOrCreateAsync(name, type);

@@ -6,7 +6,10 @@
 // the same optional invoice slot and ledger wiring — see the remarks on PartnerType in the backend.
 export type PartnerType = "Farmer" | "Merchant" | "Both" | "Driver";
 export type InvoiceStatus = "Active" | "Cancelled";
-export type PaymentDirection = "FromMerchant" | "ToFarmer";
+// Three separate directions — ToFarmer and ToDriver used to share one value ("ToFarmer" covered
+// both), which meant the person picker searched every partner regardless of type. Now each has
+// its own value so the picker can be restricted to the matching partner type — see PaymentsPage.tsx.
+export type PaymentDirection = "FromMerchant" | "ToFarmer" | "ToDriver";
 export type CheckClearanceStatus = "Pending" | "Cleared" | "Bounced";
 export type UnitOfMeasure = "Kg" | "Box";
 

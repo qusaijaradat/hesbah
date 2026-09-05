@@ -8,6 +8,15 @@ export function formatWeight(value: number): string {
 
 export const UNIT_LABELS: Record<"Kg" | "Box", string> = { Kg: "كغم", Box: "صندوق" };
 
+/** Payment direction labels — ToFarmer/ToDriver are separate directions (see the backend
+ * PaymentDirection enum's doc comment), each shown under its own label everywhere a payment's
+ * direction is displayed (list/print tables, the Checks page). */
+export const PAYMENT_DIRECTION_LABELS: Record<"FromMerchant" | "ToFarmer" | "ToDriver", string> = {
+  FromMerchant: "من المشتري",
+  ToFarmer: "للبائع",
+  ToDriver: "للسائق",
+};
+
 export function formatQuantity(value: number, unit: "Kg" | "Box"): string {
   return `${value.toLocaleString("en-US", { maximumFractionDigits: 3 })} ${UNIT_LABELS[unit]}`;
 }

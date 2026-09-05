@@ -66,6 +66,8 @@ public class PartnerService : IPartnerService
 
     public async Task<PagedResult<PartnerDto>> ListAsync(string? search, PartnerType? type, int page, int pageSize)
     {
+        (page, pageSize) = Paging.Clamp(page, pageSize);
+
         var query = _db.Partners.AsQueryable();
         if (!string.IsNullOrWhiteSpace(search))
             query = query.Where(p => p.Name.Contains(search));
@@ -148,6 +150,8 @@ public class PartnerService : IPartnerService
 
     public async Task<PartnerDto> CreateAsync(CreatePartnerRequest request)
     {
+        ValidateNameAndType(request.Name, request.Type);
+
         var partner = new Partner
         {
             Name = request.Name.Trim(),
@@ -198,6 +202,8 @@ public class PartnerService : IPartnerService
 
     public async Task<PartnerDto> UpdateAsync(int id, UpdatePartnerRequest request)
     {
+        ValidateNameAndType(request.Name, request.Type);
+
         var partner = await _db.Partners.FindAsync(id) ?? throw new NotFoundAppException("Partner", id);
         partner.Name = request.Name.Trim();
         partner.Type = request.Type;
@@ -208,6 +214,24 @@ public class PartnerService : IPartnerService
         partner.OpeningBalance = request.OpeningBalance;
         await _db.SaveChangesAsync();
         return ToDto(partner);
+    }
+
+    /// <summary>
+    /// Previously an empty name saved silently — every other similar entity (Employee, Item, Role)
+    /// already rejects one, and the frontend's own form already refuses to submit a blank name
+    /// client-side, so this only guards the API surface itself the same way. Type stays genuinely
+    /// optional (the frontend's own "النوع (اختياري)" / "غير محدد" option is a deliberate, existing
+    /// choice — staff can record a plain contact before knowing their role) — but when a type IS
+    /// given, it must be one of the actual defined PartnerType values, so a malformed value can't
+    /// silently save and then vanish out of every seller/driver/merchant list and balance
+    /// computation that switches on it.
+    /// </summary>
+    private static void ValidateNameAndType(string name, PartnerType? type)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+            throw new ValidationAppException("اسم الشخص مطلوب.");
+        if (type is not null && !Enum.IsDefined(typeof(PartnerType), type.Value))
+            throw new ValidationAppException("نوع الشخص غير صالح.");
     }
 
     /// <summary>Requirement doc §6: merchant account = invoices, total purchases, paid, remaining + statement.</summary>

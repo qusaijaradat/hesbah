@@ -67,8 +67,35 @@ public class SettingsController : ControllerBase
 
         using var stream = new MemoryStream();
         await file.CopyToAsync(stream);
-        await _logoService.SetAsync(stream.ToArray(), file.ContentType, CurrentUserId.Require(User));
+        var bytes = stream.ToArray();
+
+        // Content-Type above is just a header the browser sends — anyone can claim any file is
+        // "image/png". This checks the actual file bytes match a real image of the claimed kind,
+        // so a renamed/relabeled non-image file can't be stored and then served back to every user
+        // who opens Settings (or printed onto every invoice) under a false image content type.
+        if (!MatchesImageSignature(bytes, file.ContentType))
+            return BadRequest(new { error = "محتوى الملف لا يطابق صيغة صورة صالحة." });
+
+        await _logoService.SetAsync(bytes, file.ContentType, CurrentUserId.Require(User));
         return NoContent();
+    }
+
+    private static bool MatchesImageSignature(byte[] bytes, string contentType)
+    {
+        switch (contentType.ToLowerInvariant())
+        {
+            case "image/png":
+                return bytes.Length >= 8 && bytes[0] == 0x89 && bytes[1] == 0x50 && bytes[2] == 0x4E && bytes[3] == 0x47
+                    && bytes[4] == 0x0D && bytes[5] == 0x0A && bytes[6] == 0x1A && bytes[7] == 0x0A;
+            case "image/jpeg":
+                return bytes.Length >= 3 && bytes[0] == 0xFF && bytes[1] == 0xD8 && bytes[2] == 0xFF;
+            case "image/webp":
+                return bytes.Length >= 12
+                    && bytes[0] == 'R' && bytes[1] == 'I' && bytes[2] == 'F' && bytes[3] == 'F'
+                    && bytes[8] == 'W' && bytes[9] == 'E' && bytes[10] == 'B' && bytes[11] == 'P';
+            default:
+                return false;
+        }
     }
 
     [HttpDelete("logo")]

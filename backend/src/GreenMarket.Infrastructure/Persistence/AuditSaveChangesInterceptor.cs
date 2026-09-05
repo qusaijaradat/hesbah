@@ -85,18 +85,41 @@ public class AuditSaveChangesInterceptor : SaveChangesInterceptor
         return logs;
     }
 
+    /// <summary>
+    /// FailedLoginAttempts churns on literally every login attempt (success resets it to 0,
+    /// failure increments it) — previously that alone was enough to log a full "Updated" audit
+    /// row for the User entity on every single login, burying genuinely meaningful changes
+    /// (a role switch, a deactivation, a cancelled invoice on some other entity) in hundreds of
+    /// daily login-noise rows. Excluded from the diff entirely so a login attempt that touches
+    /// ONLY this field produces no audit row at all (see BuildAuditLogs' existing "changes.Count
+    /// == 0" skip) — a real account change bundled with other fields still logs those normally.
+    /// </summary>
+    private static readonly HashSet<string> ExcludedFromDiff = new() { nameof(User.FailedLoginAttempts) };
+
+    /// <summary>Never write the actual password hash/salt value into the audit trail — previously
+    /// an admin-driven password reset (UserService.UpdateAsync) logged both the old AND new
+    /// encrypted values verbatim, readable by anyone with audit-log access. The fact that a
+    /// password WAS changed is still worth keeping (a real, investigable account event), just not
+    /// the value itself.</summary>
+    private static readonly HashSet<string> RedactedInDiff = new() { nameof(User.PasswordHash), nameof(User.PasswordSalt) };
+
     private static Dictionary<string, object?> BuildChangeDictionary(EntityEntry entry)
     {
         var changes = new Dictionary<string, object?>();
         foreach (var property in entry.Properties)
         {
+            var name = property.Metadata.Name;
+            if (entry.Entity is User && ExcludedFromDiff.Contains(name)) continue;
+
             if (entry.State == EntityState.Added)
             {
-                changes[property.Metadata.Name] = property.CurrentValue;
+                changes[name] = entry.Entity is User && RedactedInDiff.Contains(name) ? "(محجوب)" : property.CurrentValue;
             }
             else if (entry.State == EntityState.Modified && property.IsModified)
             {
-                changes[property.Metadata.Name] = new { old = property.OriginalValue, @new = property.CurrentValue };
+                changes[name] = entry.Entity is User && RedactedInDiff.Contains(name)
+                    ? new { old = "(محجوب)", @new = "(محجوب)" }
+                    : new { old = property.OriginalValue, @new = property.CurrentValue };
             }
         }
         return changes;

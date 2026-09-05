@@ -37,14 +37,30 @@ public enum InvoiceStatus
     Cancelled = 2
 }
 
-/// <summary>Which side of a transaction a payment settles.</summary>
+/// <summary>
+/// Which side of a transaction a payment settles. Three separate directions on purpose — a
+/// payment TO a farmer and a payment TO a driver used to share a single ToFarmer value (the
+/// person picker just searched every partner regardless of type), which made it easy to attach
+/// a payment to the wrong kind of person. ToDriver is now its own value so the person picker can
+/// be restricted to actual drivers when this direction is selected — see PaymentsPage.tsx.
+/// </summary>
 public enum PaymentDirection
 {
     /// <summary>Money coming IN from a merchant, against their purchases.</summary>
     FromMerchant = 1,
 
-    /// <summary>Money going OUT to a farmer, against their net dues.</summary>
-    ToFarmer = 2
+    /// <summary>Money going OUT to a farmer/seller, against their net dues.</summary>
+    ToFarmer = 2,
+
+    /// <summary>
+    /// Money going OUT to a driver, against their transport-fee dues. Posts to the exact same
+    /// "farmer_transactions" ledger table as ToFarmer (see FarmerTransactionType.TransportFee's
+    /// doc comment) — every place that used to branch on "== ToFarmer" to mean "ToFarmer OR
+    /// ToDriver" now branches on "is ToFarmer or ToDriver" instead, so ledger posting/removal for
+    /// a driver payment is unchanged; only partner-type resolution and invoice-link matching were
+    /// narrowed to be direction-specific.
+    /// </summary>
+    ToDriver = 3
 }
 
 /// <summary>

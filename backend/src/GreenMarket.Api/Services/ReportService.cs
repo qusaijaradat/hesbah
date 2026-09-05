@@ -155,7 +155,11 @@ public class ReportService : IReportService
             .Select(g => new { MerchantId = g.Key, Total = g.Sum(i => i.TotalValue) })
             .ToDictionaryAsync(x => x.MerchantId, x => x.Total);
 
-        var allTimePaid = await _db.Payments.Where(p => p.Direction == PaymentDirection.FromMerchant)
+        // Bounced checks excluded — same reasoning as PartnerService's own "paid" total (see
+        // CheckClearanceStatus.Bounced's doc comment): a bounced check never actually paid
+        // anything, so counting it here understated what the merchant still owes.
+        var allTimePaid = await _db.Payments
+            .Where(p => p.Direction == PaymentDirection.FromMerchant && p.CheckStatus != CheckClearanceStatus.Bounced)
             .Where(p => filter.PartnerId == null || p.PartnerId == filter.PartnerId)
             .GroupBy(p => p.PartnerId)
             .Select(g => new { MerchantId = g.Key, Total = g.Sum(p => p.Amount) })
@@ -387,7 +391,10 @@ public class ReportService : IReportService
             .Select(i => new { i.Id, i.MerchantId, i.Merchant.Name, i.Date, i.TotalValue })
             .ToListAsync();
 
-        var paymentQuery = _db.Payments.Where(p => p.Direction == PaymentDirection.FromMerchant);
+        // Bounced checks excluded — same reasoning as everywhere else "paid" is summed (see
+        // CheckClearanceStatus.Bounced's doc comment): a bounced check never actually settled
+        // anything, so it must not make an aged invoice look paid down here.
+        var paymentQuery = _db.Payments.Where(p => p.Direction == PaymentDirection.FromMerchant && p.CheckStatus != CheckClearanceStatus.Bounced);
         if (filter.PartnerId is not null) paymentQuery = paymentQuery.Where(p => p.PartnerId == filter.PartnerId);
         var payments = await paymentQuery
             .Select(p => new { p.PartnerId, p.InvoiceId, p.Amount })
@@ -469,12 +476,20 @@ public class ReportService : IReportService
             .Where(e => e.Date >= dayStart && e.Date < dayEnd)
             .SumAsync(e => e.Amount);
 
+        // Bounced checks excluded here too (same reasoning as PartnerService's balance math — see
+        // CheckClearanceStatus.Bounced's doc comment): a check that came back never actually moved
+        // any cash, so it shouldn't inflate the day's real cash-flow figures.
         var paymentsFromMerchants = await _db.Payments
-            .Where(p => p.Direction == PaymentDirection.FromMerchant && p.Date >= dayStart && p.Date < dayEnd)
+            .Where(p => p.Direction == PaymentDirection.FromMerchant && p.CheckStatus != CheckClearanceStatus.Bounced
+                && p.Date >= dayStart && p.Date < dayEnd)
             .SumAsync(p => p.Amount);
 
+        // ToFarmer AND ToDriver both count here — this figure means "money paid out to
+        // sellers/drivers today" (see DailyClosingDto's own doc comment), same as before ToDriver
+        // existed as its own direction value.
         var paymentsToFarmers = await _db.Payments
-            .Where(p => p.Direction == PaymentDirection.ToFarmer && p.Date >= dayStart && p.Date < dayEnd)
+            .Where(p => (p.Direction == PaymentDirection.ToFarmer || p.Direction == PaymentDirection.ToDriver)
+                && p.CheckStatus != CheckClearanceStatus.Bounced && p.Date >= dayStart && p.Date < dayEnd)
             .SumAsync(p => p.Amount);
 
         return new DailyClosingDto(

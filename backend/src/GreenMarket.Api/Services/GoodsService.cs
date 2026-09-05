@@ -145,7 +145,15 @@ public class GoodsService : IGoodsService
 
     public async Task<GoodsEntryDto> CreateAsync(CreateGoodsEntryRequest request, int recordedByUserId)
     {
+        // "بضاعة الباعة" is seller-side by definition (see the interface doc comment) — the id
+        // wasn't checked beyond existing before, so a merchant or driver id could be recorded as a
+        // "farmer" stock entry and silently corrupt that person's goods-stock numbers.
         var farmer = await _db.Partners.FindAsync(request.FarmerId) ?? throw new NotFoundAppException("Partner (farmer)", request.FarmerId);
+        // Type itself is nullable (staff can record a person before knowing their role) — a
+        // still-unset Type is passed through rather than rejected, same as every other type check
+        // added across this pass (see PaymentService.PartnerTypeMatches's doc comment).
+        if (farmer.Type is not (null or PartnerType.Farmer or PartnerType.Both))
+            throw new ValidationAppException($"الشخص المحدد ({farmer.Name}) ليس بائعًا — لا يمكن تسجيل بضاعة له.");
         ValidateLine(request.ItemName, request.Quantity, request.WoodQuantity);
 
         // Same "type it once, pick it from a list every time after" growth as InvoiceService.

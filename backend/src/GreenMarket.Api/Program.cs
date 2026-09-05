@@ -434,6 +434,21 @@ using (var scope = app.Services.CreateScope())
         app.Logger.LogError(ex, "Failed to create the box_returns table — recording/viewing a merchant's empty-crate returns will not work until this is fixed.");
     }
 
+    // Composite index matching the actual query pattern: every farmer/driver statement (كشف حساب)
+    // filters by FarmerId and orders by Date together — previously only single-column indexes
+    // existed on each separately, so this most-common lookup got progressively slower as
+    // farmer_transactions grew instead of using one index for both parts of the query.
+    try
+    {
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE INDEX IF NOT EXISTS ix_farmer_transactions_farmerid_date ON farmer_transactions ("FarmerId", "Date");
+            """);
+    }
+    catch (Exception ex)
+    {
+        app.Logger.LogError(ex, "Failed to create the composite (FarmerId, Date) index on farmer_transactions — statements will still work correctly, just slower as the table grows.");
+    }
+
     await DbSeeder.SeedAsync(db);
 }
 
@@ -448,21 +463,30 @@ if (app.Environment.IsDevelopment())
 
 app.UseCors();
 app.UseAuthentication();
+// Re-validates the live user record (IsActive, MustChangePassword, current permissions) on every
+// authenticated request — see LiveUserStateMiddleware's own doc comment for exactly which audit
+// findings this closes. Placed after authentication (context.User must be populated) but before
+// authorization (a stale/deactivated/must-change-password session is rejected before the
+// [RequirePermission] policy checks even run).
+app.UseMiddleware<LiveUserStateMiddleware>();
 app.UseAuthorization();
 app.MapControllers();
 
-// ---------- Health ----------
-// Anonymous and dependency-free on purpose. The deploy pipeline polls this
-// through the public hostname to decide whether a rollout succeeded
-// (deploy/scripts/portainer.sh), and the container healthcheck polls it
-// locally — so it must answer 200 as soon as the app can serve requests, and
-// must not depend on anything that could make a healthy API look unhealthy.
-// The database is not probed here: schema creation and seeding already ran
-// above, so reaching this line at all means the connection worked.
-//
-// Removing this endpoint does not fail a build or a test — it fails every
-// deploy, several minutes in, as a health-gate timeout that looks like a
-// networking problem. It was dropped once already in 1c712fb.
-app.MapGet("/health", () => Results.Ok(new { status = "ok" })).AllowAnonymous();
+// Simple health check (audit recommendation: "مراقبة وتنبيه على أعطال السيرفر" — previously
+// nothing existed to poll, so the first sign of an outage was a user complaining). Anonymous on
+// purpose so an external uptime monitor can poll it with no credentials; only reports DB
+// reachability, nothing sensitive.
+app.MapGet("/api/health", async (GreenMarket.Infrastructure.Persistence.AppDbContext db) =>
+{
+    try
+    {
+        await db.Database.ExecuteSqlRawAsync("SELECT 1");
+        return Results.Ok(new { status = "ok", database = "reachable", timeUtc = DateTimeOffset.UtcNow });
+    }
+    catch (Exception ex)
+    {
+        return Results.Json(new { status = "degraded", database = "unreachable", error = ex.Message }, statusCode: 503);
+    }
+}).AllowAnonymous();
 
 app.Run();

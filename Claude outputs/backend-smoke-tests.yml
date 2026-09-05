@@ -1,0 +1,28 @@
+name: Backend smoke tests
+
+# Runs the existing zero-dependency SmokeTests console project (backend/tools/SmokeTests) on
+# every push/PR — it covers the commission/invoice calculators and the account-statement builder.
+# This is NOT a substitute for a real xUnit/NUnit test suite (see the audit recommendation this
+# partially addresses: "اختبارات آلية حقيقية") — it's the smallest safe step that turns the
+# checks that already existed (but had to be run manually) into something CI enforces on its own.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  smoke-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Run smoke tests
+        working-directory: backend/tools/SmokeTests
+        run: dotnet run --configuration Release

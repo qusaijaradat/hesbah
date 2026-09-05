@@ -30,6 +30,12 @@ export function PartnerAutocomplete({
   const [open, setOpen] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const debounceRef = useRef<number | null>(null);
+  // Debouncing only cancels a PENDING timer, not a request already in flight — fast typing (or
+  // refocusing) can still have two suggestPartners calls in flight at once, and a slower earlier
+  // one can resolve AFTER a faster later one and overwrite it with stale results. This counter
+  // tags each fetch so only the most recently STARTED one is ever applied to the dropdown,
+  // matching the same "cancelled" guard InvoiceEditPage already uses for its own account lookup.
+  const requestSeqRef = useRef(0);
 
   useEffect(() => setQuery(value?.name ?? ""), [value?.id]);
 
@@ -40,7 +46,9 @@ export function PartnerAutocomplete({
     setOpen(true);
     if (debounceRef.current) window.clearTimeout(debounceRef.current);
     debounceRef.current = window.setTimeout(async () => {
+      const seq = ++requestSeqRef.current;
       const results = await suggestPartners(text, types);
+      if (seq !== requestSeqRef.current) return; // a newer request has since started — drop this stale result
       setSuggestions(results);
       setLoaded(true);
     }, 200);

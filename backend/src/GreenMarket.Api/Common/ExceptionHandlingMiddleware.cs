@@ -26,6 +26,17 @@ public class ExceptionHandlingMiddleware
             context.Response.ContentType = "application/json";
             await context.Response.WriteAsync(JsonSerializer.Serialize(new { error = ex.Message }));
         }
+        // Domain-layer validation (e.g. InvoiceCalculator on a zero/negative quantity or price)
+        // throws the plain BCL ArgumentException/ArgumentOutOfRangeException rather than an
+        // AppException — previously that fell all the way through to the generic 500 handler
+        // below, showing "حدث خطأ غير متوقع" for what's actually a clear, specific input mistake.
+        // ArgumentOutOfRangeException derives from ArgumentException, so this one clause covers both.
+        catch (ArgumentException ex)
+        {
+            context.Response.StatusCode = 400;
+            context.Response.ContentType = "application/json";
+            await context.Response.WriteAsync(JsonSerializer.Serialize(new { error = ex.Message }));
+        }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Unhandled exception processing {Method} {Path}", context.Request.Method, context.Request.Path);

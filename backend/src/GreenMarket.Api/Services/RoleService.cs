@@ -1,6 +1,7 @@
 using GreenMarket.Api.Common;
 using GreenMarket.Api.DTOs;
 using GreenMarket.Domain.Entities;
+using GreenMarket.Domain.Enums;
 using GreenMarket.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
@@ -64,6 +65,25 @@ public class RoleService : IRoleService
         if (string.IsNullOrWhiteSpace(name)) throw new ValidationAppException("Role name is required.");
         if (await _db.Roles.AnyAsync(r => r.Name == name && r.Id != id))
             throw new ConflictAppException($"A role named '{name}' already exists.");
+
+        // Same "last admin" protection as UserService.UpdateAsync, from the other direction:
+        // stripping UsersEdit from a role that active users are actually assigned to must not
+        // leave the whole system with nobody able to manage users at all.
+        var requestedKeys = request.PermissionKeys?.ToHashSet() ?? new HashSet<string>();
+        var roleCurrentlyGrantsUsersEdit = await _db.RolePermissions
+            .AnyAsync(rp => rp.RoleId == id && rp.Permission.Key == PermissionKeys.UsersEdit);
+        if (roleCurrentlyGrantsUsersEdit && !requestedKeys.Contains(PermissionKeys.UsersEdit))
+        {
+            var activeUsersOnThisRole = await _db.Users.AnyAsync(u => u.RoleId == id && u.IsActive);
+            if (activeUsersOnThisRole)
+            {
+                var otherActiveAdminExists = await _db.Users
+                    .Where(u => u.RoleId != id && u.IsActive)
+                    .AnyAsync(u => _db.RolePermissions.Any(rp => rp.RoleId == u.RoleId && rp.Permission.Key == PermissionKeys.UsersEdit));
+                if (!otherActiveAdminExists)
+                    throw new ConflictAppException("لا يمكن سحب صلاحية إدارة المستخدمين من هذا الدور — يوجد مستخدم فعّال واحد على الأقل بهذا الدور، ولا يوجد أي دور فعّال آخر يملك هذه الصلاحية.");
+            }
+        }
 
         role.Name = name;
         role.Description = request.Description;

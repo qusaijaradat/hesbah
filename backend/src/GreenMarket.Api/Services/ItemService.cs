@@ -23,6 +23,10 @@ public interface IItemService
     /// whole catalog so items can be added/renamed/removed directly, not only picked up
     /// incidentally from invoices.</summary>
     Task<PagedResult<ItemDto>> ListAsync(string? search, int page, int pageSize);
+
+    /// <summary>Single-item lookup for the edit form — previously the edit screen had to fetch and
+    /// filter the whole paged list to find one row instead of asking for it directly.</summary>
+    Task<ItemDto> GetAsync(int id);
     Task<ItemDto> CreateAsync(CreateItemRequest request);
     Task<ItemDto> UpdateAsync(int id, UpdateItemRequest request);
     Task DeleteAsync(int id);
@@ -66,6 +70,8 @@ public class ItemService : IItemService
 
     public async Task<PagedResult<ItemDto>> ListAsync(string? search, int page, int pageSize)
     {
+        (page, pageSize) = Paging.Clamp(page, pageSize);
+
         var query = _db.Items.AsQueryable();
         if (!string.IsNullOrWhiteSpace(search))
             query = query.Where(i => i.Name.Contains(search));
@@ -77,6 +83,12 @@ public class ItemService : IItemService
             .ToListAsync();
 
         return new PagedResult<ItemDto> { Items = items, TotalCount = total, Page = page, PageSize = pageSize };
+    }
+
+    public async Task<ItemDto> GetAsync(int id)
+    {
+        var item = await _db.Items.FindAsync(id) ?? throw new NotFoundAppException("Item", id);
+        return new ItemDto(item.Id, item.Name);
     }
 
     public async Task<ItemDto> CreateAsync(CreateItemRequest request)

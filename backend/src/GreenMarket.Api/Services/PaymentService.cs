@@ -11,6 +11,10 @@ namespace GreenMarket.Api.Services;
 public interface IPaymentService
 {
     Task<PaymentDto> CreateAsync(CreatePaymentRequest request, int recordedByUserId);
+
+    /// <summary>Single-payment lookup for the edit form — previously the edit screen had to fetch
+    /// and filter the whole paged list to find one row instead of asking for it directly.</summary>
+    Task<PaymentDto> GetAsync(int id);
     Task<PagedResult<PaymentDto>> ListAsync(int? partnerId, int page, int pageSize);
     Task<PaymentDto> UpdateAsync(int id, UpdatePaymentRequest request);
     Task DeleteAsync(int id);
@@ -59,13 +63,20 @@ public class PaymentService : IPaymentService
             // CheckClearedDate stays null here for the same reason — it's only ever set once the
             // check actually clears, via UpdateAsync.
         };
+
+        // The payment row and its linked FarmerTransaction ledger row are two separate
+        // SaveChangesAsync calls (the second needs payment.Id) — wrapped in one DB transaction so
+        // a failure/interruption between them can never leave a payment recorded without its
+        // matching ledger entry (or vice versa), instead of two independent, non-atomic writes.
+        await using var transaction = await _db.Database.BeginTransactionAsync();
+
         _db.Payments.Add(payment);
         await _db.SaveChangesAsync(); // need payment.Id for the FarmerTransaction link below
 
-        // Only payments TO a farmer post to the internal farmer ledger (requirement doc §5/§6);
-        // payments FROM a merchant just reduce their invoice balance, computed on the fly in
-        // PartnerService.GetMerchantAccountAsync from Payments directly.
-        if (request.Direction == PaymentDirection.ToFarmer)
+        // Only payments TO a farmer or driver post to the internal farmer ledger (requirement doc
+        // §5/§6); payments FROM a merchant just reduce their invoice balance, computed on the fly
+        // in PartnerService.GetMerchantAccountAsync from Payments directly.
+        if (request.Direction is PaymentDirection.ToFarmer or PaymentDirection.ToDriver)
         {
             _db.FarmerTransactions.Add(new FarmerTransaction
             {
@@ -79,11 +90,25 @@ public class PaymentService : IPaymentService
             await _db.SaveChangesAsync();
         }
 
+        await transaction.CommitAsync();
+
         return ToDto(payment, partner.Name, invoice?.InvoiceNumber);
+    }
+
+    public async Task<PaymentDto> GetAsync(int id)
+    {
+        var payment = await _db.Payments.Include(p => p.Partner).Include(p => p.Invoice)
+            .SingleOrDefaultAsync(p => p.Id == id) ?? throw new NotFoundAppException("Payment", id);
+        return ToDto(payment, payment.Partner.Name, payment.Invoice?.InvoiceNumber);
     }
 
     public async Task<PagedResult<PaymentDto>> ListAsync(int? partnerId, int page, int pageSize)
     {
+        // PaymentsController's own print button calls this with pageSize=10000 (print
+        // everything matching the current filter) — ceiling set above that instead of the usual
+        // 200, so that legitimate request isn't silently truncated down to the default.
+        (page, pageSize) = Paging.Clamp(page, pageSize, maxPageSize: 20_000);
+
         var query = _db.Payments.Include(p => p.Partner).Include(p => p.Invoice).AsQueryable();
         if (partnerId is not null) query = query.Where(p => p.PartnerId == partnerId);
 
@@ -98,6 +123,10 @@ public class PaymentService : IPaymentService
 
     public async Task<PagedResult<PaymentDto>> ListChecksAsync(CheckClearanceStatus? status, DateTimeOffset? dueFrom, DateTimeOffset? dueTo, int page, int pageSize)
     {
+        // Same reasoning as ListAsync above — the checks print button calls this with
+        // pageSize=10000, so the ceiling has to sit above that too.
+        (page, pageSize) = Paging.Clamp(page, pageSize, maxPageSize: 20_000, defaultPageSize: 50);
+
         var query = _db.Payments.Include(p => p.Partner).Include(p => p.Invoice)
             .Where(p => p.CheckDueDate != null);
         if (status is not null) query = query.Where(p => p.CheckStatus == status);
@@ -140,7 +169,7 @@ public class PaymentService : IPaymentService
         payment.CheckStatus = request.CheckStatus ?? (request.CheckDueDate is not null ? (payment.CheckStatus ?? CheckClearanceStatus.Pending) : null);
         payment.CheckClearedDate = payment.CheckStatus == CheckClearanceStatus.Cleared ? (request.CheckClearedDate ?? payment.CheckClearedDate) : null;
 
-        if (payment.Direction == PaymentDirection.ToFarmer)
+        if (payment.Direction is PaymentDirection.ToFarmer or PaymentDirection.ToDriver)
         {
             var transaction = await _db.FarmerTransactions.SingleOrDefaultAsync(t => t.PaymentId == payment.Id);
             if (transaction is not null)
@@ -172,7 +201,7 @@ public class PaymentService : IPaymentService
         var payment = await _db.Payments.SingleOrDefaultAsync(p => p.Id == id)
             ?? throw new NotFoundAppException("Payment", id);
 
-        if (payment.Direction == PaymentDirection.ToFarmer)
+        if (payment.Direction is PaymentDirection.ToFarmer or PaymentDirection.ToDriver)
         {
             var transaction = await _db.FarmerTransactions.SingleOrDefaultAsync(t => t.PaymentId == payment.Id);
             if (transaction is not null) _db.FarmerTransactions.Remove(transaction);
@@ -182,37 +211,87 @@ public class PaymentService : IPaymentService
         await _db.SaveChangesAsync();
     }
 
-    /// <summary>Direction tells us which side of the ledger a brand-new partner belongs on:
-    /// ToFarmer => Farmer, FromMerchant => Merchant (mirrors the same resolution used for invoices).</summary>
+    /// <summary>Direction tells us which side of the ledger a partner belongs on: ToFarmer =>
+    /// Farmer, ToDriver => Driver, FromMerchant => Merchant (mirrors the same resolution used for
+    /// invoices). When an existing partner id is passed directly (not a new name), its actual
+    /// stored type is now checked against that expectation — previously any partner id was
+    /// accepted as-is regardless of type, so a merchant id could be posted as a "payment to a
+    /// farmer" and silently corrupt both ledgers (see PartnerTypeMatches's doc comment for exactly
+    /// which combinations are allowed).</summary>
     private async Task<Partner> ResolvePartnerAsync(int? id, string? name, PaymentDirection direction)
     {
+        var expectedType = ExpectedPartnerType(direction);
+
         if (id is not null)
-            return await _db.Partners.FindAsync(id) ?? throw new NotFoundAppException("Partner", id);
+        {
+            var existing = await _db.Partners.FindAsync(id) ?? throw new NotFoundAppException("Partner", id);
+            if (!PartnerTypeMatches(existing.Type, expectedType))
+                throw new ValidationAppException($"الشخص المحدد ليس من نوع {PartnerTypeLabel(expectedType)} — لا يمكن تسجيل دفعة بهذا الاتجاه له.");
+            return existing;
+        }
 
         if (!string.IsNullOrWhiteSpace(name))
-        {
-            var type = direction == PaymentDirection.ToFarmer ? PartnerType.Farmer : PartnerType.Merchant;
-            return await _partners.FindOrCreateAsync(name, type);
-        }
+            return await _partners.FindOrCreateAsync(name, expectedType);
 
         throw new ValidationAppException("Either an existing partner or a partner name is required.");
     }
 
+    private static PartnerType ExpectedPartnerType(PaymentDirection direction) => direction switch
+    {
+        PaymentDirection.ToFarmer => PartnerType.Farmer,
+        PaymentDirection.ToDriver => PartnerType.Driver,
+        _ => PartnerType.Merchant
+    };
+
+    /// <summary>Same "Both" allowance used everywhere else a partner's type is checked (see
+    /// PartnerService.ListAsync's sellerIds/merchantIds grouping): a partner marked Both can act as
+    /// either Farmer or Merchant, since that's exactly what Both means (requirement doc §3 — a
+    /// person who is both a seller and a buyer). Driver is deliberately its own type, never folded
+    /// into Both, so only an actual Driver partner satisfies a Driver expectation. Partner.Type
+    /// itself is nullable (staff can record a person before knowing their role — see
+    /// PartnerService.ValidateNameAndType/PartnersPage's "النوع (اختياري)" field): a still-unset
+    /// Type can't fail this check without also blocking that pre-existing, intentional flow, so it
+    /// is passed through here rather than rejected.</summary>
+    private static bool PartnerTypeMatches(PartnerType? actual, PartnerType expected) => actual is null || expected switch
+    {
+        PartnerType.Farmer => actual is PartnerType.Farmer or PartnerType.Both,
+        PartnerType.Merchant => actual is PartnerType.Merchant or PartnerType.Both,
+        PartnerType.Driver => actual is PartnerType.Driver,
+        _ => actual == expected
+    };
+
+    private static string PartnerTypeLabel(PartnerType type) => type switch
+    {
+        PartnerType.Farmer => "بائع",
+        PartnerType.Merchant => "مشتري",
+        PartnerType.Driver => "سائق",
+        _ => type.ToString()
+    };
+
     /// <summary>Validates that an optional invoice link actually belongs to the partner this
-    /// payment is against — a merchant payment can only link to one of their own invoices, and a
-    /// ToFarmer payment (which covers both farmers AND drivers — see PaymentDirection.ToFarmer) to
-    /// one they were either the farmer OR the driver on.</summary>
+    /// payment is against, matched on the exact same side the direction says it should be (a
+    /// merchant payment to their own MerchantId, a farmer payment to their own FarmerId, a driver
+    /// payment to their own DriverId — no longer "FarmerId OR DriverId" for both directions now
+    /// that ToFarmer/ToDriver are separate), and that the invoice hasn't since been cancelled — a
+    /// cancelled invoice's totals no longer count anywhere, so linking a payment to one left it
+    /// showing on statements against a total that no longer exists.</summary>
     private async Task<Invoice?> ResolveInvoiceLinkAsync(int? invoiceId, int partnerId, PaymentDirection direction)
     {
         if (invoiceId is null) return null;
 
         var invoice = await _db.Invoices.FindAsync(invoiceId) ?? throw new NotFoundAppException("Invoice", invoiceId);
-        var belongsToPartner = direction == PaymentDirection.FromMerchant
-            ? invoice.MerchantId == partnerId
-            : invoice.FarmerId == partnerId || invoice.DriverId == partnerId;
+        var belongsToPartner = direction switch
+        {
+            PaymentDirection.FromMerchant => invoice.MerchantId == partnerId,
+            PaymentDirection.ToFarmer => invoice.FarmerId == partnerId,
+            PaymentDirection.ToDriver => invoice.DriverId == partnerId,
+            _ => false
+        };
 
         if (!belongsToPartner)
             throw new ValidationAppException("The selected invoice does not belong to this partner.");
+        if (invoice.Status != InvoiceStatus.Active)
+            throw new ValidationAppException("لا يمكن ربط دفعة بفاتورة ملغاة.");
 
         return invoice;
     }

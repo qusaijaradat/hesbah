@@ -23,12 +23,18 @@ export function ItemAutocomplete({
   const [open, setOpen] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const debounceRef = useRef<number | null>(null);
+  // Same stale-response guard as PartnerAutocomplete: debouncing only cancels a pending timer, not
+  // a request already in flight, so a slower earlier fetch can resolve after a faster later one
+  // and overwrite it with stale suggestions. Only the most recently STARTED request is applied.
+  const requestSeqRef = useRef(0);
 
   function fetchSuggestions(text: string) {
     setOpen(true);
     if (debounceRef.current) window.clearTimeout(debounceRef.current);
     debounceRef.current = window.setTimeout(async () => {
+      const seq = ++requestSeqRef.current;
       const results = await suggestItems(text);
+      if (seq !== requestSeqRef.current) return; // a newer request has since started — drop this stale result
       setSuggestions(results);
       setLoaded(true);
     }, 150);

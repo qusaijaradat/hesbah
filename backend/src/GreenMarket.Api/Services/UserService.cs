@@ -1,6 +1,7 @@
 using GreenMarket.Api.Common;
 using GreenMarket.Api.DTOs;
 using GreenMarket.Domain.Entities;
+using GreenMarket.Domain.Enums;
 using GreenMarket.Infrastructure.Persistence;
 using GreenMarket.Infrastructure.Security;
 using Microsoft.EntityFrameworkCore;
@@ -11,6 +12,10 @@ namespace GreenMarket.Api.Services;
 public interface IUserService
 {
     Task<IReadOnlyList<UserDto>> ListAsync();
+
+    /// <summary>Single-user lookup for the edit form — previously the edit screen had to fetch and
+    /// filter the whole list to find one row instead of asking for it directly.</summary>
+    Task<UserDto> GetAsync(int id);
     Task<UserDto> CreateAsync(CreateUserRequest request);
     Task<UserDto> UpdateAsync(int id, UpdateUserRequest request);
     Task<IReadOnlyList<RoleDto>> ListRolesAsync();
@@ -30,6 +35,14 @@ public class UserService : IUserService
             .ToDictionaryAsync(g => g.Key, g => g.Select(rp => rp.Permission.Key).ToList());
 
         return users.Select(u => ToDto(u, permsByRole.GetValueOrDefault(u.RoleId, new()))).ToList();
+    }
+
+    public async Task<UserDto> GetAsync(int id)
+    {
+        var user = await _db.Users.Include(u => u.Role).SingleOrDefaultAsync(u => u.Id == id)
+            ?? throw new NotFoundAppException("User", id);
+        var perms = await _db.RolePermissions.Where(rp => rp.RoleId == user.RoleId).Select(rp => rp.Permission.Key).ToListAsync();
+        return ToDto(user, perms);
     }
 
     public async Task<UserDto> CreateAsync(CreateUserRequest request)
@@ -67,6 +80,25 @@ public class UserService : IUserService
             ?? throw new NotFoundAppException("User", id);
 
         var role = await _db.Roles.FindAsync(request.RoleId) ?? throw new NotFoundAppException("Role", request.RoleId);
+
+        // Guard against locking everyone out of user management: if this account is currently the
+        // last ACTIVE one whose role grants UsersEdit, deactivating it or moving it to a role
+        // without that permission would leave nobody able to fix it back — short of a direct
+        // database edit. Previously nothing stopped this (a mistake, or a single compromised
+        // admin account, could disable every other admin with no way back).
+        var hadUsersEdit = user.IsActive && await _db.RolePermissions
+            .AnyAsync(rp => rp.RoleId == user.RoleId && rp.Permission.Key == PermissionKeys.UsersEdit);
+        var willHaveUsersEdit = request.IsActive && await _db.RolePermissions
+            .AnyAsync(rp => rp.RoleId == role.Id && rp.Permission.Key == PermissionKeys.UsersEdit);
+
+        if (hadUsersEdit && !willHaveUsersEdit)
+        {
+            var otherActiveAdminExists = await _db.Users
+                .Where(u => u.Id != id && u.IsActive)
+                .AnyAsync(u => _db.RolePermissions.Any(rp => rp.RoleId == u.RoleId && rp.Permission.Key == PermissionKeys.UsersEdit));
+            if (!otherActiveAdminExists)
+                throw new ConflictAppException("لا يمكن إلغاء تفعيل هذا الحساب أو تغيير دوره — إنه آخر حساب فعّال يملك صلاحية إدارة المستخدمين، ويجب أن يبقى حساب واحد فعّال على الأقل بهذه الصلاحية.");
+        }
 
         user.FullName = request.FullName;
         user.RoleId = role.Id;

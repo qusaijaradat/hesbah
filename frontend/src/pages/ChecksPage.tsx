@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { listChecks, printChecksPdf, updatePayment } from "../api/payments";
 import { triggerBlobDownload } from "../api/invoices";
 import { apiErrorMessage } from "../api/client";
-import { formatCurrency, formatDate, todayLocalDateString } from "../lib/format";
+import { formatCurrency, formatDate, todayLocalDateString, PAYMENT_DIRECTION_LABELS } from "../lib/format";
 import { useAuth } from "../auth/AuthContext";
 import type { CheckClearanceStatus, PaymentDto } from "../types";
 
@@ -213,7 +213,7 @@ export function ChecksPage() {
                     {isDueSoon && <div className="text-xs">⏳ مستحق قريبًا</div>}
                   </td>
                   <td className="font-medium">{c.partnerName}</td>
-                  <td className="text-sm text-gray-500">{c.direction === "ToFarmer" ? "للبائع/السائق" : "من المشتري"}</td>
+                  <td className="text-sm text-gray-500">{PAYMENT_DIRECTION_LABELS[c.direction]}</td>
                   <td className="font-medium">{formatCurrency(c.amount)}</td>
                   <td className="text-gray-500">{c.checkNumber || "—"}</td>
                   <td className="text-gray-500 text-sm">{c.invoiceNumber ?? "—"}</td>

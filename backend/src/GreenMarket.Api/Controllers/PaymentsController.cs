@@ -88,6 +88,10 @@ public class PaymentsController : ControllerBase
             logoContent);
     }
 
+    [HttpGet("{id:int}")]
+    [RequirePermission(PermissionKeys.PaymentsView)]
+    public async Task<ActionResult<PaymentDto>> Get(int id) => Ok(await _paymentService.GetAsync(id));
+
     [HttpPost]
     [RequirePermission(PermissionKeys.PaymentsCreate)]
     public async Task<ActionResult<PaymentDto>> Create(CreatePaymentRequest request) =>

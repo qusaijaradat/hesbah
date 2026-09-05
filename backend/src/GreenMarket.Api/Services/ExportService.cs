@@ -1801,6 +1801,16 @@ public class ExportService : IExportService
         _ => "قيد التحصيل"
     };
 
+    /// <summary>Same 3-way wording as PaymentsPage.tsx's own direction select — ToFarmer/ToDriver
+    /// are separate directions now (see PaymentDirection's doc comment), each printed under its
+    /// own label instead of the old combined "للبائع/السائق".</summary>
+    private static string PaymentDirectionLabel(PaymentDirection direction) => direction switch
+    {
+        PaymentDirection.ToFarmer => "للبائع",
+        PaymentDirection.ToDriver => "للسائق",
+        _ => "من المشتري"
+    };
+
     /// <summary>
     /// "الشيكات" print button — a register of check payments (Payment.CheckDueDate set), matching
     /// whatever the screen is currently filtered to (status/month — "periodLabel" just describes
@@ -1862,7 +1872,7 @@ public class ExportService : IExportService
                         var shaded = i % 2 == 1;
                         table.Cell().Element(cc => DataCell(cc, shaded)).AlignRight().Text(c.CheckDueDate is not null ? $"{c.CheckDueDate:yyyy-MM-dd}" : "—");
                         table.Cell().Element(cc => DataCell(cc, shaded)).AlignRight().Text(c.PartnerName);
-                        table.Cell().Element(cc => DataCell(cc, shaded)).AlignRight().Text(c.Direction == PaymentDirection.ToFarmer ? "للبائع/السائق" : "من المشتري");
+                        table.Cell().Element(cc => DataCell(cc, shaded)).AlignRight().Text(PaymentDirectionLabel(c.Direction));
                         table.Cell().Element(cc => DataCell(cc, shaded)).AlignRight().Text($"₪ {c.Amount:0.##}").Bold();
                         table.Cell().Element(cc => DataCell(cc, shaded)).AlignRight().Text(c.CheckNumber ?? "—");
                         table.Cell().Element(cc => DataCell(cc, shaded)).AlignRight().Text(c.InvoiceNumber ?? "—");
@@ -1952,7 +1962,7 @@ public class ExportService : IExportService
                         var shaded = i % 2 == 1;
                         table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text($"{p.Date:yyyy-MM-dd}");
                         table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(p.PartnerName);
-                        table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(p.Direction == PaymentDirection.ToFarmer ? "للبائع/السائق" : "من المشتري");
+                        table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(PaymentDirectionLabel(p.Direction));
                         table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text($"₪ {p.Amount:0.##}").Bold();
                         table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(p.InvoiceNumber ?? "—");
                         table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(p.Method ?? "—");
@@ -1964,8 +1974,10 @@ public class ExportService : IExportService
                 {
                     col.Item().LineHorizontal(1).LineColor(Colors.Grey.Darken1);
                     var toFarmerTotal = payments.Where(p => p.Direction == PaymentDirection.ToFarmer).Sum(p => p.Amount);
+                    var toDriverTotal = payments.Where(p => p.Direction == PaymentDirection.ToDriver).Sum(p => p.Amount);
                     var fromMerchantTotal = payments.Where(p => p.Direction == PaymentDirection.FromMerchant).Sum(p => p.Amount);
-                    col.Item().PaddingTop(4).AlignRight().Text($"إجمالي الدفعات للباعة/السواق: ₪ {toFarmerTotal:0.##}").FontSize(10);
+                    col.Item().PaddingTop(4).AlignRight().Text($"إجمالي الدفعات للباعة: ₪ {toFarmerTotal:0.##}").FontSize(10);
+                    col.Item().AlignRight().Text($"إجمالي الدفعات للسواق: ₪ {toDriverTotal:0.##}").FontSize(10);
                     col.Item().AlignRight().Text($"إجمالي الدفعات من المشترين: ₪ {fromMerchantTotal:0.##}").FontSize(10);
                     col.Item().PaddingTop(2).AlignCenter().Text(x =>
                     {

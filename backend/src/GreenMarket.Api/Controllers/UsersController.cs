@@ -20,6 +20,10 @@ public class UsersController : ControllerBase
     [RequirePermission(PermissionKeys.UsersView)]
     public async Task<ActionResult<IReadOnlyList<UserDto>>> List() => Ok(await _userService.ListAsync());
 
+    [HttpGet("{id:int}")]
+    [RequirePermission(PermissionKeys.UsersView)]
+    public async Task<ActionResult<UserDto>> Get(int id) => Ok(await _userService.GetAsync(id));
+
     [HttpPost]
     [RequirePermission(PermissionKeys.UsersCreate)]
     public async Task<ActionResult<UserDto>> Create(CreateUserRequest request) => Ok(await _userService.CreateAsync(request));

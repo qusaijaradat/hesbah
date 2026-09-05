@@ -39,5 +39,10 @@ public class FarmerTransactionConfiguration : IEntityTypeConfiguration<FarmerTra
         builder.HasIndex(x => x.FarmerId);
         builder.HasIndex(x => x.Date);
         builder.HasIndex(x => x.InvoiceId);
+        // Matches the actual query pattern: every farmer/driver statement (كشف حساب) filters by
+        // FarmerId and orders by Date together — see the matching CREATE INDEX IF NOT EXISTS guard
+        // in Program.cs for an already-existing database (this HasIndex only ever takes effect via
+        // EnsureCreatedAsync on a brand-new one).
+        builder.HasIndex(x => new { x.FarmerId, x.Date });
     }
 }

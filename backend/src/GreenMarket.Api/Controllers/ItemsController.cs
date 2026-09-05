@@ -33,6 +33,10 @@ public class ItemsController : ControllerBase
     public async Task<ActionResult<IReadOnlyList<ItemDto>>> Suggest([FromQuery] string? q = null) =>
         Ok(await _itemService.SuggestAsync(q));
 
+    [HttpGet("{id:int}")]
+    [RequirePermission(PermissionKeys.ItemsView)]
+    public async Task<ActionResult<ItemDto>> Get(int id) => Ok(await _itemService.GetAsync(id));
+
     [HttpPost]
     [RequirePermission(PermissionKeys.ItemsCreate)]
     public async Task<ActionResult<ItemDto>> Create(CreateItemRequest request) => Ok(await _itemService.CreateAsync(request));

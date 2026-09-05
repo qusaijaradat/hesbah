@@ -42,6 +42,11 @@ public class ExpenseService : IExpenseService
 
     public async Task<PagedResult<ExpenseDto>> ListAsync(DateTimeOffset? from, DateTimeOffset? to, int page, int pageSize)
     {
+        // ExpensesController's own print button calls this with pageSize=10000 (print everything
+        // matching the current filter) — ceiling set above that instead of the usual 200, so that
+        // legitimate request isn't silently truncated down to the default.
+        (page, pageSize) = Paging.Clamp(page, pageSize, maxPageSize: 20_000);
+
         var query = _db.Expenses.Include(e => e.Employee).AsQueryable();
         if (from is not null) query = query.Where(e => e.Date >= from);
         if (to is not null) query = query.Where(e => e.Date <= to);
@@ -58,7 +63,9 @@ public class ExpenseService : IExpenseService
     public async Task<ExpenseDto> UpdateAsync(int id, UpdateExpenseRequest request)
     {
         if (request.Amount < 0) throw new ValidationAppException("Expense amount cannot be negative.");
-        if (string.IsNullOrWhiteSpace(request.Description)) throw new ValidationAppException("Description is required.");
+        // Previously required here but not on CreateAsync — an expense saved with no description
+        // (perfectly possible on create) could then never be saved again on update, since every
+        // subsequent save hit this same check. Relaxed to match CreateAsync's own behavior.
 
         var expense = await _db.Expenses.FindAsync(id) ?? throw new NotFoundAppException("Expense", id);
         var employee = await ResolveEmployeeAsync(request.EmployeeId);

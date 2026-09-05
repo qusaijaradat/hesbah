@@ -120,7 +120,14 @@ export function InvoiceDetailPage() {
   async function handleCancel() {
     if (!invoice) return;
     const reason = window.prompt("سبب الإلغاء:");
-    if (reason === null) return;
+    if (reason === null) return; // explicit Cancel
+    // Pressing "موافق" with an empty box previously fell through as a valid (blank) reason and
+    // cancelled immediately — an almost-irreversible action deserves an actual typed reason, not
+    // an accidental empty click.
+    if (!reason.trim()) { alert("يرجى كتابة سبب الإلغاء."); return; }
+    // Second, explicit confirmation step before an action that can't be undone (there is
+    // deliberately no "un-cancel" — see CancelAsync's own doc comment).
+    if (!window.confirm(`تأكيد إلغاء الفاتورة رقم ${invoice.invoiceNumber}؟ هذا الإجراء لا يمكن التراجع عنه.`)) return;
     setError(null);
     try {
       const updated = await cancelInvoice(invoice.id, reason);

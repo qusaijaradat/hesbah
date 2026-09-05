@@ -9,7 +9,7 @@ import { listInvoices } from "../api/invoices";
 import { triggerBlobDownload } from "../api/invoices";
 import type { CheckClearanceStatus, EmployeeDto, ExpenseDto, InvoiceListItemDto, PaymentDirection, PaymentDto } from "../types";
 import { PartnerAutocomplete } from "../components/PartnerAutocomplete";
-import { formatCurrency, formatDate, todayLocalDateString } from "../lib/format";
+import { formatCurrency, formatDate, todayLocalDateString, PAYMENT_DIRECTION_LABELS } from "../lib/format";
 import { apiErrorMessage } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { useSelection } from "../lib/useSelection";
@@ -151,7 +151,7 @@ function PaymentsTab({ canCreate, canEdit, canDelete }: { canCreate: boolean; ca
                 )}
                 <td>{formatDate(p.date)}</td>
                 <td>{p.partnerName}</td>
-                <td>{p.direction === "ToFarmer" ? "دفعة للبائع/السائق" : "دفعة من المشتري"}</td>
+                <td>{PAYMENT_DIRECTION_LABELS[p.direction]}</td>
                 <td className="font-medium">{formatCurrency(p.amount)}</td>
                 <td className="text-gray-500 text-sm">{p.invoiceNumber ?? "—"}</td>
                 <td>
@@ -179,9 +179,9 @@ function PaymentsTab({ canCreate, canEdit, canDelete }: { canCreate: boolean; ca
   );
 }
 
-/** Shared invoice-link picker: lists the selected partner's own invoices (merchant-side or
- * farmer-side depending on direction) so a payment can optionally be tied to one specific
- * invoice instead of only reducing the partner's aggregate balance. */
+/** Shared invoice-link picker: lists the selected partner's own invoices (merchant/farmer/driver
+ * side depending on direction) so a payment can optionally be tied to one specific invoice
+ * instead of only reducing the partner's aggregate balance. */
 function InvoiceLinkPicker({ partnerId, direction, invoiceId, onChange }: {
   partnerId: number | null;
   direction: PaymentDirection;
@@ -192,26 +192,15 @@ function InvoiceLinkPicker({ partnerId, direction, invoiceId, onChange }: {
 
   useEffect(() => {
     if (!partnerId) { setInvoices([]); onChange(null); return; }
+    // Three separate directions now (see PaymentDirection's doc comment) — each one only ever
+    // queries its own matching side, instead of the old "ToFarmer" merge of farmer + driver.
     if (direction === "FromMerchant") {
       listInvoices({ merchantId: partnerId, pageSize: 100 }).then((r) => setInvoices(r.items));
-      return;
+    } else if (direction === "ToFarmer") {
+      listInvoices({ farmerId: partnerId, pageSize: 100 }).then((r) => setInvoices(r.items));
+    } else {
+      listInvoices({ driverId: partnerId, pageSize: 100 }).then((r) => setInvoices(r.items));
     }
-    // "ToFarmer" covers BOTH farmers and drivers (see PaymentDirection.ToFarmer) — the same
-    // person id could be attached to invoices either as the farmer or as the driver, so both
-    // sides are fetched and merged (a person is essentially never both on the same invoice, but
-    // dedupe by id defensively anyway).
-    Promise.all([
-      listInvoices({ farmerId: partnerId, pageSize: 100 }),
-      listInvoices({ driverId: partnerId, pageSize: 100 }),
-    ]).then(([farmerResult, driverResult]) => {
-      const seen = new Set<number>();
-      const merged = [...farmerResult.items, ...driverResult.items].filter((inv) => {
-        if (seen.has(inv.id)) return false;
-        seen.add(inv.id);
-        return true;
-      });
-      setInvoices(merged);
-    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [partnerId, direction]);
 
@@ -307,12 +296,32 @@ function PaymentFormModal({ onClose, onSaved }: { onClose: () => void; onSaved: 
         <div className="space-y-3">
           <div>
             <label className="label">الاتجاه</label>
-            <select className="input" value={direction} onChange={(e) => { setDirection(e.target.value as PaymentDirection); setInvoiceId(null); }}>
-              <option value="ToFarmer">دفعة للبائع/السائق (يخفض مستحقاته)</option>
+            <select
+              className="input"
+              value={direction}
+              onChange={(e) => {
+                setDirection(e.target.value as PaymentDirection);
+                setInvoiceId(null);
+                // The person picked under the old direction is very likely the wrong partner type
+                // for the new one (e.g. switching من "للبائع" إلى "للسائق") — clear it instead of
+                // silently keeping a mismatched selection around.
+                setPartner(null);
+                setPartnerText("");
+              }}
+            >
+              <option value="ToFarmer">دفعة للبائع (يخفض مستحقاته)</option>
+              <option value="ToDriver">دفعة للسائق (يخفض مستحقاته)</option>
               <option value="FromMerchant">دفعة من المشتري (تخفض دينه)</option>
             </select>
           </div>
-          <PartnerAutocomplete label="الشخص" value={partner} onChange={setPartner} allowNew onFreeTextChange={setPartnerText} />
+          <PartnerAutocomplete
+            label="الشخص"
+            value={partner}
+            onChange={setPartner}
+            allowNew
+            onFreeTextChange={setPartnerText}
+            types={direction === "FromMerchant" ? ["Merchant", "Both"] : direction === "ToFarmer" ? ["Farmer", "Both"] : ["Driver"]}
+          />
           <InvoiceLinkPicker partnerId={partner?.id ?? null} direction={direction} invoiceId={invoiceId} onChange={setInvoiceId} />
           <div>
             <label className="label">التاريخ</label>

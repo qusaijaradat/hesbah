@@ -53,6 +53,13 @@ public record InvoiceItemDto(int Id, string ItemName, decimal Quantity, UnitOfMe
 /// computed fresh on every read (never stored) — same treatment as WoodTotal. Completely separate
 /// from/additive to WoodTotal — both can be non-zero on the same invoice at once.
 ///
+/// DriverBoxFeeApplied/DriverBoxFeeTotal (explicit request): the driver-side counterpart of
+/// BoxPriceApplied/BoxFeeTotal above, but money owed TO the driver rather than charged to the
+/// merchant — DriverBoxFeeTotal = TotalBoxes × DriverBoxFeeApplied (Invoice.DriverBoxFeeApplied,
+/// the "أجرة الصناديق" settings value locked in at creation time). Deliberately excluded from
+/// GrandTotal below (which stays the merchant-facing amount) — shown only on driver-facing
+/// surfaces (ExportService.GenerateDriverManifestPdf), where it's added to the driver's own total.
+///
 /// Commission/NetDueToFarmer are this one invoice's own commission math (CommissionCalculator over
 /// TotalValue/CommissionRateApplied — never TotalValue+WoodTotal/TransportFee/BoxFeeTotal, same
 /// base the linked FarmerTransaction.Commission already uses, so this can never drift from the
@@ -68,6 +75,7 @@ public record InvoiceDto(
     InvoiceStatus Status,
     decimal TotalWeightKg, decimal TotalValue, decimal TransportFee, decimal WoodTotal,
     decimal TotalBoxes, decimal BoxPriceApplied, decimal BoxFeeTotal,
+    decimal DriverBoxFeeApplied, decimal DriverBoxFeeTotal,
     decimal GrandTotal,
     decimal PreviousBalance,
     decimal CommissionRateApplied, decimal Commission, decimal NetDueToFarmer,

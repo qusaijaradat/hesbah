@@ -182,7 +182,11 @@ public class ReportService : IReportService
     /// <summary>See DriverReportRow's doc comment. Mirrors FarmerReportAsync's structure exactly —
     /// same shared farmer_transactions ledger, same Paid/Remaining/OpeningBalance formulas — just
     /// scoped to Invoice.DriverId instead of Invoice.FarmerId, and with TotalTransportFee (there is
-    /// no "sale"/commission concept for a driver) in place of TotalSalesValue/TotalCommission.</summary>
+    /// no "sale"/commission concept for a driver) in place of TotalSalesValue/TotalCommission.
+    /// TotalTransportFee folds in each invoice's own automatic "أجرة الصناديق" box-handling fee
+    /// (box-unit item count × Invoice.DriverBoxFeeApplied) alongside the manual TransportFee — same
+    /// "everything the driver earned" total the ledger (and Remaining below) already reflects, so
+    /// this never drifts out of sync with the driver's own كشف حساب.</summary>
     public async Task<IReadOnlyList<DriverReportRow>> DriverReportAsync(ReportFilterRequest filter)
     {
         var invoiceQuery = _db.Invoices.Where(i => i.Status == InvoiceStatus.Active && i.DriverId != null);
@@ -190,7 +194,7 @@ public class ReportService : IReportService
         if (filter.DateTo is not null) invoiceQuery = invoiceQuery.Where(i => i.Date <= filter.DateTo);
         if (filter.PartnerId is not null) invoiceQuery = invoiceQuery.Where(i => i.DriverId == filter.PartnerId);
 
-        var invoices = await invoiceQuery.Include(i => i.Driver).ToListAsync();
+        var invoices = await invoiceQuery.Include(i => i.Driver).Include(i => i.Items).ToListAsync();
 
         var invoiceAgg = invoices
             .GroupBy(i => new { DriverId = i.DriverId!.Value, i.Driver!.Name })
@@ -199,7 +203,7 @@ public class ReportService : IReportService
                 DriverId = g.Key.DriverId,
                 DriverName = g.Key.Name,
                 InvoiceCount = g.Count(),
-                TotalTransportFee = g.Sum(i => i.TransportFee),
+                TotalTransportFee = g.Sum(i => i.TransportFee + i.Items.Where(it => it.Unit == UnitOfMeasure.Box).Sum(it => it.Quantity) * i.DriverBoxFeeApplied),
                 LastInvoiceDate = (DateTimeOffset?)g.Max(i => i.Date)
             })
             .ToList();
@@ -288,7 +292,8 @@ public class ReportService : IReportService
 
     /// <summary>Driver counterpart — see DriverItemBreakdownRow's doc comment for why
     /// TotalTransportFee is computed once per INVOICE (never per item line) and then simply repeated
-    /// across that driver's rows rather than summed per item.</summary>
+    /// across that driver's rows rather than summed per item. Same "fold in أجرة الصناديق" treatment
+    /// as DriverReportAsync's own TotalTransportFee — see that method's doc comment.</summary>
     public async Task<IReadOnlyList<DriverItemBreakdownRow>> DriverItemBreakdownAsync(ReportFilterRequest filter)
     {
         var query = _db.Invoices.Where(i => i.Status == InvoiceStatus.Active && i.DriverId != null);
@@ -303,7 +308,7 @@ public class ReportService : IReportService
 
         var feeByDriver = invoices
             .GroupBy(i => i.DriverId!.Value)
-            .ToDictionary(g => g.Key, g => g.Sum(i => i.TransportFee));
+            .ToDictionary(g => g.Key, g => g.Sum(i => i.TransportFee + i.Items.Where(it => it.Unit == UnitOfMeasure.Box).Sum(it => it.Quantity) * i.DriverBoxFeeApplied));
 
         return invoices
             .SelectMany(i => i.Items.Select(it => new { DriverId = i.DriverId!.Value, DriverName = i.Driver!.Name, it.ItemName, it.Unit, it.Quantity }))

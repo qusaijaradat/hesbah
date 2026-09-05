@@ -7,6 +7,8 @@ import { apiErrorMessage } from "../api/client";
 import { formatCurrency } from "../lib/format";
 import { useAuth } from "../auth/AuthContext";
 import { CREDIT_LIMIT_UI_ENABLED } from "../lib/featureFlags";
+import { useSelection } from "../lib/useSelection";
+import { runBulkDelete, summarizeBulkDelete } from "../lib/bulkDelete";
 
 const TYPE_LABELS: Record<string, string> = { Farmer: "بائع", Driver: "سائق", Merchant: "مشتري", Both: "بائع/مشتري" };
 
@@ -21,6 +23,8 @@ export function PartnersPage() {
   const [editing, setEditing] = useState<PartnerDto | "new" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<number | null>(null);
+  const selection = useSelection();
+  const [bulkDeleting, setBulkDeleting] = useState(false);
 
   async function refresh() {
     setLoading(true);
@@ -74,6 +78,24 @@ export function PartnersPage() {
     }
   }
 
+  // "select all" + bulk delete (explicit request) — deletes whatever's deletable and reports the
+  // rest (a partner with prior invoices/payments/ledger history is protected server-side, so a
+  // batch can legitimately be a mix of successes and blocked rows).
+  async function handleBulkDelete() {
+    const items = partners.filter((p) => selection.selected.has(p.id));
+    if (items.length === 0) return;
+    if (!window.confirm(`حذف ${items.length} شخص محدد؟ لا يمكن التراجع عن هذا.`)) return;
+    setBulkDeleting(true);
+    setError(null);
+    const outcome = await runBulkDelete(items, (p) => p.id, (p) => p.name, deletePartner);
+    setBulkDeleting(false);
+    selection.clear();
+    await refresh();
+    // Silent on full success (the row count changing is feedback enough) — only surface a
+    // message when something needs the user's attention (a blocked/partial delete).
+    if (outcome.failedCount > 0) setError(summarizeBulkDelete(outcome));
+  }
+
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
@@ -90,12 +112,30 @@ export function PartnersPage() {
         onChange={(e) => setSearch(e.target.value)}
       />
 
-      {error && <div className="text-sm text-red-600 bg-red-50 rounded-md p-3 mb-4">{error}</div>}
+      {error && <div className="text-sm text-red-600 bg-red-50 rounded-md p-3 mb-4 whitespace-pre-line">{error}</div>}
+
+      {canDelete && selection.selected.size > 0 && (
+        <div className="flex items-center gap-3 mb-4">
+          <span className="text-sm text-gray-600">محدد: <span className="font-semibold">{selection.selected.size}</span></span>
+          <button className="btn-danger text-sm" disabled={bulkDeleting} onClick={handleBulkDelete}>
+            {bulkDeleting ? "جاري الحذف..." : `حذف المحدد (${selection.selected.size})`}
+          </button>
+        </div>
+      )}
 
       <div className="card overflow-x-auto">
         <table className="table-base">
           <thead>
             <tr>
+              {canDelete && (
+                <th className="w-8">
+                  <input
+                    type="checkbox"
+                    checked={partners.length > 0 && partners.every((p) => selection.selected.has(p.id))}
+                    onChange={() => selection.toggleAll(partners.map((p) => p.id))}
+                  />
+                </th>
+              )}
               <th>الاسم</th>
               <th>النوع</th>
               <th>رقم واتساب</th>
@@ -108,12 +148,17 @@ export function PartnersPage() {
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={CREDIT_LIMIT_UI_ENABLED ? 8 : 7} className="text-center text-gray-400 py-6">جاري التحميل...</td></tr>
+              <tr><td colSpan={(CREDIT_LIMIT_UI_ENABLED ? 8 : 7) + (canDelete ? 1 : 0)} className="text-center text-gray-400 py-6">جاري التحميل...</td></tr>
             ) : partners.length === 0 ? (
-              <tr><td colSpan={CREDIT_LIMIT_UI_ENABLED ? 8 : 7} className="text-center text-gray-400 py-6">لا يوجد نتائج</td></tr>
+              <tr><td colSpan={(CREDIT_LIMIT_UI_ENABLED ? 8 : 7) + (canDelete ? 1 : 0)} className="text-center text-gray-400 py-6">لا يوجد نتائج</td></tr>
             ) : (
               partners.map((p) => (
                 <tr key={p.id}>
+                  {canDelete && (
+                    <td>
+                      <input type="checkbox" checked={selection.selected.has(p.id)} onChange={() => selection.toggleOne(p.id)} />
+                    </td>
+                  )}
                   <td className="font-medium">{p.name}</td>
                   <td>{p.type ? TYPE_LABELS[p.type] : "—"}</td>
                   <td>{p.whatsAppNumber || "—"}</td>

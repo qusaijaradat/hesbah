@@ -12,79 +12,10 @@ import { PartnerAutocomplete } from "../components/PartnerAutocomplete";
 import { formatCurrency, formatDate, todayLocalDateString } from "../lib/format";
 import { apiErrorMessage } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
-
-// Fixed preset list for "طريقة الدفع" — "أخرى" (other) reveals a free-text field for anything not
-// covered by the other three. "شيك" is what reveals the due-date/check-number/status fields below.
-const PAYMENT_METHOD_OPTIONS = ["نقدي", "حوالة", "شيك", "أخرى"];
-
-/// <summary>
-/// One method+amount line inside "تسجيل دفعة" — a single payment record can now be split across
-/// several of these in one submit (e.g. part نقدي + part شيك against the same invoice), each
-/// becoming its own Payment row on save (see PaymentFormModal.handleSave). "customMethod" only
-/// applies when method === "أخرى"; the check fields only apply when method === "شيك".
-/// </summary>
-interface PaymentLine {
-  method: string;
-  customMethod: string;
-  amount: string;
-  checkDueDate: string;
-  checkNumber: string;
-}
-
-function emptyLine(): PaymentLine {
-  return { method: "نقدي", customMethod: "", amount: "", checkDueDate: "", checkNumber: "" };
-}
-
-function resolveMethod(line: PaymentLine): string {
-  return line.method === "أخرى" ? line.customMethod.trim() : line.method;
-}
-
-/** Shared method/amount/check-detail fields for one split line inside PaymentFormModal. */
-function PaymentLineFields({ line, onChange, onRemove, showRemove }: {
-  line: PaymentLine;
-  onChange: (patch: Partial<PaymentLine>) => void;
-  onRemove?: () => void;
-  showRemove: boolean;
-}) {
-  const isCheck = line.method === "شيك";
-  return (
-    <div className="border border-gray-200 rounded-md p-3 space-y-2 relative">
-      {showRemove && (
-        <button type="button" className="absolute top-2 left-2 text-gray-400 hover:text-red-500 text-sm" onClick={onRemove}>✕</button>
-      )}
-      <div className="grid grid-cols-2 gap-2">
-        <div>
-          <label className="label">طريقة الدفع</label>
-          <select className="input" value={line.method} onChange={(e) => onChange({ method: e.target.value })}>
-            {PAYMENT_METHOD_OPTIONS.map((m) => <option key={m} value={m}>{m}</option>)}
-          </select>
-        </div>
-        <div>
-          <label className="label">المبلغ (₪)</label>
-          <input className="input" type="number" min="0" step="0.01" value={line.amount} onChange={(e) => onChange({ amount: e.target.value })} />
-        </div>
-      </div>
-      {line.method === "أخرى" && (
-        <div>
-          <label className="label">حدد طريقة الدفع</label>
-          <input className="input" value={line.customMethod} onChange={(e) => onChange({ customMethod: e.target.value })} placeholder="مثال: بطاقة" />
-        </div>
-      )}
-      {isCheck && (
-        <div className="grid grid-cols-2 gap-2">
-          <div>
-            <label className="label">تاريخ استحقاق الشيك</label>
-            <input className="input" type="date" value={line.checkDueDate} onChange={(e) => onChange({ checkDueDate: e.target.value })} />
-          </div>
-          <div>
-            <label className="label">رقم الشيك (اختياري)</label>
-            <input className="input" value={line.checkNumber} onChange={(e) => onChange({ checkNumber: e.target.value })} />
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
+import { useSelection } from "../lib/useSelection";
+import { runBulkDelete, summarizeBulkDelete } from "../lib/bulkDelete";
+import { PAYMENT_METHOD_OPTIONS, PaymentLineFields, emptyLine, resolveMethod } from "../components/PaymentLineFields";
+import type { PaymentLine } from "../components/PaymentLineFields";
 
 export function PaymentsPage() {
   const { hasPermission } = useAuth();
@@ -121,6 +52,9 @@ function PaymentsTab({ canCreate, canEdit, canDelete }: { canCreate: boolean; ca
   const [editing, setEditing] = useState<PaymentDto | null>(null);
   const [printing, setPrinting] = useState(false);
   const [printError, setPrintError] = useState<string | null>(null);
+  const [bulkError, setBulkError] = useState<string | null>(null);
+  const selection = useSelection();
+  const [bulkDeleting, setBulkDeleting] = useState(false);
 
   async function refresh() {
     const result = await listPayments({ pageSize: 50 });
@@ -137,6 +71,19 @@ function PaymentsTab({ canCreate, canEdit, canDelete }: { canCreate: boolean; ca
     } catch (err) {
       alert(apiErrorMessage(err, "فشل الحذف"));
     }
+  }
+
+  async function handleBulkDelete() {
+    const selected = payments.filter((p) => selection.selected.has(p.id));
+    if (selected.length === 0) return;
+    if (!window.confirm(`حذف ${selected.length} دفعة محددة؟ لا يمكن التراجع عن هذا.`)) return;
+    setBulkDeleting(true);
+    setBulkError(null);
+    const outcome = await runBulkDelete(selected, (p) => p.id, (p) => `${formatCurrency(p.amount)} - ${p.partnerName}`, deletePayment);
+    setBulkDeleting(false);
+    selection.clear();
+    await refresh();
+    if (outcome.failedCount > 0) setBulkError(summarizeBulkDelete(outcome));
   }
 
   async function handlePrint() {
@@ -164,16 +111,44 @@ function PaymentsTab({ canCreate, canEdit, canDelete }: { canCreate: boolean; ca
         </button>
         {printError && <span className="text-sm text-red-600">{printError}</span>}
       </div>
+
+      {bulkError && <div className="text-sm text-red-600 bg-red-50 rounded-md p-3 mb-4 whitespace-pre-line">{bulkError}</div>}
+
+      {canDelete && selection.selected.size > 0 && (
+        <div className="flex items-center gap-3 mb-4">
+          <span className="text-sm text-gray-600">محدد: <span className="font-semibold">{selection.selected.size}</span></span>
+          <button className="btn-danger text-sm" disabled={bulkDeleting} onClick={handleBulkDelete}>
+            {bulkDeleting ? "جاري الحذف..." : `حذف المحدد (${selection.selected.size})`}
+          </button>
+        </div>
+      )}
+
       <div className="card overflow-x-auto">
         <table className="table-base">
           <thead>
-            <tr><th>التاريخ</th><th>الشخص</th><th>الاتجاه</th><th>المبلغ</th><th>الفاتورة</th><th>طريقة الدفع</th><th>ملاحظات</th>{showActionsColumn && <th></th>}</tr>
+            <tr>
+              {canDelete && (
+                <th className="w-8">
+                  <input
+                    type="checkbox"
+                    checked={payments.length > 0 && payments.every((p) => selection.selected.has(p.id))}
+                    onChange={() => selection.toggleAll(payments.map((p) => p.id))}
+                  />
+                </th>
+              )}
+              <th>التاريخ</th><th>الشخص</th><th>الاتجاه</th><th>المبلغ</th><th>الفاتورة</th><th>طريقة الدفع</th><th>ملاحظات</th>{showActionsColumn && <th></th>}
+            </tr>
           </thead>
           <tbody>
             {payments.length === 0 ? (
-              <tr><td colSpan={showActionsColumn ? 8 : 7} className="text-center text-gray-400 py-6">لا توجد دفعات</td></tr>
+              <tr><td colSpan={(showActionsColumn ? 8 : 7) + (canDelete ? 1 : 0)} className="text-center text-gray-400 py-6">لا توجد دفعات</td></tr>
             ) : payments.map((p) => (
               <tr key={p.id}>
+                {canDelete && (
+                  <td>
+                    <input type="checkbox" checked={selection.selected.has(p.id)} onChange={() => selection.toggleOne(p.id)} />
+                  </td>
+                )}
                 <td>{formatDate(p.date)}</td>
                 <td>{p.partnerName}</td>
                 <td>{p.direction === "ToFarmer" ? "دفعة للبائع/السائق" : "دفعة من المشتري"}</td>
@@ -533,6 +508,9 @@ function ExpensesTab({ canCreate, canEdit, canDelete }: { canCreate: boolean; ca
   const [editing, setEditing] = useState<ExpenseDto | null>(null);
   const [printing, setPrinting] = useState(false);
   const [printError, setPrintError] = useState<string | null>(null);
+  const [bulkError, setBulkError] = useState<string | null>(null);
+  const selection = useSelection();
+  const [bulkDeleting, setBulkDeleting] = useState(false);
 
   async function refresh() {
     const result = await listExpenses({ pageSize: 50 });
@@ -549,6 +527,19 @@ function ExpensesTab({ canCreate, canEdit, canDelete }: { canCreate: boolean; ca
     } catch (err) {
       alert(apiErrorMessage(err, "فشل الحذف"));
     }
+  }
+
+  async function handleBulkDelete() {
+    const selected = expenses.filter((e) => selection.selected.has(e.id));
+    if (selected.length === 0) return;
+    if (!window.confirm(`حذف ${selected.length} مصروف محدد؟ لا يمكن التراجع عن هذا.`)) return;
+    setBulkDeleting(true);
+    setBulkError(null);
+    const outcome = await runBulkDelete(selected, (e) => e.id, (e) => e.description, deleteExpense);
+    setBulkDeleting(false);
+    selection.clear();
+    await refresh();
+    if (outcome.failedCount > 0) setBulkError(summarizeBulkDelete(outcome));
   }
 
   async function handlePrint() {
@@ -573,14 +564,44 @@ function ExpensesTab({ canCreate, canEdit, canDelete }: { canCreate: boolean; ca
         </button>
         {printError && <span className="text-sm text-red-600">{printError}</span>}
       </div>
+
+      {bulkError && <div className="text-sm text-red-600 bg-red-50 rounded-md p-3 mb-4 whitespace-pre-line">{bulkError}</div>}
+
+      {canDelete && selection.selected.size > 0 && (
+        <div className="flex items-center gap-3 mb-4">
+          <span className="text-sm text-gray-600">محدد: <span className="font-semibold">{selection.selected.size}</span></span>
+          <button className="btn-danger text-sm" disabled={bulkDeleting} onClick={handleBulkDelete}>
+            {bulkDeleting ? "جاري الحذف..." : `حذف المحدد (${selection.selected.size})`}
+          </button>
+        </div>
+      )}
+
       <div className="card overflow-x-auto">
         <table className="table-base">
-          <thead><tr><th>التاريخ</th><th>الوصف</th><th>الفئة</th><th>الموظف</th><th>المبلغ</th>{showActionsColumn && <th></th>}</tr></thead>
+          <thead>
+            <tr>
+              {canDelete && (
+                <th className="w-8">
+                  <input
+                    type="checkbox"
+                    checked={expenses.length > 0 && expenses.every((e) => selection.selected.has(e.id))}
+                    onChange={() => selection.toggleAll(expenses.map((e) => e.id))}
+                  />
+                </th>
+              )}
+              <th>التاريخ</th><th>الوصف</th><th>الفئة</th><th>الموظف</th><th>المبلغ</th>{showActionsColumn && <th></th>}
+            </tr>
+          </thead>
           <tbody>
             {expenses.length === 0 ? (
-              <tr><td colSpan={showActionsColumn ? 6 : 5} className="text-center text-gray-400 py-6">لا توجد مصاريف</td></tr>
+              <tr><td colSpan={(showActionsColumn ? 6 : 5) + (canDelete ? 1 : 0)} className="text-center text-gray-400 py-6">لا توجد مصاريف</td></tr>
             ) : expenses.map((e) => (
               <tr key={e.id}>
+                {canDelete && (
+                  <td>
+                    <input type="checkbox" checked={selection.selected.has(e.id)} onChange={() => selection.toggleOne(e.id)} />
+                  </td>
+                )}
                 <td>{formatDate(e.date)}</td>
                 <td>{e.description}</td>
                 <td>{e.category || "—"}</td>

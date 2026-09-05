@@ -175,6 +175,13 @@ export interface InvoiceDto {
   /** totalBoxes × boxPriceApplied — the automatic per-box fee (explicit request), separate
    * from/additive to woodTotal. Already folded into grandTotal. */
   boxFeeTotal: number;
+  /** "أجرة الصناديق" settings value locked in at this invoice's creation time — the driver-side
+   * counterpart of boxPriceApplied, but money owed TO the driver, not charged to the merchant. */
+  driverBoxFeeApplied: number;
+  /** totalBoxes × driverBoxFeeApplied — the automatic per-box driver handling fee (explicit
+   * request). Deliberately NOT included in grandTotal (merchant-facing) — only shown/added on the
+   * driver's own manifest print (كشف أجرة نقل السائق). */
+  driverBoxFeeTotal: number;
   /** totalValue + transportFee + woodTotal + boxFeeTotal — the actual amount charged to the merchant. */
   grandTotal: number;
   /** "الرصيد السابق" — what this merchant still owed from every one of their OTHER active

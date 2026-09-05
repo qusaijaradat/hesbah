@@ -3,23 +3,30 @@ import { Link, useNavigate } from "react-router-dom";
 import { PartnerAutocomplete } from "../components/PartnerAutocomplete";
 import { ItemAutocomplete } from "../components/ItemAutocomplete";
 import { createInvoice } from "../api/invoices";
+import { createPayment } from "../api/payments";
 import { getMerchantAccount } from "../api/partners";
 import { apiErrorMessage } from "../api/client";
 import { formatCurrency, formatQuantity, todayLocalDateString } from "../lib/format";
 import type { MerchantAccountDto, UnitOfMeasure } from "../types";
 import { CREDIT_LIMIT_UI_ENABLED } from "../lib/featureFlags";
+import { PaymentLineFields, emptyLine, resolveMethod } from "../components/PaymentLineFields";
+import type { PaymentLine } from "../components/PaymentLineFields";
 
 interface Row {
   itemName: string;
   quantity: string;
   unit: UnitOfMeasure;
   pricePerUnit: string;
-  /** "" = not set (0) — one of a fixed preset list, not free-typed. */
+  /** "" = not set (0); one of WOOD_PRICE_OPTIONS; or WOOD_PRICE_OTHER, in which case the
+   *  actual value lives in woodPriceCustom instead (same "أخرى" pattern as PaymentLine's
+   *  method/customMethod — see resolveWoodPrice below). */
   woodPrice: string;
+  /** Free-typed value, only meaningful when woodPrice === WOOD_PRICE_OTHER. */
+  woodPriceCustom: string;
 }
 
 function emptyRow(): Row {
-  return { itemName: "", quantity: "", unit: "Kg", pricePerUnit: "", woodPrice: "" };
+  return { itemName: "", quantity: "", unit: "Kg", pricePerUnit: "", woodPrice: "", woodPriceCustom: "" };
 }
 
 const UNIT_OPTIONS: { value: UnitOfMeasure; label: string }[] = [
@@ -27,8 +34,18 @@ const UNIT_OPTIONS: { value: UnitOfMeasure; label: string }[] = [
   { value: "Box", label: "صندوق" },
 ];
 
-// Fixed preset list for "سعر الخشب" (wood/crate price) — a picker, not free text.
+// Fixed preset list for "سعر الخشب" (wood/crate price) — a picker, not free text — plus an
+// "أخرى" escape hatch for the occasional value outside this list (request: "مرات بكون رقم
+// غير عن هدول"). The backend accepts any decimal here, so this is a purely frontend picker
+// constraint; WOOD_PRICE_OTHER is just the sentinel that reveals the free-value input below.
 const WOOD_PRICE_OPTIONS = ["3", "5", "6", "7", "8"];
+const WOOD_PRICE_OTHER = "أخرى";
+
+/** Resolves a row's actual wood-price number, whether it came from the preset list or the
+ *  free-typed "أخرى" field. */
+function resolveWoodPrice(row: Row): number {
+  return row.woodPrice === WOOD_PRICE_OTHER ? (parseFloat(row.woodPriceCustom) || 0) : (parseFloat(row.woodPrice) || 0);
+}
 
 function quantityLabel(unit: UnitOfMeasure) {
   return unit === "Kg" ? "الوزن (كغم)" : "عدد الصناديق";
@@ -60,24 +77,26 @@ export function InvoiceNewPage() {
   const [driverText, setDriverText] = useState("");
   // Optional flat transport/delivery fee for the whole invoice ("أجرة النقل").
   const [transportFee, setTransportFee] = useState("");
-  // Optional "دفع كم؟" shortcut — records a linked payment right when the invoice is saved
-  // instead of a separate trip to the Payments page (see api/invoices.ts createInvoice's
-  // paidAmount doc). "" = nothing paid yet.
-  const [paidAmount, setPaidAmount] = useState("");
+  // "دفعة عند الإصدار" shortcut — records one or more linked payments right when the invoice is
+  // saved instead of a separate trip to the Payments page. Explicit request: can now split across
+  // several payment methods at once (part نقدي + part شيك, etc.), same PaymentLine building block
+  // the standalone "تسجيل دفعة" modal uses — see PaymentLineFields.tsx. An empty/zero-amount line
+  // means nothing paid yet; extra lines are only sent if they end up with an amount > 0.
+  const [paymentLines, setPaymentLines] = useState<PaymentLine[]>([emptyLine()]);
   const [rows, setRows] = useState<Row[]>([emptyRow()]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   // Requirement: after saving, jump straight into a fresh invoice instead of navigating
   // away — the market enters invoices back-to-back all day, so staying on this screen
   // (with a quick link to the one just saved) beats re-clicking "new invoice" every time.
-  const [lastSaved, setLastSaved] = useState<{ id: number; invoiceNumber: string; remaining: number } | null>(null);
+  const [lastSaved, setLastSaved] = useState<{ id: number; invoiceNumber: string; remaining: number; paymentError?: string } | null>(null);
 
   const parsedRows = rows.map((r) => ({
     itemName: r.itemName,
     quantity: parseFloat(r.quantity) || 0,
     unit: r.unit,
     pricePerUnit: parseFloat(r.pricePerUnit) || 0,
-    woodPrice: parseFloat(r.woodPrice) || 0,
+    woodPrice: resolveWoodPrice(r),
   }));
   // Not everything is sold by weight — box-unit lines have their own total instead of
   // being folded into (or silently dropped from) the weight figure.
@@ -89,7 +108,7 @@ export function InvoiceNewPage() {
   const woodTotal = parsedRows.reduce((sum, r) => sum + r.woodPrice, 0);
   const transportFeeValue = parseFloat(transportFee) || 0;
   const grandTotal = totalValue + woodTotal + transportFeeValue;
-  const paidAmountValue = parseFloat(paidAmount) || 0;
+  const paidAmountValue = paymentLines.reduce((sum, l) => sum + (parseFloat(l.amount) || 0), 0);
   const remainingOnThisInvoice = grandTotal - paidAmountValue;
 
   useEffect(() => {
@@ -115,6 +134,18 @@ export function InvoiceNewPage() {
     setRows((prev) => (prev.length > 1 ? prev.filter((_, i) => i !== index) : prev));
   }
 
+  function updatePaymentLine(index: number, patch: Partial<PaymentLine>) {
+    setPaymentLines((prev) => prev.map((l, i) => (i === index ? { ...l, ...patch } : l)));
+  }
+
+  function addPaymentLine() {
+    setPaymentLines((prev) => [...prev, emptyLine()]);
+  }
+
+  function removePaymentLine(index: number) {
+    setPaymentLines((prev) => (prev.length > 1 ? prev.filter((_, i) => i !== index) : prev));
+  }
+
   function resetForm() {
     setDate(todayLocalDateString());
     setMerchant(null);
@@ -125,7 +156,7 @@ export function InvoiceNewPage() {
     setDriver(null);
     setDriverText("");
     setTransportFee("");
-    setPaidAmount("");
+    setPaymentLines([emptyLine()]);
     setRows([emptyRow()]);
   }
 
@@ -141,6 +172,15 @@ export function InvoiceNewPage() {
       .map((r) => ({ itemName: r.itemName, quantity: r.quantity, unit: r.unit, pricePerUnit: r.pricePerUnit, woodPrice: r.woodPrice }));
     if (items.length === 0) { setError("يجب إضافة صنف واحد على الأقل بكمية أكبر من صفر"); return; }
 
+    // "دفعة عند الإصدار" (explicit request: can split across several methods) — validated BEFORE
+    // creating the invoice, so a bad check due date is caught up front instead of leaving an
+    // invoice saved with no way to also record its payment.
+    const paymentLinesToRecord = paymentLines.filter((l) => (parseFloat(l.amount) || 0) > 0);
+    for (const [i, line] of paymentLinesToRecord.entries()) {
+      if (line.method === "شيك" && !line.checkDueDate) { setError(`الدفعة - السطر ${i + 1}: تاريخ استحقاق الشيك مطلوب`); return; }
+      if (line.method === "أخرى" && !line.customMethod.trim()) { setError(`الدفعة - السطر ${i + 1}: يرجى تحديد طريقة الدفع`); return; }
+    }
+
     setBusy(true);
     try {
       const invoice = await createInvoice({
@@ -154,9 +194,32 @@ export function InvoiceNewPage() {
         driverName: driver ? undefined : (driverName || undefined),
         transportFee: transportFeeValue,
         items,
-        paidAmount: paidAmountValue > 0 ? paidAmountValue : undefined,
       });
-      setLastSaved({ id: invoice.id, invoiceNumber: invoice.invoiceNumber, remaining: remainingOnThisInvoice });
+
+      // The invoice is saved at this point no matter what happens below — a payment-line failure
+      // must never read as if the invoice itself failed to save (see the paymentError banner).
+      let paymentError: string | undefined;
+      for (const [i, line] of paymentLinesToRecord.entries()) {
+        try {
+          const isCheck = line.method === "شيك";
+          await createPayment({
+            partnerId: invoice.merchantId,
+            direction: "FromMerchant",
+            amount: parseFloat(line.amount),
+            date: new Date(date).toISOString(),
+            method: resolveMethod(line) || undefined,
+            notes: `دفعة عند إصدار الفاتورة ${invoice.invoiceNumber}`,
+            invoiceId: invoice.id,
+            checkDueDate: isCheck ? new Date(line.checkDueDate).toISOString() : null,
+            checkNumber: isCheck ? (line.checkNumber || undefined) : undefined,
+          });
+        } catch (err) {
+          paymentError = `تعذر تسجيل الدفعة (السطر ${i + 1}): ${apiErrorMessage(err, "فشل الحفظ")}${i > 0 ? " — الأسطر السابقة انحفظت فعليًا" : ""}`;
+          break;
+        }
+      }
+
+      setLastSaved({ id: invoice.id, invoiceNumber: invoice.invoiceNumber, remaining: remainingOnThisInvoice, paymentError });
       resetForm();
     } catch (err) {
       setError(apiErrorMessage(err, "فشل إنشاء الفاتورة"));
@@ -178,6 +241,11 @@ export function InvoiceNewPage() {
           <Link to={`/invoices/${lastSaved.id}`} className="text-brand-700 font-medium hover:underline">
             عرض / طباعة الفاتورة ←
           </Link>
+        </div>
+      )}
+      {lastSaved?.paymentError && (
+        <div className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-md p-3 mb-4">
+          ⚠️ {lastSaved.paymentError} — يمكنك تسجيلها يدويًا من صفحة "الدفعات".
         </div>
       )}
 
@@ -261,7 +329,13 @@ export function InvoiceNewPage() {
                     onChange={(e) => updateRow(idx, { woodPrice: e.target.value })}>
                     <option value="">بدون</option>
                     {WOOD_PRICE_OPTIONS.map((p) => <option key={p} value={p}>₪{p}</option>)}
+                    <option value={WOOD_PRICE_OTHER}>{WOOD_PRICE_OTHER}</option>
                   </select>
+                  {row.woodPrice === WOOD_PRICE_OTHER && (
+                    <input className="input mt-1" type="number" min="0" step="0.01" value={row.woodPriceCustom}
+                      placeholder="القيمة"
+                      onChange={(e) => updateRow(idx, { woodPriceCustom: e.target.value })} />
+                  )}
                 </div>
                 <div className="col-span-1 sm:col-span-1 flex items-center justify-between sm:block">
                   <label className="label sm:hidden">الإجمالي</label>
@@ -287,18 +361,25 @@ export function InvoiceNewPage() {
       </div>
 
       <div className="card p-5 mb-4 space-y-4">
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-md">
-          <div>
-            <label className="label">أجرة النقل (₪، اختياري)</label>
-            <input className="input" type="number" min="0" step="0.01" value={transportFee}
-              onChange={(e) => setTransportFee(e.target.value)} placeholder="اتركه فارغًا إن لم يوجد" />
-          </div>
-          <div>
-            <label className="label">المبلغ المدفوع الآن (₪، اختياري)</label>
-            <input className="input" type="number" min="0" step="0.01" value={paidAmount}
-              onChange={(e) => setPaidAmount(e.target.value)} placeholder="اتركه فارغًا إذا لم يدفع شيء" />
-          </div>
+        <div className="max-w-xs">
+          <label className="label">أجرة النقل (₪، اختياري)</label>
+          <input className="input" type="number" min="0" step="0.01" value={transportFee}
+            onChange={(e) => setTransportFee(e.target.value)} placeholder="اتركه فارغًا إن لم يوجد" />
         </div>
+
+        <div className="space-y-2 max-w-md">
+          <div className="flex items-center justify-between">
+            <label className="label mb-0">الدفعة عند الإصدار (اختياري)</label>
+            {paymentLines.length > 1 && <span className="text-xs text-gray-400">المجموع: {formatCurrency(paidAmountValue)}</span>}
+          </div>
+          {paymentLines.map((line, i) => (
+            <PaymentLineFields key={i} line={line} onChange={(patch) => updatePaymentLine(i, patch)} onRemove={() => removePaymentLine(i)} showRemove={paymentLines.length > 1} />
+          ))}
+          <button type="button" className="text-sm text-brand-700 hover:underline" onClick={addPaymentLine}>
+            + إضافة طريقة دفع أخرى لنفس الدفعة (مثلاً: جزء نقدي وجزء شيكات)
+          </button>
+        </div>
+
         {paidAmountValue > 0 && (
           <div className="text-sm text-gray-600">
             الباقي على هذه الفاتورة بعد هذه الدفعة: <span className="font-semibold">{formatCurrency(remainingOnThisInvoice)}</span>

@@ -31,5 +31,15 @@ public class Setting
         /// manual per-line "سعر الخشب" (InvoiceItem.WoodPrice) — both can be non-zero on the same
         /// invoice at once, per explicit request.</summary>
         public const string BoxPrice = "boxes.price";
+
+        /// <summary>Driver-side counterpart to <see cref="BoxPrice"/> above, but the OPPOSITE
+        /// direction of money: this is a per-box handling fee owed TO the driver (e.g. loading/
+        /// unloading crates), not charged to the merchant. Applied AUTOMATICALLY to every invoice
+        /// that has Box-unit items: (total box-unit quantity on that invoice) × (this value AT THE
+        /// TIME the invoice was created — see Invoice.DriverBoxFeeApplied), added on top of the
+        /// invoice's own manual "أجرة النقل" (TransportFee) into what the driver is actually owed —
+        /// shown, itemized, and explained on "كشف أجرة نقل السائق" (ExportService.
+        /// GenerateDriverManifestPdf). Entirely separate from the merchant-facing BoxPrice above.</summary>
+        public const string DriverBoxFee = "boxes.driver_fee";
     }
 }

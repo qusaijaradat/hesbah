@@ -169,6 +169,7 @@ public static class DbSeeder
             new Setting { Key = Setting.Keys.Phone, Value = "", Description = "Company phone number shown on the printed invoice header." },
             new Setting { Key = Setting.Keys.Address, Value = "", Description = "Company address shown on the printed invoice header." },
             new Setting { Key = Setting.Keys.BoxPrice, Value = "0", Description = "سعر الصندوق الواحد (₪) — يُطبّق تلقائيًا كرسم إضافي على كل فاتورة تحتوي أصناف بوحدة الصندوق، بالإضافة لأي سعر خشب يدوي على السطر." },
+            new Setting { Key = Setting.Keys.DriverBoxFee, Value = "0.03", Description = "أجرة السائق عن كل صندوق (₪) — تُضاف تلقائيًا لأجرة النقل المستحقة للسائق على كل فاتورة تحتوي أصناف بوحدة الصندوق." },
         };
 
         var existing = await db.Settings.Select(s => s.Key).ToListAsync();

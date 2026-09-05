@@ -72,6 +72,20 @@ public class Invoice : AuditableEntity
     /// </summary>
     public decimal BoxPriceApplied { get; set; }
 
+    /// <summary>
+    /// Driver-side per-box handling fee ("أجرة الصناديق") actually applied — copied from
+    /// Settings.Keys.DriverBoxFee at creation time, same lock-in convention as
+    /// <see cref="BoxPriceApplied"/>/<see cref="CommissionRateApplied"/>. Unlike BoxPriceApplied
+    /// (charged to the merchant), this is money owed TO the driver, on top of the manual
+    /// <see cref="TransportFee"/> — the actual fee (box-unit item count × this rate) is NOT
+    /// stored, computed fresh on read (InvoiceService.ToDto) same as BoxFeeTotal, and is folded
+    /// into the driver's own FarmerTransaction (Type = TransportFee) Amount so it flows through
+    /// the driver's account/statement/reports exactly like the rest of their transport earnings.
+    /// Deliberately kept OUT of both TotalValue (commission base) and the merchant-facing
+    /// GrandTotal — it is purely an internal market→driver cost, invisible to the merchant.
+    /// </summary>
+    public decimal DriverBoxFeeApplied { get; set; }
+
     public int? CancelledByUserId { get; set; }
     public DateTimeOffset? CancelledAt { get; set; }
     public string? CancellationReason { get; set; }

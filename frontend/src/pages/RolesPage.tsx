@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { createRole, deleteRole, listAllPermissions, listRolesFull, updateRole } from "../api/roles";
 import type { PermissionDto, RoleDto } from "../types";
 import { apiErrorMessage } from "../api/client";
+import { useSelection } from "../lib/useSelection";
+import { runBulkDelete, summarizeBulkDelete } from "../lib/bulkDelete";
 
 // Human-readable Arabic labels for the fixed, known permission keys (see PermissionKeys.All on
 // the backend). A key added later without an entry here just falls back to showing its raw
@@ -102,6 +104,8 @@ export function RolesPage() {
   const [editing, setEditing] = useState<RoleDto | "new" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<number | null>(null);
+  const selection = useSelection();
+  const [bulkDeleting, setBulkDeleting] = useState(false);
 
   async function refresh() {
     const [r, p] = await Promise.all([listRolesFull(), listAllPermissions()]);
@@ -125,6 +129,19 @@ export function RolesPage() {
     }
   }
 
+  async function handleBulkDelete() {
+    const selected = roles.filter((r) => selection.selected.has(r.id));
+    if (selected.length === 0) return;
+    if (!window.confirm(`حذف ${selected.length} دور محدد؟ لا يمكن التراجع عن هذا.`)) return;
+    setBulkDeleting(true);
+    setError(null);
+    const outcome = await runBulkDelete(selected, (r) => r.id, (r) => r.name, deleteRole);
+    setBulkDeleting(false);
+    selection.clear();
+    await refresh();
+    if (outcome.failedCount > 0) setError(summarizeBulkDelete(outcome));
+  }
+
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
@@ -132,14 +149,37 @@ export function RolesPage() {
         <button className="btn-primary" onClick={() => setEditing("new")}>+ إضافة دور</button>
       </div>
 
-      {error && <div className="text-sm text-red-600 bg-red-50 rounded-md p-3 mb-4">{error}</div>}
+      {error && <div className="text-sm text-red-600 bg-red-50 rounded-md p-3 mb-4 whitespace-pre-line">{error}</div>}
+
+      {selection.selected.size > 0 && (
+        <div className="flex items-center gap-3 mb-4">
+          <span className="text-sm text-gray-600">محدد: <span className="font-semibold">{selection.selected.size}</span></span>
+          <button className="btn-danger text-sm" disabled={bulkDeleting} onClick={handleBulkDelete}>
+            {bulkDeleting ? "جاري الحذف..." : `حذف المحدد (${selection.selected.size})`}
+          </button>
+        </div>
+      )}
 
       <div className="card overflow-x-auto">
         <table className="table-base">
-          <thead><tr><th>الدور</th><th>الوصف</th><th>عدد الصلاحيات</th><th></th></tr></thead>
+          <thead>
+            <tr>
+              <th className="w-8">
+                <input
+                  type="checkbox"
+                  checked={roles.length > 0 && roles.every((r) => selection.selected.has(r.id))}
+                  onChange={() => selection.toggleAll(roles.map((r) => r.id))}
+                />
+              </th>
+              <th>الدور</th><th>الوصف</th><th>عدد الصلاحيات</th><th></th>
+            </tr>
+          </thead>
           <tbody>
             {roles.map((r) => (
               <tr key={r.id}>
+                <td>
+                  <input type="checkbox" checked={selection.selected.has(r.id)} onChange={() => selection.toggleOne(r.id)} />
+                </td>
                 <td className="font-medium">{r.name}</td>
                 <td className="text-gray-500">{r.description || "—"}</td>
                 <td>{r.permissions.length}</td>

@@ -439,13 +439,16 @@ public class PartnerService : IPartnerService
     /// <summary>Flattens invoices (Items already loaded) into one row per item line — TransportFee/
     /// GrandTotal are computed once per invoice and repeated across that invoice's own item rows, same
     /// "invoice-level figure, not per-item" convention as PartnerInvoiceItemLineDto's doc comment
-    /// warns about (mirrors InvoiceService.ListAsync's own WoodTotal/GrandTotal formula exactly, so
-    /// this can never silently drift out of sync with what the invoice itself shows).</summary>
+    /// warns about (mirrors InvoiceService.ToDto/ListAsync's own WoodTotal/BoxFeeTotal/GrandTotal
+    /// formula exactly — including the automatic "سعر الصندوق" box fee, previously missed here,
+    /// which made this drill-down's GrandTotal silently disagree with the invoice's own — so this
+    /// can never drift out of sync with what the invoice itself shows).</summary>
     private static List<PartnerInvoiceItemLineDto> BuildInvoiceItemLines(List<Invoice> invoices) =>
         invoices.SelectMany(i =>
         {
             var woodTotal = i.Items.Sum(it => it.WoodPrice);
-            var grandTotal = i.TotalValue + i.TransportFee + woodTotal;
+            var boxFeeTotal = i.Items.Where(it => it.Unit == UnitOfMeasure.Box).Sum(it => it.Quantity) * i.BoxPriceApplied;
+            var grandTotal = i.TotalValue + i.TransportFee + woodTotal + boxFeeTotal;
             return i.Items.Select(it => new PartnerInvoiceItemLineDto(
                 i.Id, i.InvoiceNumber, i.Date,
                 it.ItemName, it.Unit, it.Quantity, it.PricePerUnit, it.WoodPrice, it.LineTotal,

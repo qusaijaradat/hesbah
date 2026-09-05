@@ -391,6 +391,20 @@ using (var scope = app.Services.CreateScope())
         app.Logger.LogError(ex, "Failed to add the invoices.BoxPriceApplied column — the automatic per-box fee will not work until this is fixed.");
     }
 
+    // Driver-side counterpart of the guard above: the new automatic "أجرة الصناديق" (per-box driver
+    // handling fee) feature needs Invoice.DriverBoxFeeApplied — the rate locked in at creation time,
+    // same convention as BoxPriceApplied/CommissionRateApplied — on the existing "invoices" table.
+    try
+    {
+        await db.Database.ExecuteSqlRawAsync("""
+            ALTER TABLE invoices ADD COLUMN IF NOT EXISTS "DriverBoxFeeApplied" numeric(8,2) NOT NULL DEFAULT 0;
+            """);
+    }
+    catch (Exception ex)
+    {
+        app.Logger.LogError(ex, "Failed to add the invoices.DriverBoxFeeApplied column — the automatic driver box-handling fee will not work until this is fixed.");
+    }
+
     // Same EnsureCreated gap as "employees"/"farmer_goods_entries" above: the new "boxes owed"
     // feature (a merchant's running empty-crate balance) needs a brand-new "box_returns" table,
     // which EnsureCreated will not add to an already-existing database. No FK constraint on
@@ -436,5 +450,19 @@ app.UseCors();
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
+
+// ---------- Health ----------
+// Anonymous and dependency-free on purpose. The deploy pipeline polls this
+// through the public hostname to decide whether a rollout succeeded
+// (deploy/scripts/portainer.sh), and the container healthcheck polls it
+// locally — so it must answer 200 as soon as the app can serve requests, and
+// must not depend on anything that could make a healthy API look unhealthy.
+// The database is not probed here: schema creation and seeding already ran
+// above, so reaching this line at all means the connection worked.
+//
+// Removing this endpoint does not fail a build or a test — it fails every
+// deploy, several minutes in, as a health-gate timeout that looks like a
+// networking problem. It was dropped once already in 1c712fb.
+app.MapGet("/health", () => Results.Ok(new { status = "ok" })).AllowAnonymous();
 
 app.Run();

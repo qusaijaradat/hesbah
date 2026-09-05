@@ -3,6 +3,8 @@ import { createItem, deleteItem, listItems, updateItem } from "../api/items";
 import type { ItemDto } from "../types";
 import { apiErrorMessage } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
+import { useSelection } from "../lib/useSelection";
+import { runBulkDelete, summarizeBulkDelete } from "../lib/bulkDelete";
 
 /**
  * Management page for the invoice item-name catalog (requirement: a real place to add/see
@@ -19,6 +21,8 @@ export function ItemsPage() {
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<ItemDto | "new" | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const selection = useSelection();
+  const [bulkDeleting, setBulkDeleting] = useState(false);
 
   async function refresh() {
     setLoading(true);
@@ -44,6 +48,19 @@ export function ItemsPage() {
     }
   }
 
+  async function handleBulkDelete() {
+    const selected = items.filter((i) => selection.selected.has(i.id));
+    if (selected.length === 0) return;
+    if (!window.confirm(`حذف ${selected.length} صنف محدد من قائمة الأصناف؟ (لن يؤثر على الفواتير السابقة)`)) return;
+    setBulkDeleting(true);
+    setError(null);
+    const outcome = await runBulkDelete(selected, (i) => i.id, (i) => i.name, deleteItem);
+    setBulkDeleting(false);
+    selection.clear();
+    await refresh();
+    if (outcome.failedCount > 0) setError(summarizeBulkDelete(outcome));
+  }
+
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
@@ -60,24 +77,47 @@ export function ItemsPage() {
         onChange={(e) => setSearch(e.target.value)}
       />
 
-      {error && <div className="text-sm text-red-600 bg-red-50 rounded-md p-3 mb-4">{error}</div>}
+      {error && <div className="text-sm text-red-600 bg-red-50 rounded-md p-3 mb-4 whitespace-pre-line">{error}</div>}
+
+      {canDelete && selection.selected.size > 0 && (
+        <div className="flex items-center gap-3 mb-4">
+          <span className="text-sm text-gray-600">محدد: <span className="font-semibold">{selection.selected.size}</span></span>
+          <button className="btn-danger text-sm" disabled={bulkDeleting} onClick={handleBulkDelete}>
+            {bulkDeleting ? "جاري الحذف..." : `حذف المحدد (${selection.selected.size})`}
+          </button>
+        </div>
+      )}
 
       <div className="card overflow-x-auto">
         <table className="table-base">
           <thead>
             <tr>
+              {canDelete && (
+                <th className="w-8">
+                  <input
+                    type="checkbox"
+                    checked={items.length > 0 && items.every((i) => selection.selected.has(i.id))}
+                    onChange={() => selection.toggleAll(items.map((i) => i.id))}
+                  />
+                </th>
+              )}
               <th>اسم الصنف</th>
               <th></th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={2} className="text-center text-gray-400 py-6">جاري التحميل...</td></tr>
+              <tr><td colSpan={canDelete ? 3 : 2} className="text-center text-gray-400 py-6">جاري التحميل...</td></tr>
             ) : items.length === 0 ? (
-              <tr><td colSpan={2} className="text-center text-gray-400 py-6">لا يوجد أصناف بعد</td></tr>
+              <tr><td colSpan={canDelete ? 3 : 2} className="text-center text-gray-400 py-6">لا يوجد أصناف بعد</td></tr>
             ) : (
               items.map((item) => (
                 <tr key={item.id}>
+                  {canDelete && (
+                    <td>
+                      <input type="checkbox" checked={selection.selected.has(item.id)} onChange={() => selection.toggleOne(item.id)} />
+                    </td>
+                  )}
                   <td className="font-medium">{item.name}</td>
                   <td className="whitespace-nowrap">
                     {canEdit && (

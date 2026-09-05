@@ -4,6 +4,8 @@ import type { EmployeeDto } from "../types";
 import { apiErrorMessage } from "../api/client";
 import { formatCurrency } from "../lib/format";
 import { useAuth } from "../auth/AuthContext";
+import { useSelection } from "../lib/useSelection";
+import { runBulkDelete, summarizeBulkDelete } from "../lib/bulkDelete";
 
 export function EmployeesPage() {
   const { hasPermission } = useAuth();
@@ -15,6 +17,8 @@ export function EmployeesPage() {
   const [editing, setEditing] = useState<EmployeeDto | "new" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<number | null>(null);
+  const selection = useSelection();
+  const [bulkDeleting, setBulkDeleting] = useState(false);
 
   async function refresh() {
     setLoading(true);
@@ -38,6 +42,19 @@ export function EmployeesPage() {
     }
   }
 
+  async function handleBulkDelete() {
+    const selected = employees.filter((e) => selection.selected.has(e.id));
+    if (selected.length === 0) return;
+    if (!window.confirm(`حذف ${selected.length} موظف محدد؟ لا يمكن التراجع عن هذا.`)) return;
+    setBulkDeleting(true);
+    setError(null);
+    const outcome = await runBulkDelete(selected, (e) => e.id, (e) => e.name, deleteEmployee);
+    setBulkDeleting(false);
+    selection.clear();
+    await refresh();
+    if (outcome.failedCount > 0) setError(summarizeBulkDelete(outcome));
+  }
+
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
@@ -47,7 +64,16 @@ export function EmployeesPage() {
         )}
       </div>
 
-      {error && <div className="text-sm text-red-600 bg-red-50 rounded-md p-3 mb-4">{error}</div>}
+      {error && <div className="text-sm text-red-600 bg-red-50 rounded-md p-3 mb-4 whitespace-pre-line">{error}</div>}
+
+      {canDelete && selection.selected.size > 0 && (
+        <div className="flex items-center gap-3 mb-4">
+          <span className="text-sm text-gray-600">محدد: <span className="font-semibold">{selection.selected.size}</span></span>
+          <button className="btn-danger text-sm" disabled={bulkDeleting} onClick={handleBulkDelete}>
+            {bulkDeleting ? "جاري الحذف..." : `حذف المحدد (${selection.selected.size})`}
+          </button>
+        </div>
+      )}
 
       {/* عمود "إجمالي المصاريف" هو تجميع كل مصروف/سحبة تم ربطها بهذا الموظف من صفحة
           "مصاريف الحسبة" — هذا هو ما يتيح معرفة كم أُعطي لكل موظف. */}
@@ -55,6 +81,15 @@ export function EmployeesPage() {
         <table className="table-base">
           <thead>
             <tr>
+              {canDelete && (
+                <th className="w-8">
+                  <input
+                    type="checkbox"
+                    checked={employees.length > 0 && employees.every((e) => selection.selected.has(e.id))}
+                    onChange={() => selection.toggleAll(employees.map((e) => e.id))}
+                  />
+                </th>
+              )}
               <th>الاسم</th>
               <th>رقم الهاتف</th>
               <th>ملاحظات</th>
@@ -65,12 +100,17 @@ export function EmployeesPage() {
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={6} className="text-center text-gray-400 py-6">جاري التحميل...</td></tr>
+              <tr><td colSpan={canDelete ? 7 : 6} className="text-center text-gray-400 py-6">جاري التحميل...</td></tr>
             ) : employees.length === 0 ? (
-              <tr><td colSpan={6} className="text-center text-gray-400 py-6">لا يوجد موظفون بعد</td></tr>
+              <tr><td colSpan={canDelete ? 7 : 6} className="text-center text-gray-400 py-6">لا يوجد موظفون بعد</td></tr>
             ) : (
               employees.map((e) => (
                 <tr key={e.id}>
+                  {canDelete && (
+                    <td>
+                      <input type="checkbox" checked={selection.selected.has(e.id)} onChange={() => selection.toggleOne(e.id)} />
+                    </td>
+                  )}
                   <td className="font-medium">{e.name}</td>
                   <td>{e.phone || "—"}</td>
                   <td className="text-gray-500">{e.notes || "—"}</td>

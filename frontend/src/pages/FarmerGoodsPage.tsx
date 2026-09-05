@@ -8,6 +8,8 @@ import { GoodsGlobalStockCard } from "../components/GoodsGlobalStockCard";
 import { formatDate, formatQuantity, todayLocalDateString } from "../lib/format";
 import { useAuth } from "../auth/AuthContext";
 import type { FarmerGoodsRow, FarmerGoodsStockDto, GoodsEntryDto, GoodsStockRow, UnitOfMeasure } from "../types";
+import { useSelection } from "../lib/useSelection";
+import { runBulkDelete, summarizeBulkDelete } from "../lib/bulkDelete";
 
 const UNIT_OPTIONS: { value: UnitOfMeasure; label: string }[] = [
   { value: "Kg", label: "كيلو" },
@@ -66,6 +68,8 @@ export function FarmerGoodsPage() {
 
   const [editingEntry, setEditingEntry] = useState<GoodsEntryDto | null>(null);
   const [deletingId, setDeletingId] = useState<number | null>(null);
+  const entriesSelection = useSelection();
+  const [bulkDeletingEntries, setBulkDeletingEntries] = useState(false);
 
   // Sales-history report (unchanged from before).
   const [dateFrom, setDateFrom] = useState("");
@@ -107,6 +111,7 @@ export function FarmerGoodsPage() {
     setSearched(false);
     setRows([]);
     setFarmerName(null);
+    entriesSelection.clear();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [farmerPick?.id]);
 
@@ -179,6 +184,21 @@ export function FarmerGoodsPage() {
     } finally {
       setDeletingId(null);
     }
+  }
+
+  async function handleBulkDeleteEntries() {
+    if (!farmerPick || !stockData) return;
+    const selected = stockData.entries.filter((e) => entriesSelection.selected.has(e.id));
+    if (selected.length === 0) return;
+    if (!window.confirm(`حذف ${selected.length} إضافة محددة؟ لا يمكن التراجع عن هذا.`)) return;
+    setBulkDeletingEntries(true);
+    setStockError(null);
+    const outcome = await runBulkDelete(selected, (e) => e.id, (e) => `${e.itemName} (${formatDate(e.date)})`, deleteGoodsEntry);
+    setBulkDeletingEntries(false);
+    entriesSelection.clear();
+    if (editingEntry && selected.some((e) => e.id === editingEntry.id)) resetEntryForm();
+    await refreshStock(farmerPick.id);
+    if (outcome.failedCount > 0) setStockError(summarizeBulkDelete(outcome));
   }
 
   async function handlePrintStock() {
@@ -317,21 +337,45 @@ export function FarmerGoodsPage() {
           </div>
 
           <div className="card overflow-x-auto mb-4">
-            <div className="px-4 pt-4 pb-1 text-sm font-semibold text-gray-700">سجل الإضافات</div>
+            <div className="flex items-center justify-between flex-wrap gap-2 px-4 pt-4 pb-1">
+              <div className="text-sm font-semibold text-gray-700">سجل الإضافات</div>
+              {canDelete && entriesSelection.selected.size > 0 && (
+                <div className="flex items-center gap-3">
+                  <span className="text-sm text-gray-600">محدد: <span className="font-semibold">{entriesSelection.selected.size}</span></span>
+                  <button className="btn-danger text-sm" disabled={bulkDeletingEntries} onClick={handleBulkDeleteEntries}>
+                    {bulkDeletingEntries ? "جاري الحذف..." : `حذف المحدد (${entriesSelection.selected.size})`}
+                  </button>
+                </div>
+              )}
+            </div>
             <table className="table-base">
               <thead>
                 <tr>
                   {/* "صناديق خشب" فيلد مستقل — دايمًا عدد صناديق (مش وحدة الصنف e.unit) */}
+                  {canDelete && (
+                    <th className="w-8">
+                      <input
+                        type="checkbox"
+                        checked={!!stockData && stockData.entries.length > 0 && stockData.entries.every((e) => entriesSelection.selected.has(e.id))}
+                        onChange={() => entriesSelection.toggleAll(stockData ? stockData.entries.map((e) => e.id) : [])}
+                      />
+                    </th>
+                  )}
                   <th>التاريخ</th><th>الصنف</th><th>الكمية</th><th>صناديق خشب</th><th>ملاحظات</th>
                   {(canEdit || canDelete) && <th></th>}
                 </tr>
               </thead>
               <tbody>
                 {!stockData || stockData.entries.length === 0 ? (
-                  <tr><td colSpan={(canEdit || canDelete) ? 6 : 5} className="text-center text-gray-400 py-6">لا توجد إضافات مسجلة بعد</td></tr>
+                  <tr><td colSpan={(canEdit || canDelete ? 6 : 5) + (canDelete ? 1 : 0)} className="text-center text-gray-400 py-6">لا توجد إضافات مسجلة بعد</td></tr>
                 ) : (
                   stockData.entries.map((e) => (
                     <tr key={e.id}>
+                      {canDelete && (
+                        <td>
+                          <input type="checkbox" checked={entriesSelection.selected.has(e.id)} onChange={() => entriesSelection.toggleOne(e.id)} />
+                        </td>
+                      )}
                       <td>{formatDate(e.date)}</td>
                       <td className="font-medium">{e.itemName}</td>
                       <td>{formatQuantity(e.quantity, e.unit)}</td>

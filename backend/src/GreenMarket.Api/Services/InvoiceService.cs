@@ -81,6 +81,12 @@ public class InvoiceService : IInvoiceService
         // retroactively alters this invoice; the actual fee (TotalBoxes × this rate) is computed
         // fresh on every read, not stored (see Invoice.BoxPriceApplied's own doc comment).
         var boxPrice = await _settings.GetDecimalAsync(Setting.Keys.BoxPrice, 0m);
+        // Driver-side counterpart (explicit request) — money owed TO the driver, locked in the
+        // same way; see Invoice.DriverBoxFeeApplied's own doc comment. Computed now (rather than
+        // only inside ToDto) because it needs to be folded into the driver's FarmerTransaction
+        // Amount right below.
+        var driverBoxFee = await _settings.GetDecimalAsync(Setting.Keys.DriverBoxFee, 0m);
+        var driverBoxFeeTotal = totals.TotalBoxes * driverBoxFee;
 
         var invoice = new Invoice
         {
@@ -95,6 +101,7 @@ public class InvoiceService : IInvoiceService
             TotalValue = totals.TotalValue,
             CommissionRateApplied = commissionRate,
             BoxPriceApplied = boxPrice,
+            DriverBoxFeeApplied = driverBoxFee,
             Items = totals.Lines.Select(l => new InvoiceItem
             {
                 ItemName = l.ItemName,
@@ -128,9 +135,12 @@ public class InvoiceService : IInvoiceService
         }
 
         // Same idea as the farmer's Sale row above, but for the driver's transport fee — no driver
-        // attached, or attached with TransportFee still 0, means nothing to post yet (the driver's
-        // ledger only grows once there's an actual fee owed to them for this invoice).
-        if (driver is not null && invoice.TransportFee > 0)
+        // attached, or attached with neither a transport fee nor a box-handling fee, means nothing
+        // to post yet (the driver's ledger only grows once there's an actual amount owed to them
+        // for this invoice). Amount folds in driverBoxFeeTotal (explicit request) so the driver's
+        // account/statement/reports automatically reflect the box-handling fee alongside the
+        // manual transport fee, without a separate ledger row.
+        if (driver is not null && (invoice.TransportFee > 0 || driverBoxFeeTotal > 0))
         {
             _db.FarmerTransactions.Add(new FarmerTransaction
             {
@@ -138,7 +148,7 @@ public class InvoiceService : IInvoiceService
                 Type = FarmerTransactionType.TransportFee,
                 InvoiceId = invoice.Id,
                 Date = invoice.Date,
-                Amount = invoice.TransportFee,
+                Amount = invoice.TransportFee + driverBoxFeeTotal,
                 Notes = $"أجرة نقل تلقائية من الفاتورة {invoice.InvoiceNumber}"
             });
             await _db.SaveChangesAsync();
@@ -202,6 +212,10 @@ public class InvoiceService : IInvoiceService
         // Same re-lock-on-edit behavior as CommissionRateApplied below — an edit re-reads the
         // CURRENT settings value, same tradeoff already accepted for the commission rate.
         var boxPrice = await _settings.GetDecimalAsync(Setting.Keys.BoxPrice, 0m);
+        // Driver-side counterpart — see CreateAsync's own comment for why this is computed here
+        // rather than only inside ToDto.
+        var driverBoxFee = await _settings.GetDecimalAsync(Setting.Keys.DriverBoxFee, 0m);
+        var driverBoxFeeTotal = totals.TotalBoxes * driverBoxFee;
 
         var previousFarmerId = invoice.FarmerId;
         var previousDriverId = invoice.DriverId;
@@ -215,6 +229,7 @@ public class InvoiceService : IInvoiceService
         invoice.TotalValue = totals.TotalValue;
         invoice.CommissionRateApplied = commissionRate;
         invoice.BoxPriceApplied = boxPrice;
+        invoice.DriverBoxFeeApplied = driverBoxFee;
 
         // Replace the item lines wholesale rather than trying to diff old vs. new — EF Core
         // cascade-deletes anything removed from a required collection navigation like this one.
@@ -274,16 +289,18 @@ public class InvoiceService : IInvoiceService
         var existingTransportFee = await _db.FarmerTransactions
             .SingleOrDefaultAsync(t => t.InvoiceId == invoice.Id && t.Type == FarmerTransactionType.TransportFee);
 
-        if (driver is null || invoice.TransportFee <= 0)
+        if (driver is null || (invoice.TransportFee <= 0 && driverBoxFeeTotal <= 0))
         {
-            // Driver removed, or transport fee zeroed out — nothing left to post.
+            // Driver removed, or both the transport fee and box-handling fee zeroed out — nothing
+            // left to post.
             if (existingTransportFee is not null) _db.FarmerTransactions.Remove(existingTransportFee);
         }
         else if (existingTransportFee is not null && previousDriverId == driver.Id)
         {
             // Same driver as before — just correct the fee/date on their existing ledger row.
+            // Amount folds in driverBoxFeeTotal, same as CreateAsync — see its own comment.
             existingTransportFee.Date = invoice.Date;
-            existingTransportFee.Amount = invoice.TransportFee;
+            existingTransportFee.Amount = invoice.TransportFee + driverBoxFeeTotal;
             existingTransportFee.Notes = $"أجرة نقل تلقائية من الفاتورة {invoice.InvoiceNumber} (معدّلة)";
         }
         else
@@ -296,7 +313,7 @@ public class InvoiceService : IInvoiceService
                 Type = FarmerTransactionType.TransportFee,
                 InvoiceId = invoice.Id,
                 Date = invoice.Date,
-                Amount = invoice.TransportFee,
+                Amount = invoice.TransportFee + driverBoxFeeTotal,
                 Notes = $"أجرة نقل تلقائية من الفاتورة {invoice.InvoiceNumber} (معدّلة)"
             });
         }
@@ -632,6 +649,11 @@ public class InvoiceService : IInvoiceService
         // treatment as woodTotal above. Separate from/additive to woodTotal.
         var totalBoxes = i.Items.Where(it => it.Unit == UnitOfMeasure.Box).Sum(it => it.Quantity);
         var boxFeeTotal = totalBoxes * i.BoxPriceApplied;
+        // Driver-side counterpart — box-unit item count × the rate locked in on THIS invoice at
+        // creation time (i.DriverBoxFeeApplied), same "computed fresh, never stored" treatment.
+        // Deliberately excluded from grandTotal below (merchant-facing) — see InvoiceDto's own doc
+        // comment.
+        var driverBoxFeeTotal = totalBoxes * i.DriverBoxFeeApplied;
         var grandTotal = i.TotalValue + i.TransportFee + woodTotal + boxFeeTotal;
 
         // Same base as the linked FarmerTransaction.Commission (TotalValue only — never +wood/
@@ -648,6 +670,7 @@ public class InvoiceService : IInvoiceService
             i.Status,
             i.TotalWeightKg, i.TotalValue, i.TransportFee, woodTotal,
             totalBoxes, i.BoxPriceApplied, boxFeeTotal,
+            i.DriverBoxFeeApplied, driverBoxFeeTotal,
             grandTotal,
             previousBalance,
             i.CommissionRateApplied, commissionResult.Commission, commissionResult.NetDueToFarmer,

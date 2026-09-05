@@ -11,6 +11,8 @@ import { formatCurrency, formatDate, formatQuantity, todayLocalDateString } from
 import { StatCard } from "../components/StatCard";
 import { CREDIT_LIMIT_UI_ENABLED } from "../lib/featureFlags";
 import { useAuth } from "../auth/AuthContext";
+import { useSelection } from "../lib/useSelection";
+import { runBulkDelete, summarizeBulkDelete } from "../lib/bulkDelete";
 
 /** Shared "🖨️ طباعة" button for both account pages below — each just passes its own fetcher/filename. */
 function PrintAccountButton({ fetchPdf, fileNamePrefix }: { fetchPdf: () => Promise<Blob>; fileNamePrefix: string }) {
@@ -147,6 +149,8 @@ function BoxBalanceSection({ partnerId, account, onChanged }: { partnerId: numbe
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const selection = useSelection();
+  const [bulkDeleting, setBulkDeleting] = useState(false);
 
   async function handleSave() {
     const parsed = Number(quantity);
@@ -180,6 +184,19 @@ function BoxBalanceSection({ partnerId, account, onChanged }: { partnerId: numbe
     } finally {
       setDeletingId(null);
     }
+  }
+
+  async function handleBulkDelete() {
+    const selected = account.boxReturns.filter((r) => selection.selected.has(r.id));
+    if (selected.length === 0) return;
+    if (!window.confirm(`حذف ${selected.length} سجل إرجاع محدد؟ لا يمكن التراجع عن هذا.`)) return;
+    setBulkDeleting(true);
+    setError(null);
+    const outcome = await runBulkDelete(selected, (r) => r.id, (r) => `${formatQuantity(r.quantity, "Box")} — ${formatDate(r.date)}`, deleteBoxReturn);
+    setBulkDeleting(false);
+    selection.clear();
+    onChanged();
+    if (outcome.failedCount > 0) setError(summarizeBulkDelete(outcome));
   }
 
   return (
@@ -224,31 +241,57 @@ function BoxBalanceSection({ partnerId, account, onChanged }: { partnerId: numbe
           <button className="btn-secondary" disabled={saving} onClick={() => { setShowForm(false); setError(null); }}>إلغاء</button>
         </div>
       )}
-      {error && <div className="text-sm text-red-600 bg-red-50 rounded-md p-2 mt-3">{error}</div>}
+      {error && <div className="text-sm text-red-600 bg-red-50 rounded-md p-2 mt-3 whitespace-pre-line">{error}</div>}
 
       {account.boxReturns.length > 0 && (
-        <div className="overflow-x-auto mt-4">
-          <table className="table-base">
-            <thead>
-              <tr><th>التاريخ</th><th>العدد</th><th>ملاحظات</th>{canDelete && <th></th>}</tr>
-            </thead>
-            <tbody>
-              {account.boxReturns.map((r) => (
-                <tr key={r.id}>
-                  <td className="whitespace-nowrap">{formatDate(r.date)}</td>
-                  <td>{formatQuantity(r.quantity, "Box")}</td>
-                  <td className="text-xs text-gray-500">{r.notes || "—"}</td>
+        <div className="mt-4">
+          {canDelete && selection.selected.size > 0 && (
+            <div className="flex items-center gap-3 mb-2">
+              <span className="text-sm text-gray-600">محدد: <span className="font-semibold">{selection.selected.size}</span></span>
+              <button className="btn-danger text-sm" disabled={bulkDeleting} onClick={handleBulkDelete}>
+                {bulkDeleting ? "جاري الحذف..." : `حذف المحدد (${selection.selected.size})`}
+              </button>
+            </div>
+          )}
+          <div className="overflow-x-auto">
+            <table className="table-base">
+              <thead>
+                <tr>
                   {canDelete && (
-                    <td>
-                      <button className="text-xs text-red-600 hover:underline" disabled={deletingId === r.id} onClick={() => handleDelete(r.id)}>
-                        {deletingId === r.id ? "..." : "حذف"}
-                      </button>
-                    </td>
+                    <th className="w-8">
+                      <input
+                        type="checkbox"
+                        checked={account.boxReturns.every((r) => selection.selected.has(r.id))}
+                        onChange={() => selection.toggleAll(account.boxReturns.map((r) => r.id))}
+                      />
+                    </th>
                   )}
+                  <th>التاريخ</th><th>العدد</th><th>ملاحظات</th>{canDelete && <th></th>}
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {account.boxReturns.map((r) => (
+                  <tr key={r.id}>
+                    {canDelete && (
+                      <td>
+                        <input type="checkbox" checked={selection.selected.has(r.id)} onChange={() => selection.toggleOne(r.id)} />
+                      </td>
+                    )}
+                    <td className="whitespace-nowrap">{formatDate(r.date)}</td>
+                    <td>{formatQuantity(r.quantity, "Box")}</td>
+                    <td className="text-xs text-gray-500">{r.notes || "—"}</td>
+                    {canDelete && (
+                      <td>
+                        <button className="text-xs text-red-600 hover:underline" disabled={deletingId === r.id} onClick={() => handleDelete(r.id)}>
+                          {deletingId === r.id ? "..." : "حذف"}
+                        </button>
+                      </td>
+                    )}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
     </div>

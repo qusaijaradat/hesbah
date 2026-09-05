@@ -14,8 +14,12 @@ interface Row {
   quantity: string;
   unit: UnitOfMeasure;
   pricePerUnit: string;
-  /** "" = not set (0) — one of a fixed preset list, not free-typed. */
+  /** "" = not set (0); one of WOOD_PRICE_OPTIONS; or WOOD_PRICE_OTHER, in which case the
+   *  actual value lives in woodPriceCustom instead (same "أخرى" pattern as PaymentLine's
+   *  method/customMethod — see resolveWoodPrice below). */
   woodPrice: string;
+  /** Free-typed value, only meaningful when woodPrice === WOOD_PRICE_OTHER. */
+  woodPriceCustom: string;
 }
 
 const UNIT_OPTIONS: { value: UnitOfMeasure; label: string }[] = [
@@ -23,8 +27,28 @@ const UNIT_OPTIONS: { value: UnitOfMeasure; label: string }[] = [
   { value: "Box", label: "صندوق" },
 ];
 
-// Fixed preset list for "سعر الخشب" (wood/crate price) — a picker, not free text.
+// Fixed preset list for "سعر الخشب" (wood/crate price) — a picker, not free text — plus an
+// "أخرى" escape hatch for the occasional value outside this list (request: "مرات بكون رقم
+// غير عن هدول"). The backend accepts any decimal here, so this is a purely frontend picker
+// constraint; WOOD_PRICE_OTHER is just the sentinel that reveals the free-value input below.
 const WOOD_PRICE_OPTIONS = ["3", "5", "6", "7", "8"];
+const WOOD_PRICE_OTHER = "أخرى";
+
+/** Resolves a row's actual wood-price number, whether it came from the preset list or the
+ *  free-typed "أخرى" field. */
+function resolveWoodPrice(row: Row): number {
+  return row.woodPrice === WOOD_PRICE_OTHER ? (parseFloat(row.woodPriceCustom) || 0) : (parseFloat(row.woodPrice) || 0);
+}
+
+/** Maps a historical invoice item's stored wood-price NUMBER back into this form's
+ *  select+custom-field pair — a value that isn't one of the presets (e.g. an old invoice
+ *  saved before this list changed, or one entered via "أخرى") auto-populates into the
+ *  "أخرى" custom slot instead of being silently lost/blanked on load. */
+function woodPriceFieldsFromValue(value: number): { woodPrice: string; woodPriceCustom: string } {
+  if (value <= 0) return { woodPrice: "", woodPriceCustom: "" };
+  const s = String(value);
+  return WOOD_PRICE_OPTIONS.includes(s) ? { woodPrice: s, woodPriceCustom: "" } : { woodPrice: WOOD_PRICE_OTHER, woodPriceCustom: s };
+}
 
 function quantityLabel(unit: UnitOfMeasure) {
   return unit === "Kg" ? "الوزن (كغم)" : "عدد الصناديق";
@@ -99,7 +123,7 @@ export function InvoiceEditPage() {
         quantity: String(it.quantity),
         unit: it.unit,
         pricePerUnit: String(it.pricePerUnit),
-        woodPrice: it.woodPrice > 0 ? String(it.woodPrice) : "",
+        ...woodPriceFieldsFromValue(it.woodPrice),
       })));
       setOriginalTotalValue(invoice.totalValue);
       setOriginalMerchantId(invoice.merchantId);
@@ -112,7 +136,7 @@ export function InvoiceEditPage() {
     quantity: parseFloat(r.quantity) || 0,
     unit: r.unit,
     pricePerUnit: parseFloat(r.pricePerUnit) || 0,
-    woodPrice: parseFloat(r.woodPrice) || 0,
+    woodPrice: resolveWoodPrice(r),
   }));
   const totalWeight = parsedRows.filter((r) => r.unit === "Kg").reduce((sum, r) => sum + r.quantity, 0);
   const totalBoxes = parsedRows.filter((r) => r.unit === "Box").reduce((sum, r) => sum + r.quantity, 0);
@@ -144,7 +168,7 @@ export function InvoiceEditPage() {
   }
 
   function addRow() {
-    setRows((prev) => [...prev, { itemName: "", quantity: "", unit: "Kg", pricePerUnit: "", woodPrice: "" }]);
+    setRows((prev) => [...prev, { itemName: "", quantity: "", unit: "Kg", pricePerUnit: "", woodPrice: "", woodPriceCustom: "" }]);
   }
 
   function removeRow(index: number) {
@@ -281,7 +305,13 @@ export function InvoiceEditPage() {
                     onChange={(e) => updateRow(idx, { woodPrice: e.target.value })}>
                     <option value="">بدون</option>
                     {WOOD_PRICE_OPTIONS.map((p) => <option key={p} value={p}>₪{p}</option>)}
+                    <option value={WOOD_PRICE_OTHER}>{WOOD_PRICE_OTHER}</option>
                   </select>
+                  {row.woodPrice === WOOD_PRICE_OTHER && (
+                    <input className="input mt-1" type="number" min="0" step="0.01" value={row.woodPriceCustom}
+                      placeholder="القيمة"
+                      onChange={(e) => updateRow(idx, { woodPriceCustom: e.target.value })} />
+                  )}
                 </div>
                 <div className="col-span-1 sm:col-span-1 flex items-center justify-between sm:block">
                   <label className="label sm:hidden">الإجمالي</label>

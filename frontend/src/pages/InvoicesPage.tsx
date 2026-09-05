@@ -10,9 +10,25 @@ import { useAuth } from "../auth/AuthContext";
 
 const STATUS_LABELS: Record<string, string> = { Active: "فعّالة", Cancelled: "ملغاة" };
 
+function startOfDay(d: Date) {
+  const x = new Date(d);
+  x.setHours(0, 0, 0, 0);
+  return x;
+}
+function endOfDay(d: Date) {
+  const x = new Date(d);
+  x.setHours(23, 59, 59, 999);
+  return x;
+}
+
 export function InvoicesPage() {
   const { hasPermission } = useAuth();
-  const [filter, setFilter] = useState<InvoiceFilter>({ page: 1, pageSize: 25 });
+  // Defaults to today (explicit request: "الفواتير لازم تنعرض بتاريخ اليوم افتراضيًا") — changing
+  // either date input below then drives the same filter/refresh as any other change here.
+  const [filter, setFilter] = useState<InvoiceFilter>(() => {
+    const now = new Date();
+    return { page: 1, pageSize: 25, dateFrom: startOfDay(now).toISOString(), dateTo: endOfDay(now).toISOString() };
+  });
   const [result, setResult] = useState<{ items: InvoiceListItemDto[]; totalCount: number } | null>(null);
   const [loading, setLoading] = useState(true);
   // Header info for the shared Arabic WhatsApp template (lib/format.ts buildStatementMessage) —
@@ -69,7 +85,10 @@ export function InvoicesPage() {
       if (role === "merchant") previousBalance = invoice.previousBalance;
       else if (role === "farmer" && invoice.farmerId) previousBalance = (await getFarmerAccount(invoice.farmerId)).remaining;
       else if (role === "driver" && invoice.driverId) previousBalance = (await getFarmerAccount(invoice.driverId)).remaining;
-      const message = buildStatementMessage(companyName, companyPhone, name, [invoice], previousBalance);
+      // Commission is ONLY ever deducted on the farmer's own message — never merchant (§5), never
+      // driver (no commission at all).
+      const commissionTotal = role === "farmer" ? invoice.commission : undefined;
+      const message = buildStatementMessage(companyName, companyPhone, name, [invoice], previousBalance, commissionTotal);
       window.open(buildWhatsAppLink(phone, message), "_blank");
     } finally {
       setSendingKey(null);
@@ -118,11 +137,19 @@ export function InvoicesPage() {
       <div className="card p-4 mb-4 grid grid-cols-2 sm:grid-cols-4 gap-3">
         <div>
           <label className="label">من تاريخ</label>
-          <input type="date" className="input" onChange={(e) => setFilter((f) => ({ ...f, dateFrom: e.target.value ? new Date(e.target.value).toISOString() : undefined, page: 1 }))} />
+          <input
+            type="date" className="input"
+            value={filter.dateFrom ? filter.dateFrom.slice(0, 10) : ""}
+            onChange={(e) => setFilter((f) => ({ ...f, dateFrom: e.target.value ? startOfDay(new Date(e.target.value)).toISOString() : undefined, page: 1 }))}
+          />
         </div>
         <div>
           <label className="label">إلى تاريخ</label>
-          <input type="date" className="input" onChange={(e) => setFilter((f) => ({ ...f, dateTo: e.target.value ? new Date(e.target.value).toISOString() : undefined, page: 1 }))} />
+          <input
+            type="date" className="input"
+            value={filter.dateTo ? filter.dateTo.slice(0, 10) : ""}
+            onChange={(e) => setFilter((f) => ({ ...f, dateTo: e.target.value ? endOfDay(new Date(e.target.value)).toISOString() : undefined, page: 1 }))}
+          />
         </div>
         <div>
           <label className="label">رقم الفاتورة</label>
@@ -131,6 +158,25 @@ export function InvoicesPage() {
         <div>
           <label className="label">اسم الصنف</label>
           <input className="input" onChange={(e) => setFilter((f) => ({ ...f, itemName: e.target.value || undefined, page: 1 }))} />
+        </div>
+        <div className="flex items-end">
+          <button
+            className="btn-secondary"
+            onClick={() => setFilter((f) => ({ ...f, dateFrom: undefined, dateTo: undefined, page: 1 }))}
+          >
+            عرض كل التواريخ
+          </button>
+        </div>
+        <div className="flex items-end">
+          <button
+            className="btn-secondary"
+            onClick={() => {
+              const now = new Date();
+              setFilter((f) => ({ ...f, dateFrom: startOfDay(now).toISOString(), dateTo: endOfDay(now).toISOString(), page: 1 }));
+            }}
+          >
+            اليوم
+          </button>
         </div>
       </div>
 

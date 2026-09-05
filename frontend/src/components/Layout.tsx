@@ -12,6 +12,7 @@ const NAV_ITEMS = [
   { to: "/farmers-goods", label: "بضاعة الباعة", permission: "farmerGoods.view" },
   { to: "/debts", label: "قيمة الديون", permission: "partners.view" },
   { to: "/payments", label: "الدفعات والمصاريف", permission: "payments.view" },
+  { to: "/checks", label: "الشيكات", permission: "payments.view" },
   { to: "/employees", label: "الموظفون", permission: "employees.view" },
   { to: "/reports", label: "التقارير", permission: "reports.view" },
   { to: "/settings", label: "الإعدادات", permission: "settings.view" },

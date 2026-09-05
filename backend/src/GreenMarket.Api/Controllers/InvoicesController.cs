@@ -65,6 +65,24 @@ public class InvoicesController : ControllerBase
         return File(bytes, "application/pdf", $"{invoice.InvoiceNumber}.pdf");
     }
 
+    /// <summary>"نسخة البائع" print button on the invoice detail page — only offered when the
+    /// invoice has a farmer attached. Unlike the plain Pdf action above, this copy DOES show and
+    /// deduct this invoice's own commission (see ExportService.GenerateFarmerInvoicePdf's own doc
+    /// comment) — the commission-hidden merchant copy is untouched by this endpoint entirely.</summary>
+    [HttpGet("{id:int}/farmer-pdf")]
+    [RequirePermission(PermissionKeys.InvoicesView)]
+    public async Task<IActionResult> FarmerPdf(int id)
+    {
+        var invoice = await _invoiceService.GetAsync(id);
+        if (invoice.FarmerId is null)
+            return BadRequest(new { error = "لا يوجد بائع مرتبط بهذه الفاتورة." });
+
+        var previousBalance = (await _partnerService.GetFarmerAccountAsync(invoice.FarmerId.Value)).Remaining;
+        var company = await GetCompanyInfoAsync();
+        var bytes = _exportService.GenerateFarmerInvoicePdf(invoice, company, previousBalance);
+        return File(bytes, "application/pdf", $"{invoice.InvoiceNumber}-farmer-copy.pdf");
+    }
+
     /// <summary>
     /// Full item-level detail for a set of invoices — used by the bulk-print page to build the
     /// same Arabic per-trader WhatsApp statement text as the printed PDF (same template, either
@@ -92,6 +110,49 @@ public class InvoicesController : ControllerBase
         var company = await GetCompanyInfoAsync();
         var bytes = _exportService.GenerateInvoicesBulkPdf(invoices, company);
         return File(bytes, "application/pdf", "invoices-bulk.pdf");
+    }
+
+    /// <summary>Bulk-print page's merchant-section print button (explicit request): several
+    /// invoices for the SAME merchant on the SAME calendar day print as ONE combined invoice,
+    /// regardless of which farmer/driver supplied each one. Groups the selected invoices by
+    /// (MerchantId, calendar day), computes each group's own previous balance the same way the
+    /// merchant-group WhatsApp send already does (excluding every invoice in that WHOLE group at
+    /// once — see GetMerchantGroupPreviousBalanceAsync's doc comment), then hands every group to
+    /// ExportService.GenerateMergedInvoicesPdf as one combined PDF (one page-set per group).</summary>
+    [HttpGet("print/merchant-merged/pdf")]
+    [RequirePermission(PermissionKeys.InvoicesView)]
+    public async Task<IActionResult> PrintMerchantMergedPdf([FromQuery] List<int> ids)
+    {
+        if (ids is null || ids.Count == 0)
+            return BadRequest(new { error = "يرجى اختيار فاتورة واحدة على الأقل." });
+
+        var invoices = await _invoiceService.GetManyAsync(ids);
+        var groups = invoices
+            .GroupBy(i => (i.MerchantId, Day: i.Date.Date))
+            .OrderBy(g => g.Key.Day).ThenBy(g => g.First().MerchantName)
+            .ToList();
+
+        var mergedGroups = new List<MergedInvoiceGroupDto>();
+        foreach (var g in groups)
+        {
+            var groupInvoices = g.ToList();
+            var previousBalance = await _invoiceService.GetMerchantGroupPreviousBalanceAsync(
+                g.Key.MerchantId, groupInvoices.Select(i => i.Id).ToList());
+            mergedGroups.Add(new MergedInvoiceGroupDto(
+                groupInvoices[0].MerchantName,
+                (DateTimeOffset)g.Key.Day,
+                groupInvoices.SelectMany(i => i.Items).ToList(),
+                groupInvoices.Sum(i => i.TotalWeightKg),
+                groupInvoices.Sum(i => i.TotalValue),
+                groupInvoices.Sum(i => i.WoodTotal),
+                groupInvoices.Sum(i => i.TransportFee),
+                groupInvoices.Sum(i => i.GrandTotal),
+                previousBalance));
+        }
+
+        var company = await GetCompanyInfoAsync();
+        var bytes = _exportService.GenerateMergedInvoicesPdf(mergedGroups, company);
+        return File(bytes, "application/pdf", "invoices-merchant-merged.pdf");
     }
 
     /// <summary>Bulk-print page's "طباعة فواتير السائق" section: the caller has already grouped

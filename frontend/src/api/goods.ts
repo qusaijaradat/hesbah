@@ -6,6 +6,13 @@ export async function getFarmerGoodsStock(farmerId: number) {
   return data;
 }
 
+/** "بضاعة الباعة" print button — same "المخزون المتوفر حاليًا" rows as getFarmerGoodsStock above,
+ * rendered as one printable PDF (see ExportService.GenerateFarmerGoodsStockPdf). */
+export async function printFarmerGoodsStockPdf(farmerId: number) {
+  const { data } = await apiClient.get(`/goods/farmer/${farmerId}/print/pdf`, { responseType: "blob" });
+  return data as Blob;
+}
+
 /** "البضاعة المتوفرة حاليًا" summed across ALL farmers — used at the bottom of "بضاعة الباعة"
  * itself. See getGoodsGlobalStockForReports below for the same data reached from "الإغلاق اليومي". */
 export async function getGoodsGlobalStock() {

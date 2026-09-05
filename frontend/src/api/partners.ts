@@ -41,9 +41,22 @@ export async function getMerchantAccount(id: number) {
   return data;
 }
 
+/** "كشف حساب" print button on the مشتري account page — same numbers as getMerchantAccount above,
+ * rendered as one printable PDF (see ExportService.GenerateAccountStatementPdf). */
+export async function printMerchantAccountPdf(id: number) {
+  const { data } = await apiClient.get(`/partners/${id}/merchant-account/print/pdf`, { responseType: "blob" });
+  return data as Blob;
+}
+
 export async function getFarmerAccount(id: number) {
   const { data } = await apiClient.get<FarmerAccountDto>(`/partners/${id}/farmer-account`);
   return data;
+}
+
+/** بائع/سائق-side counterpart of printMerchantAccountPdf above. */
+export async function printFarmerAccountPdf(id: number) {
+  const { data } = await apiClient.get(`/partners/${id}/farmer-account/print/pdf`, { responseType: "blob" });
+  return data as Blob;
 }
 
 export async function getDebtsOverview() {
@@ -66,10 +79,23 @@ export async function getFarmerInvoiceDetail(id: number) {
   return data;
 }
 
+/** "قيمة الديون" drill-down print button — same lines as getFarmerInvoiceDetail above, rendered as
+ * one printable PDF (see ExportService.GenerateInvoiceDetailPdf). */
+export async function printFarmerInvoiceDetailPdf(id: number) {
+  const { data } = await apiClient.get(`/partners/${id}/farmer-invoice-detail/print/pdf`, { responseType: "blob" });
+  return data as Blob;
+}
+
 /** مشتري-side counterpart of getFarmerInvoiceDetail above. */
 export async function getMerchantInvoiceDetail(id: number) {
   const { data } = await apiClient.get<PartnerInvoiceDetailDto>(`/partners/${id}/merchant-invoice-detail`);
   return data;
+}
+
+/** مشتري-side counterpart of printFarmerInvoiceDetailPdf above. */
+export async function printMerchantInvoiceDetailPdf(id: number) {
+  const { data } = await apiClient.get(`/partners/${id}/merchant-invoice-detail/print/pdf`, { responseType: "blob" });
+  return data as Blob;
 }
 
 // Only succeeds server-side on a partner with zero invoices/payments/ledger history — see

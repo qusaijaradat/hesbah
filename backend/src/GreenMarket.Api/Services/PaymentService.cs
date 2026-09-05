@@ -14,6 +14,13 @@ public interface IPaymentService
     Task<PagedResult<PaymentDto>> ListAsync(int? partnerId, int page, int pageSize);
     Task<PaymentDto> UpdateAsync(int id, UpdatePaymentRequest request);
     Task DeleteAsync(int id);
+
+    /// <summary>"الشيكات" page: every payment recorded as a check (CheckDueDate set), regardless of
+    /// direction/partner, soonest-due first — that's the order that actually matters for tracking
+    /// which ones need attention next. Optionally narrowed to one CheckClearanceStatus and/or a
+    /// CheckDueDate range (used by the print button to match whatever month/status the screen is
+    /// currently filtered to).</summary>
+    Task<PagedResult<PaymentDto>> ListChecksAsync(CheckClearanceStatus? status, DateTimeOffset? dueFrom, DateTimeOffset? dueTo, int page, int pageSize);
 }
 
 public class PaymentService : IPaymentService
@@ -43,7 +50,14 @@ public class PaymentService : IPaymentService
             Method = request.Method,
             Notes = request.Notes,
             RecordedByUserId = recordedByUserId,
-            InvoiceId = invoice?.Id
+            InvoiceId = invoice?.Id,
+            CheckDueDate = request.CheckDueDate,
+            CheckNumber = request.CheckNumber,
+            // A brand-new check always starts Pending — there is no "already cleared" state to
+            // create it in; CheckStatus only ever moves forward from here via UpdateAsync.
+            CheckStatus = request.CheckDueDate is not null ? CheckClearanceStatus.Pending : null
+            // CheckClearedDate stays null here for the same reason — it's only ever set once the
+            // check actually clears, via UpdateAsync.
         };
         _db.Payments.Add(payment);
         await _db.SaveChangesAsync(); // need payment.Id for the FarmerTransaction link below
@@ -76,7 +90,24 @@ public class PaymentService : IPaymentService
         var total = await query.CountAsync();
         var items = await query.OrderByDescending(p => p.Date)
             .Skip((page - 1) * pageSize).Take(pageSize)
-            .Select(p => new PaymentDto(p.Id, p.PartnerId, p.Partner.Name, p.Direction, p.Amount, p.Date, p.Method, p.Notes, p.InvoiceId, p.Invoice != null ? p.Invoice.InvoiceNumber : null))
+            .Select(p => new PaymentDto(p.Id, p.PartnerId, p.Partner.Name, p.Direction, p.Amount, p.Date, p.Method, p.Notes, p.InvoiceId, p.Invoice != null ? p.Invoice.InvoiceNumber : null, p.CheckDueDate, p.CheckNumber, p.CheckStatus, p.CheckClearedDate))
+            .ToListAsync();
+
+        return new PagedResult<PaymentDto> { Items = items, TotalCount = total, Page = page, PageSize = pageSize };
+    }
+
+    public async Task<PagedResult<PaymentDto>> ListChecksAsync(CheckClearanceStatus? status, DateTimeOffset? dueFrom, DateTimeOffset? dueTo, int page, int pageSize)
+    {
+        var query = _db.Payments.Include(p => p.Partner).Include(p => p.Invoice)
+            .Where(p => p.CheckDueDate != null);
+        if (status is not null) query = query.Where(p => p.CheckStatus == status);
+        if (dueFrom is not null) query = query.Where(p => p.CheckDueDate >= dueFrom);
+        if (dueTo is not null) query = query.Where(p => p.CheckDueDate <= dueTo);
+
+        var total = await query.CountAsync();
+        var items = await query.OrderBy(p => p.CheckDueDate)
+            .Skip((page - 1) * pageSize).Take(pageSize)
+            .Select(p => new PaymentDto(p.Id, p.PartnerId, p.Partner.Name, p.Direction, p.Amount, p.Date, p.Method, p.Notes, p.InvoiceId, p.Invoice != null ? p.Invoice.InvoiceNumber : null, p.CheckDueDate, p.CheckNumber, p.CheckStatus, p.CheckClearedDate))
             .ToListAsync();
 
         return new PagedResult<PaymentDto> { Items = items, TotalCount = total, Page = page, PageSize = pageSize };
@@ -101,15 +132,28 @@ public class PaymentService : IPaymentService
         payment.Method = request.Method;
         payment.Notes = request.Notes;
         payment.InvoiceId = invoice?.Id;
+        payment.CheckDueDate = request.CheckDueDate;
+        payment.CheckNumber = request.CheckNumber;
+        // Explicit request.CheckStatus (e.g. the Checks page marking one Cleared/Bounced) wins;
+        // otherwise keep whatever it already was, defaulting a still-a-check payment to Pending
+        // and clearing it entirely once CheckDueDate is removed (no longer a check at all).
+        payment.CheckStatus = request.CheckStatus ?? (request.CheckDueDate is not null ? (payment.CheckStatus ?? CheckClearanceStatus.Pending) : null);
+        payment.CheckClearedDate = payment.CheckStatus == CheckClearanceStatus.Cleared ? (request.CheckClearedDate ?? payment.CheckClearedDate) : null;
 
         if (payment.Direction == PaymentDirection.ToFarmer)
         {
             var transaction = await _db.FarmerTransactions.SingleOrDefaultAsync(t => t.PaymentId == payment.Id);
             if (transaction is not null)
             {
-                transaction.Amount = -payment.Amount;
+                // A bounced check never actually paid the farmer/driver anything — posting it as 0
+                // instead of -Amount keeps their remaining balance correct (see
+                // CheckClearanceStatus.Bounced's doc comment; same fix as PartnerService's merchant
+                // side). Moving OFF Bounced (back to Pending/Cleared) restores the real amount.
+                transaction.Amount = payment.CheckStatus == CheckClearanceStatus.Bounced ? 0 : -payment.Amount;
                 transaction.Date = payment.Date;
-                transaction.Notes = payment.Notes;
+                transaction.Notes = payment.CheckStatus == CheckClearanceStatus.Bounced
+                    ? $"{payment.Notes} (شيك ارتد — لم يُحتسب)".Trim()
+                    : payment.Notes;
             }
         }
 
@@ -174,5 +218,5 @@ public class PaymentService : IPaymentService
     }
 
     private static PaymentDto ToDto(Payment p, string partnerName, string? invoiceNumber) =>
-        new(p.Id, p.PartnerId, partnerName, p.Direction, p.Amount, p.Date, p.Method, p.Notes, p.InvoiceId, invoiceNumber);
+        new(p.Id, p.PartnerId, partnerName, p.Direction, p.Amount, p.Date, p.Method, p.Notes, p.InvoiceId, invoiceNumber, p.CheckDueDate, p.CheckNumber, p.CheckStatus, p.CheckClearedDate);
 }

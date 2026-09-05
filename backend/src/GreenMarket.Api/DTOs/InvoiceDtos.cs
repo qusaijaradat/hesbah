@@ -34,8 +34,10 @@ public record CreateInvoiceRequest(
 public record InvoiceItemDto(int Id, string ItemName, decimal Quantity, UnitOfMeasure Unit, decimal PricePerUnit, decimal WoodPrice, decimal LineTotal);
 
 /// <summary>
-/// The merchant-facing view. Deliberately has NO commission field — requirement doc §5:
-/// "the market's commission does not appear on the merchant's invoice." GrandTotal =
+/// The merchant-facing view. GrandTotal/PreviousBalance stay exactly as before — requirement doc
+/// §5's "the market's commission does not appear on the merchant's invoice" is honored by simply
+/// never printing/messaging Commission/NetDueToFarmer below on anything that reaches the merchant
+/// (see ExportService.GenerateInvoicePdf's own doc comment — still commission-free). GrandTotal =
 /// TotalValue + TransportFee + WoodTotal (sum of every item's WoodPrice) — the actual amount the
 /// merchant pays, including the pass-through transport/crate costs that are excluded from
 /// TotalValue specifically so they never inflate the commission base. PreviousBalance is computed
@@ -44,6 +46,13 @@ public record InvoiceItemDto(int Id, string ItemName, decimal Quantity, UnitOfMe
 /// invoices, minus every payment they've ever made, clamped to 0 (never shown negative even if
 /// they're in credit). Printed on the invoice as "الرصيد السابق" added on top of GrandTotal, so
 /// a newly-printed invoice always shows the full amount actually due, not just this one sale.
+///
+/// Commission/NetDueToFarmer are this one invoice's own commission math (CommissionCalculator over
+/// TotalValue/CommissionRateApplied — never TotalValue+WoodTotal/TransportFee, same base the
+/// linked FarmerTransaction.Commission already uses, so this can never drift from the farmer's own
+/// ledger). Computed even when FarmerId is null (harmless, just meaningless/unused by the
+/// frontend then) — only ever shown on farmer-facing surfaces (the "نسخة البائع" print, and the
+/// "إرسال للبائع" WhatsApp message), never on anything the merchant sees.
 /// </summary>
 public record InvoiceDto(
     int Id, string InvoiceNumber, DateTimeOffset Date,
@@ -53,6 +62,7 @@ public record InvoiceDto(
     InvoiceStatus Status,
     decimal TotalWeightKg, decimal TotalValue, decimal TransportFee, decimal WoodTotal, decimal GrandTotal,
     decimal PreviousBalance,
+    decimal CommissionRateApplied, decimal Commission, decimal NetDueToFarmer,
     IReadOnlyList<InvoiceItemDto> Items);
 
 /// <summary>
@@ -130,6 +140,24 @@ public class InvoiceFilterRequest
 public record CancelInvoiceRequest(string Reason);
 
 /// <summary>
+/// Bulk-print page's merchant-section print button: "several invoices for the same merchant on
+/// the same calendar day print as ONE combined invoice, regardless of which farmer/driver
+/// supplied each one" (explicit request) — see InvoicesController.PrintMerchantMergedPdf for how
+/// invoices are grouped by (MerchantId, Date.Date) and folded into one of these per group before
+/// ExportService.GenerateMergedInvoicesPdf renders it. Items is every constituent invoice's own
+/// item rows concatenated (not re-merged by name) so each line still traces back to what was
+/// actually entered; the totals below are the group's own sums, same components as
+/// InvoiceDto.GrandTotal. PreviousBalance is the group's own — computed once, excluding every
+/// invoice in the WHOLE group at once (IInvoiceService.GetMerchantGroupPreviousBalanceAsync),
+/// never a single invoice's own PreviousBalance.
+/// </summary>
+public record MergedInvoiceGroupDto(
+    string MerchantName, DateTimeOffset Date,
+    IReadOnlyList<InvoiceItemDto> Items,
+    decimal TotalWeightKg, decimal TotalValue, decimal WoodTotal, decimal TransportFee, decimal GrandTotal,
+    decimal PreviousBalance);
+
+/// <summary>
 /// One row of the bulk-print page's new "كشف بائع" (farmer statement) section — a single item
 /// line pulled off one of the farmer's own Active invoices within the picked date range. Date is
 /// that owning invoice's date, not a separate per-item date: a farmer can appear across many
@@ -138,7 +166,11 @@ public record CancelInvoiceRequest(string Reason);
 /// (Quantity * PricePerUnit only — WoodPrice is a separate flat add-on, same convention as every
 /// other item table in this app).
 /// </summary>
-public record FarmerStatementLineDto(DateTimeOffset Date, string ItemName, decimal Quantity, UnitOfMeasure Unit, decimal PricePerUnit, decimal WoodPrice, decimal LineTotal);
+/// <summary>CommissionRateApplied is that line's OWNING invoice's own rate (copied straight
+/// through) — lets ExportService.GenerateFarmerStatementPdf compute this line's own commission
+/// (CommissionCalculator.Calculate(LineTotal, CommissionRateApplied)) even though a farmer's
+/// statement spans many invoices that could in principle carry different historical rates.</summary>
+public record FarmerStatementLineDto(DateTimeOffset Date, string ItemName, decimal Quantity, UnitOfMeasure Unit, decimal PricePerUnit, decimal WoodPrice, decimal LineTotal, decimal CommissionRateApplied);
 
 /// <summary>Wraps the itemized lines above with the farmer's own name, resolved once in
 /// InvoiceService so the PDF header can show "البائع: ..." without a second round trip.</summary>

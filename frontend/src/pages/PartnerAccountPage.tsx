@@ -1,10 +1,40 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { getFarmerAccount, getMerchantAccount } from "../api/partners";
+import { getFarmerAccount, getMerchantAccount, printFarmerAccountPdf, printMerchantAccountPdf } from "../api/partners";
+import { triggerBlobDownload } from "../api/invoices";
+import { apiErrorMessage } from "../api/client";
 import type { FarmerAccountDto, MerchantAccountDto, StatementLineDto } from "../types";
 import { formatCurrency, formatDate } from "../lib/format";
 import { StatCard } from "../components/StatCard";
 import { CREDIT_LIMIT_UI_ENABLED } from "../lib/featureFlags";
+
+/** Shared "🖨️ طباعة" button for both account pages below — each just passes its own fetcher/filename. */
+function PrintAccountButton({ fetchPdf, fileNamePrefix }: { fetchPdf: () => Promise<Blob>; fileNamePrefix: string }) {
+  const [printing, setPrinting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handlePrint() {
+    setPrinting(true);
+    setError(null);
+    try {
+      const blob = await fetchPdf();
+      triggerBlobDownload(blob, `${fileNamePrefix}.pdf`);
+    } catch (err) {
+      setError(apiErrorMessage(err, "فشل إنشاء ملف الطباعة"));
+    } finally {
+      setPrinting(false);
+    }
+  }
+
+  return (
+    <div className="flex items-center gap-2">
+      <button className="btn-secondary" onClick={handlePrint} disabled={printing}>
+        {printing ? "جاري التجهيز..." : "🖨️ طباعة"}
+      </button>
+      {error && <span className="text-sm text-red-600">{error}</span>}
+    </div>
+  );
+}
 
 export function FarmerAccountPage() {
   const { id } = useParams();
@@ -23,7 +53,10 @@ export function FarmerAccountPage() {
   return (
     <div>
       <Link to="/partners" className="text-sm text-brand-700 hover:underline">← رجوع إلى القائمة</Link>
-      <h1 className="text-2xl font-bold mt-2 mb-6">كشف حساب {roleLabel}: {account.name}</h1>
+      <div className="flex items-start justify-between flex-wrap gap-3 mt-2 mb-6">
+        <h1 className="text-2xl font-bold">كشف حساب {roleLabel}: {account.name}</h1>
+        <PrintAccountButton fetchPdf={() => printFarmerAccountPdf(Number(id))} fileNamePrefix={`account-${id}`} />
+      </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-4 mb-6">
         <StatCard label="إجمالي المبيعات" value={formatCurrency(account.totalSalesValue)} />
@@ -56,7 +89,10 @@ export function MerchantAccountPage() {
   return (
     <div>
       <Link to="/partners" className="text-sm text-brand-700 hover:underline">← رجوع إلى القائمة</Link>
-      <h1 className="text-2xl font-bold mt-2 mb-6">كشف حساب مشتري: {account.name}</h1>
+      <div className="flex items-start justify-between flex-wrap gap-3 mt-2 mb-6">
+        <h1 className="text-2xl font-bold">كشف حساب مشتري: {account.name}</h1>
+        <PrintAccountButton fetchPdf={() => printMerchantAccountPdf(Number(id))} fileNamePrefix={`account-${id}`} />
+      </div>
 
       {CREDIT_LIMIT_UI_ENABLED && account.isOverCreditLimit && (
         <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-md p-3 mb-4">

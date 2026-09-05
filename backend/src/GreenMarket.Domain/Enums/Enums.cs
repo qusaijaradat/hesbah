@@ -48,6 +48,24 @@ public enum PaymentDirection
 }
 
 /// <summary>
+/// Lifecycle of a check ("شيك") payment — only meaningful when Payment.CheckDueDate is set (that
+/// field, not the free-text Method string, is what marks a payment as a check). A brand-new check
+/// payment always starts Pending; someone later flips it to Cleared once it's actually been cashed,
+/// or Bounced if it came back — see PaymentService.UpdateAsync.
+/// </summary>
+public enum CheckClearanceStatus
+{
+    /// <summary>Received but not yet cashed/deposited — the common starting state.</summary>
+    Pending = 1,
+
+    /// <summary>Successfully cashed/deposited.</summary>
+    Cleared = 2,
+
+    /// <summary>Came back from the bank unpaid ("ارتد" / "مرتجع").</summary>
+    Bounced = 3
+}
+
+/// <summary>
 /// Kind of entry recorded against a farmer/driver's internal ledger (requirement doc §5/§6) — the
 /// same "farmer_transactions" table now doubles as the driver's ledger too (see TransportFee),
 /// since a driver's transport-fee balance works exactly the same way (owed → paid → remaining) and

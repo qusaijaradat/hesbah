@@ -344,6 +344,38 @@ using (var scope = app.Services.CreateScope())
         app.Logger.LogError(ex, "Failed to create the farmer_goods_entries table — recording/viewing a farmer's incoming goods stock will not work until this is fixed.");
     }
 
+    // Same EnsureCreated gap as above: the new "checks" feature (a payment can now be recorded as a
+    // check with a due date/number/clearance status, and several Payment rows can settle one
+    // invoice with different methods at once) needs three new nullable columns on the existing
+    // "payments" table. No FK/enum constraint on CheckStatus — same tradeoff already accepted for
+    // every other guard here; the application layer is what enforces its valid values.
+    try
+    {
+        await db.Database.ExecuteSqlRawAsync("""
+            ALTER TABLE payments ADD COLUMN IF NOT EXISTS "CheckDueDate" timestamp with time zone NULL;
+            ALTER TABLE payments ADD COLUMN IF NOT EXISTS "CheckNumber" character varying(50) NULL;
+            ALTER TABLE payments ADD COLUMN IF NOT EXISTS "CheckStatus" integer NULL;
+            CREATE INDEX IF NOT EXISTS ix_payments_checkduedate ON payments ("CheckDueDate");
+            """);
+    }
+    catch (Exception ex)
+    {
+        app.Logger.LogError(ex, "Failed to add the payments.CheckDueDate/CheckNumber/CheckStatus columns — recording/tracking checks (الشيكات) will not work until this is fixed.");
+    }
+
+    // Same EnsureCreated gap as above: Payment.CheckClearedDate ("تاريخ الصرف الفعلي") is a new
+    // column on the existing "payments" table, added right after the three checks columns above.
+    try
+    {
+        await db.Database.ExecuteSqlRawAsync("""
+            ALTER TABLE payments ADD COLUMN IF NOT EXISTS "CheckClearedDate" timestamp with time zone NULL;
+            """);
+    }
+    catch (Exception ex)
+    {
+        app.Logger.LogError(ex, "Failed to add the payments.CheckClearedDate column — recording the actual clearing date of a check will not work until this is fixed.");
+    }
+
     await DbSeeder.SeedAsync(db);
 }
 

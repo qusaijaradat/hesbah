@@ -526,7 +526,7 @@ public class InvoiceService : IInvoiceService
         // above is guaranteed to carry through to the flattened item rows.
         var lines = invoices
             .SelectMany(i => i.Items.Select(it => new FarmerStatementLineDto(
-                i.Date, it.ItemName, it.Quantity, it.Unit, it.PricePerUnit, it.WoodPrice, it.LineTotal)))
+                i.Date, it.ItemName, it.Quantity, it.Unit, it.PricePerUnit, it.WoodPrice, it.LineTotal, i.CommissionRateApplied)))
             .ToList();
 
         return new FarmerStatementDto(farmer.Id, farmer.Name, lines);
@@ -607,6 +607,12 @@ public class InvoiceService : IInvoiceService
         var woodTotal = i.Items.Sum(it => it.WoodPrice);
         var grandTotal = i.TotalValue + i.TransportFee + woodTotal;
 
+        // Same base as the linked FarmerTransaction.Commission (TotalValue only — never +wood/
+        // +transport, see CommissionCalculator's own doc comment) so this can never drift from the
+        // farmer's own ledger. Computed even without a farmer attached (harmless/unused then) —
+        // see InvoiceDto's own doc comment for where this is and isn't shown.
+        var commissionResult = CommissionCalculator.Calculate(i.TotalValue, i.CommissionRateApplied);
+
         return new(
             i.Id, i.InvoiceNumber, i.Date,
             i.MerchantId, i.Merchant.Name, i.Merchant.WhatsAppNumber,
@@ -615,6 +621,7 @@ public class InvoiceService : IInvoiceService
             i.Status,
             i.TotalWeightKg, i.TotalValue, i.TransportFee, woodTotal, grandTotal,
             previousBalance,
+            i.CommissionRateApplied, commissionResult.Commission, commissionResult.NetDueToFarmer,
             i.Items.Select(it => new InvoiceItemDto(it.Id, it.ItemName, it.Quantity, it.Unit, it.PricePerUnit, it.WoodPrice, it.LineTotal)).ToList());
     }
 }

@@ -1,6 +1,11 @@
 import { Fragment, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { getFarmerInvoiceDetail, getMerchantInvoiceDetail } from "../api/partners";
+import {
+  getFarmerInvoiceDetail, getMerchantInvoiceDetail,
+  printFarmerInvoiceDetailPdf, printMerchantInvoiceDetailPdf,
+} from "../api/partners";
+import { triggerBlobDownload } from "../api/invoices";
+import { apiErrorMessage } from "../api/client";
 import { formatCurrency, formatDate, formatQuantity } from "../lib/format";
 import type { PartnerInvoiceDetailDto, PartnerInvoiceItemLineDto } from "../types";
 
@@ -13,11 +18,17 @@ import type { PartnerInvoiceDetailDto, PartnerInvoiceItemLineDto } from "../type
 /// title differ (see FarmerInvoiceDetailPage/MerchantInvoiceDetailPage below), same split as
 /// PartnerAccountPage's own FarmerAccountPage/MerchantAccountPage.
 /// </summary>
-function InvoiceDetailView({ title, fetcher }: { title: string; fetcher: (id: number) => Promise<PartnerInvoiceDetailDto> }) {
+function InvoiceDetailView({ title, fetcher, printer }: {
+  title: string;
+  fetcher: (id: number) => Promise<PartnerInvoiceDetailDto>;
+  printer: (id: number) => Promise<Blob>;
+}) {
   const { id } = useParams();
   const [detail, setDetail] = useState<PartnerInvoiceDetailDto | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [printing, setPrinting] = useState(false);
+  const [printError, setPrintError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!id) return;
@@ -29,6 +40,20 @@ function InvoiceDetailView({ title, fetcher }: { title: string; fetcher: (id: nu
       .finally(() => setLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
+
+  async function handlePrint() {
+    if (!id) return;
+    setPrinting(true);
+    setPrintError(null);
+    try {
+      const blob = await printer(Number(id));
+      triggerBlobDownload(blob, `invoice-detail-${id}.pdf`);
+    } catch (err) {
+      setPrintError(apiErrorMessage(err, "فشل إنشاء ملف الطباعة"));
+    } finally {
+      setPrinting(false);
+    }
+  }
 
   // Grouped by invoice — an invoice can have more than one item line, and TransportFee/GrandTotal
   // are invoice-level (never per item), so they're only ever read once per group here (see
@@ -49,7 +74,15 @@ function InvoiceDetailView({ title, fetcher }: { title: string; fetcher: (id: nu
   return (
     <div>
       <Link to="/debts" className="text-sm text-brand-700 hover:underline">← رجوع إلى قيمة الديون</Link>
-      <h1 className="text-2xl font-bold mt-2 mb-1">{title}{detail ? `: ${detail.partnerName}` : ""}</h1>
+      <div className="flex items-start justify-between flex-wrap gap-3 mt-2 mb-1">
+        <h1 className="text-2xl font-bold">{title}{detail ? `: ${detail.partnerName}` : ""}</h1>
+        <div className="flex items-center gap-2">
+          <button className="btn-secondary" onClick={handlePrint} disabled={printing || !detail}>
+            {printing ? "جاري التجهيز..." : "🖨️ طباعة"}
+          </button>
+          {printError && <span className="text-sm text-red-600">{printError}</span>}
+        </div>
+      </div>
       <p className="text-sm text-gray-500 mb-6">كل الفواتير المسجّلة لهذا الشخص، مفصّلة بكل صنف وكمية وسعر — لمعرفة مصدر المبلغ بالضبط.</p>
 
       {loading ? (
@@ -107,9 +140,9 @@ function InvoiceDetailView({ title, fetcher }: { title: string; fetcher: (id: nu
 }
 
 export function FarmerInvoiceDetailPage() {
-  return <InvoiceDetailView title="تفاصيل ديون بائع/سائق" fetcher={getFarmerInvoiceDetail} />;
+  return <InvoiceDetailView title="تفاصيل ديون بائع/سائق" fetcher={getFarmerInvoiceDetail} printer={printFarmerInvoiceDetailPdf} />;
 }
 
 export function MerchantInvoiceDetailPage() {
-  return <InvoiceDetailView title="تفاصيل ديون مشتري" fetcher={getMerchantInvoiceDetail} />;
+  return <InvoiceDetailView title="تفاصيل ديون مشتري" fetcher={getMerchantInvoiceDetail} printer={printMerchantInvoiceDetailPdf} />;
 }

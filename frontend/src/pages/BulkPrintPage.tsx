@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
-import { getInvoicesBatch, getMerchantGroupPreviousBalance, listInvoices, printDriverManifestPdf, printFarmerStatementPdf, printInvoicesBulkPdf, triggerBlobDownload } from "../api/invoices";
+import { getInvoicesBatch, getMerchantGroupPreviousBalance, listInvoices, printDriverManifestPdf, printFarmerStatementPdf, printInvoicesBulkPdf, printMerchantMergedInvoicesPdf, triggerBlobDownload } from "../api/invoices";
 import { apiErrorMessage } from "../api/client";
 import { getFarmerAccount } from "../api/partners";
 import { driverItemsBreakdown, farmerItemsBreakdown, merchantItemsBreakdown, printBuyerStatementPdf, printDriverItemsStatementPdf, printFarmerItemsStatementPdf } from "../api/reports";
@@ -145,7 +145,13 @@ function useRoleSection(role: Role) {
     setPrinting(true);
     setError(null);
     try {
-      const blob = await printInvoicesBulkPdf(Array.from(selected));
+      // Merchant tab (explicit request): several invoices for the same merchant on the same
+      // calendar day print as ONE combined invoice, regardless of which farmer/driver supplied
+      // each one — so this tab uses the merged-invoice endpoint instead of the quadrant-grid bulk
+      // print the Farmer/Driver tabs still use.
+      const blob = role === "Merchant"
+        ? await printMerchantMergedInvoicesPdf(Array.from(selected))
+        : await printInvoicesBulkPdf(Array.from(selected));
       triggerBlobDownload(blob, `invoices-${ROLE_FILE_SLUG[role]}-${todayLocalDateString()}.pdf`);
     } catch {
       setError("فشل إنشاء ملف الطباعة");
@@ -350,7 +356,11 @@ function SectionPrintBar({ section }: { section: RoleSection }) {
         <span> — الإجمالي الكلي: <span className="font-semibold">{formatCurrency(section.totals.grand)}</span></span>
       </div>
       <button className="btn-primary" onClick={section.handlePrint} disabled={section.printing || section.selected.size === 0}>
-        {section.printing ? "جاري التجهيز..." : `🖨️ طباعة فواتير ${ROLE_LABEL[section.role]} (4 بالصفحة)`}
+        {section.printing
+          ? "جاري التجهيز..."
+          : section.role === "Merchant"
+          ? `🖨️ طباعة فواتير ${ROLE_LABEL[section.role]} (فاتورة مجمّعة لكل مشتري/يوم)`
+          : `🖨️ طباعة فواتير ${ROLE_LABEL[section.role]} (4 بالصفحة)`}
       </button>
     </div>
   );
@@ -713,7 +723,11 @@ export function BulkPrintPage() {
     farmerSection.setError(null);
     try {
       const [invoices, account] = await Promise.all([getInvoicesBatch(invoiceIds), getFarmerAccount(farmerId)]);
-      const message = buildStatementMessage(companyName, companyPhone, name, invoices, account.remaining);
+      // Sum every invoice's own commission — this is the farmer's own message, so (unlike the
+      // merchant/driver sends) the commission is shown and deducted (§5 only ever hides it from
+      // the merchant; a driver has none at all).
+      const commissionTotal = invoices.reduce((sum, inv) => sum + inv.commission, 0);
+      const message = buildStatementMessage(companyName, companyPhone, name, invoices, account.remaining, commissionTotal);
       window.open(buildWhatsAppLink(phone, message), "_blank");
     } catch {
       farmerSection.setError("فشل تجهيز رسالة واتساب");

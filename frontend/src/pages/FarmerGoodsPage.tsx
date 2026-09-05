@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { getFarmerGoods } from "../api/invoices";
-import { createGoodsEntry, deleteGoodsEntry, getFarmerGoodsStock, getGoodsGlobalStock, updateGoodsEntry } from "../api/goods";
+import { getFarmerGoods, triggerBlobDownload } from "../api/invoices";
+import { createGoodsEntry, deleteGoodsEntry, getFarmerGoodsStock, getGoodsGlobalStock, printFarmerGoodsStockPdf, updateGoodsEntry } from "../api/goods";
 import { apiErrorMessage } from "../api/client";
 import { PartnerAutocomplete } from "../components/PartnerAutocomplete";
 import { ItemAutocomplete } from "../components/ItemAutocomplete";
@@ -51,6 +51,8 @@ export function FarmerGoodsPage() {
   const [stockData, setStockData] = useState<FarmerGoodsStockDto | null>(null);
   const [stockLoading, setStockLoading] = useState(false);
   const [stockError, setStockError] = useState<string | null>(null);
+  const [printingStock, setPrintingStock] = useState(false);
+  const [printStockError, setPrintStockError] = useState<string | null>(null);
 
   // "إضافة بضاعة" form.
   const [entryDate, setEntryDate] = useState(() => todayLocalDateString());
@@ -179,6 +181,20 @@ export function FarmerGoodsPage() {
     }
   }
 
+  async function handlePrintStock() {
+    if (!farmerPick) return;
+    setPrintingStock(true);
+    setPrintStockError(null);
+    try {
+      const blob = await printFarmerGoodsStockPdf(farmerPick.id);
+      triggerBlobDownload(blob, `farmer-stock-${farmerPick.id}.pdf`);
+    } catch (err) {
+      setPrintStockError(apiErrorMessage(err, "فشل إنشاء ملف الطباعة"));
+    } finally {
+      setPrintingStock(false);
+    }
+  }
+
   async function handleSearch() {
     if (!farmerPick) return;
     setLoading(true);
@@ -262,7 +278,15 @@ export function FarmerGoodsPage() {
           )}
 
           <div className="card overflow-x-auto mb-4">
-            <div className="px-4 pt-4 pb-1 text-sm font-semibold text-gray-700">المخزون المتوفر حاليًا — {stockData?.farmerName ?? farmerPick.name}</div>
+            <div className="flex items-center justify-between flex-wrap gap-2 px-4 pt-4 pb-1">
+              <div className="text-sm font-semibold text-gray-700">المخزون المتوفر حاليًا — {stockData?.farmerName ?? farmerPick.name}</div>
+              <div className="flex items-center gap-2">
+                <button className="btn-secondary" onClick={handlePrintStock} disabled={printingStock}>
+                  {printingStock ? "جاري التجهيز..." : "🖨️ طباعة"}
+                </button>
+                {printStockError && <span className="text-sm text-red-600">{printStockError}</span>}
+              </div>
+            </div>
             {stockError && <div className="text-sm text-red-600 bg-red-50 rounded-md p-2 mx-4">{stockError}</div>}
             <table className="table-base">
               <thead>

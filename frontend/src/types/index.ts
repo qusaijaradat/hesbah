@@ -7,6 +7,7 @@
 export type PartnerType = "Farmer" | "Merchant" | "Both" | "Driver";
 export type InvoiceStatus = "Active" | "Cancelled";
 export type PaymentDirection = "FromMerchant" | "ToFarmer";
+export type CheckClearanceStatus = "Pending" | "Cleared" | "Bounced";
 export type UnitOfMeasure = "Kg" | "Box";
 
 export interface UserDto {
@@ -150,6 +151,15 @@ export interface InvoiceDto {
    * invoices minus every payment they've made, all-time (never negative — see backend
    * InvoiceService.ComputePreviousBalanceAsync). Add to grandTotal for the actual amount due now. */
   previousBalance: number;
+  /** This invoice's own commission rate (e.g. 0.07 for 7%), copied from Settings at creation time. */
+  commissionRateApplied: number;
+  /** commissionRateApplied × totalValue (never totalValue+woodTotal/transportFee — same base as
+   * the linked FarmerTransaction.Commission). Only ever shown on farmer-facing surfaces (the
+   * "نسخة البائع" print, the "إرسال للبائع" WhatsApp message) — never on anything the merchant
+   * sees (requirement doc §5). Meaningless/unused when farmerId is null. */
+  commission: number;
+  /** totalValue − commission — what's actually due to the farmer for this one invoice. */
+  netDueToFarmer: number;
   items: InvoiceItemDto[];
 }
 
@@ -230,6 +240,14 @@ export interface PaymentDto {
   notes?: string | null;
   invoiceId?: number | null;
   invoiceNumber?: string | null;
+  /** Set only when this payment is a check ("شيك") — its due/maturity date. */
+  checkDueDate?: string | null;
+  checkNumber?: string | null;
+  /** Only meaningful when checkDueDate is set. */
+  checkStatus?: CheckClearanceStatus | null;
+  /** The date the check was ACTUALLY cashed/deposited — only ever set while checkStatus is
+   * "Cleared". Distinct from checkDueDate (the nominal due date). */
+  checkClearedDate?: string | null;
 }
 
 export interface ExpenseDto {

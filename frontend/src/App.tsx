@@ -18,6 +18,7 @@ import { InvoiceEditPage } from "./pages/InvoiceEditPage";
 import { InvoiceDetailPage } from "./pages/InvoiceDetailPage";
 import { BulkPrintPage } from "./pages/BulkPrintPage";
 import { PaymentsPage } from "./pages/PaymentsPage";
+import { ChecksPage } from "./pages/ChecksPage";
 import { EmployeesPage } from "./pages/EmployeesPage";
 import { ReportsPage } from "./pages/ReportsPage";
 import { DailyClosingPage } from "./pages/DailyClosingPage";
@@ -59,6 +60,7 @@ export default function App() {
           <Route path="/partners/:id/farmer-invoice-detail" element={<Protected permission="partners.view"><FarmerInvoiceDetailPage /></Protected>} />
           <Route path="/partners/:id/merchant-invoice-detail" element={<Protected permission="partners.view"><MerchantInvoiceDetailPage /></Protected>} />
           <Route path="/payments" element={<Protected permission="payments.view"><PaymentsPage /></Protected>} />
+          <Route path="/checks" element={<Protected permission="payments.view"><ChecksPage /></Protected>} />
           <Route path="/employees" element={<Protected permission="employees.view"><EmployeesPage /></Protected>} />
           <Route path="/reports" element={<Protected permission="reports.view"><ReportsPage /></Protected>} />
           <Route path="/daily-closing" element={<Protected permission="reports.view"><DailyClosingPage /></Protected>} />

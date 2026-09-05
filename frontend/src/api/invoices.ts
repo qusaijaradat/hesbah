@@ -48,6 +48,14 @@ export async function downloadInvoicePdf(id: number, thermal: boolean) {
   return data as Blob;
 }
 
+/** "نسخة البائع" print button — same invoice as downloadInvoicePdf above, but shows and deducts
+ * this invoice's own commission (see backend ExportService.GenerateFarmerInvoicePdf's own doc
+ * comment). Only meaningful/offered when the invoice has a farmer attached. */
+export async function downloadFarmerInvoicePdf(id: number) {
+  const { data } = await apiClient.get(`/invoices/${id}/farmer-pdf`, { responseType: "blob" });
+  return data as Blob;
+}
+
 export async function downloadInvoicesExcel(filter: InvoiceFilter) {
   const { data } = await apiClient.get("/invoices/export/excel", { params: filter, responseType: "blob" });
   return data as Blob;
@@ -58,6 +66,16 @@ export async function downloadInvoicesExcel(filter: InvoiceFilter) {
 export async function printInvoicesBulkPdf(ids: number[]) {
   const query = ids.map((id) => `ids=${id}`).join("&");
   const { data } = await apiClient.get(`/invoices/print/pdf?${query}`, { responseType: "blob" });
+  return data as Blob;
+}
+
+/** Bulk-print page's merchant-section print button: several invoices for the same merchant on
+ * the same calendar day print as ONE combined invoice, regardless of which farmer/driver supplied
+ * each one (see backend ExportService.GenerateMergedInvoicesPdf's own doc comment). Same
+ * repeated-key query-string reasoning as printInvoicesBulkPdf above. */
+export async function printMerchantMergedInvoicesPdf(ids: number[]) {
+  const query = ids.map((id) => `ids=${id}`).join("&");
+  const { data } = await apiClient.get(`/invoices/print/merchant-merged/pdf?${query}`, { responseType: "blob" });
   return data as Blob;
 }
 

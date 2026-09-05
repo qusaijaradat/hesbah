@@ -99,6 +99,12 @@ interface StatementInvoiceLike {
  * (see BulkPrintPage.tsx: the merchant's is computed excluding this whole batch of invoices to
  * avoid double-counting when several of their invoices are bundled into one message; the
  * farmer's/driver's is simply their own account's current Remaining).
+ *
+ * commissionTotal, when passed (and nonzero), is the sum of every invoice's own commission
+ * (InvoiceDto.commission) — ONLY ever passed for a farmer send (never merchant/driver, requirement
+ * doc §5: commission never appears on anything the merchant sees; a driver has no commission at
+ * all). Shown as its own deducted line, and "الإجمالي الكلي"/"الإجمالي المستحق" below switch to the
+ * net-of-commission figure instead of the gross grandTotal once it's passed.
  */
 export function buildStatementMessage(
   companyName: string,
@@ -106,6 +112,7 @@ export function buildStatementMessage(
   partnerName: string,
   invoices: StatementInvoiceLike[],
   previousBalance?: number,
+  commissionTotal?: number,
 ): string {
   const lines: string[] = [companyName];
   if (companyPhone) lines.push(`هاتف: ${companyPhone}`);
@@ -127,9 +134,15 @@ export function buildStatementMessage(
 
   lines.push("");
   lines.push(`الإجمالي الكلي: ${formatCurrency(grandTotal)}`);
+  let netTotal = grandTotal;
+  if (commissionTotal !== undefined && commissionTotal !== 0) {
+    netTotal = grandTotal - commissionTotal;
+    lines.push(`العمولة: - ${formatCurrency(commissionTotal)}`);
+    lines.push(`الصافي بعد العمولة: ${formatCurrency(netTotal)}`);
+  }
   if (previousBalance !== undefined && previousBalance !== 0) {
     lines.push(`الرصيد السابق: ${formatCurrency(previousBalance)}`);
-    lines.push(`الإجمالي المستحق: ${formatCurrency(grandTotal + previousBalance)}`);
+    lines.push(`الإجمالي المستحق: ${formatCurrency(netTotal + previousBalance)}`);
   }
   return lines.join("\n");
 }

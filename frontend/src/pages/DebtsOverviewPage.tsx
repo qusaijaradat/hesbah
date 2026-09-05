@@ -22,6 +22,11 @@ export function DebtsOverviewPage() {
   const [error, setError] = useState<string | null>(null);
   const [printing, setPrinting] = useState(false);
   const [printError, setPrintError] = useState<string | null>(null);
+  // Explicit request: "بس لما بدي اشيك على شخص معين" — a name filter for checking one person,
+  // defaulting to empty (blank = show everyone, exactly as before this filter existed). Purely
+  // client-side over the already-fully-loaded arrays above — the dataset here is every non-zero-
+  // balance partner, never large enough to need a server round trip just to narrow it down.
+  const [search, setSearch] = useState("");
 
   useEffect(() => {
     setLoading(true);
@@ -50,6 +55,12 @@ export function DebtsOverviewPage() {
 
   if (loading) return <div className="text-gray-500">جاري التحميل...</div>;
 
+  const q = search.trim().toLowerCase();
+  const matches = (r: PartnerDebtRow) => q === "" || r.name.toLowerCase().includes(q);
+  const filteredFarmers = farmers.filter(matches);
+  const filteredDrivers = drivers.filter(matches);
+  const filteredMerchants = merchants.filter(matches);
+
   return (
     <div>
       <div className="flex items-start justify-between flex-wrap gap-3 mb-1">
@@ -58,39 +69,47 @@ export function DebtsOverviewPage() {
           {printing ? "جاري التجهيز..." : "🖨️ طباعة"}
         </button>
       </div>
-      <p className="text-sm text-gray-500 mb-6">
+      <p className="text-sm text-gray-500 mb-4">
         الأشخاص اللي عندهم رصيد غير صفري حاليًا فقط — نفس الرقم الظاهر بكشف حساب كل شخص.
       </p>
+
+      <input
+        className="input max-w-sm mb-6"
+        placeholder="🔍 بحث بالاسم..."
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+      />
+
       {printError && <div className="text-sm text-red-600 bg-red-50 rounded-md p-2 mb-4">{printError}</div>}
       {error && <div className="text-sm text-red-600 bg-red-50 rounded-md p-2 mb-4">{error}</div>}
 
       <div className="space-y-8">
         <DebtSection
           title="الباعة"
-          rows={farmers}
+          rows={filteredFarmers}
           linkFor={(id) => `/partners/${id}/farmer-account`}
           detailLinkFor={(id) => `/partners/${id}/farmer-invoice-detail`}
           owedToThemLabel="له من السوق"
           owedByThemLabel="عليه للسوق"
-          emptyText="لا يوجد باعة عليهم أو لهم رصيد حاليًا"
+          emptyText={search ? "لا يوجد باعة مطابقين للبحث" : "لا يوجد باعة عليهم أو لهم رصيد حاليًا"}
         />
         <DebtSection
           title="السواق"
-          rows={drivers}
+          rows={filteredDrivers}
           linkFor={(id) => `/partners/${id}/farmer-account`}
           detailLinkFor={(id) => `/partners/${id}/farmer-invoice-detail`}
           owedToThemLabel="له من السوق"
           owedByThemLabel="عليه للسوق"
-          emptyText="لا يوجد سواق عليهم أو لهم رصيد حاليًا"
+          emptyText={search ? "لا يوجد سواق مطابقين للبحث" : "لا يوجد سواق عليهم أو لهم رصيد حاليًا"}
         />
         <DebtSection
           title="المشترين"
-          rows={merchants}
+          rows={filteredMerchants}
           linkFor={(id) => `/partners/${id}/merchant-account`}
           detailLinkFor={(id) => `/partners/${id}/merchant-invoice-detail`}
           owedToThemLabel="له رصيد زائد (دفع أكتر)"
           owedByThemLabel="عليه دين للسوق"
-          emptyText="لا يوجد مشترين عليهم أو لهم رصيد حاليًا"
+          emptyText={search ? "لا يوجد مشترين مطابقين للبحث" : "لا يوجد مشترين عليهم أو لهم رصيد حاليًا"}
         />
       </div>
     </div>

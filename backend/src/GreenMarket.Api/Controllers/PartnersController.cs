@@ -93,9 +93,35 @@ public class PartnersController : ControllerBase
     [RequirePermission(PermissionKeys.PartnersView)]
     public async Task<ActionResult<MerchantAccountDto>> MerchantAccount(int id) => Ok(await _partnerService.GetMerchantAccountAsync(id));
 
+    /// <summary>"كشف حساب" print button on the مشتري account page — see
+    /// ExportService.GenerateAccountStatementPdf's own doc comment.</summary>
+    [HttpGet("{id:int}/merchant-account/print/pdf")]
+    [RequirePermission(PermissionKeys.PartnersView)]
+    public async Task<IActionResult> MerchantAccountPrintPdf(int id)
+    {
+        var account = await _partnerService.GetMerchantAccountAsync(id);
+        var company = await GetCompanyInfoAsync();
+        var bytes = _exportService.GenerateAccountStatementPdf(account.Name, "كشف حساب مشتري", account.Statement, account.OpeningBalance ?? 0, account.Remaining, company);
+        return File(bytes, "application/pdf", "account-statement.pdf");
+    }
+
     [HttpGet("{id:int}/farmer-account")]
     [RequirePermission(PermissionKeys.PartnersView)]
     public async Task<ActionResult<FarmerAccountDto>> FarmerAccount(int id) => Ok(await _partnerService.GetFarmerAccountAsync(id));
+
+    /// <summary>"كشف حساب" print button on the بائع/سائق account page — title reflects this
+    /// person's ACTUAL type (a Driver never has a farmer side and vice versa), same convention as
+    /// FarmerAccountPage.tsx's own roleLabel.</summary>
+    [HttpGet("{id:int}/farmer-account/print/pdf")]
+    [RequirePermission(PermissionKeys.PartnersView)]
+    public async Task<IActionResult> FarmerAccountPrintPdf(int id)
+    {
+        var account = await _partnerService.GetFarmerAccountAsync(id);
+        var roleLabel = account.Type == PartnerType.Driver ? "سائق" : "بائع";
+        var company = await GetCompanyInfoAsync();
+        var bytes = _exportService.GenerateAccountStatementPdf(account.Name, $"كشف حساب {roleLabel}", account.Statement, account.OpeningBalance ?? 0, account.Remaining, company);
+        return File(bytes, "application/pdf", "account-statement.pdf");
+    }
 
     /// <summary>"قيمة الديون" drill-down page (بائع/سائق side) — every item line off every one of this
     /// partner's own invoices, all-time, so the amount shown on the debts overview is traceable back
@@ -104,10 +130,33 @@ public class PartnersController : ControllerBase
     [RequirePermission(PermissionKeys.PartnersView)]
     public async Task<ActionResult<PartnerInvoiceDetailDto>> FarmerInvoiceDetail(int id) => Ok(await _partnerService.GetFarmerInvoiceDetailAsync(id));
 
+    /// <summary>"قيمة الديون" drill-down print button — see ExportService.GenerateInvoiceDetailPdf's
+    /// own doc comment.</summary>
+    [HttpGet("{id:int}/farmer-invoice-detail/print/pdf")]
+    [RequirePermission(PermissionKeys.PartnersView)]
+    public async Task<IActionResult> FarmerInvoiceDetailPrintPdf(int id)
+    {
+        var detail = await _partnerService.GetFarmerInvoiceDetailAsync(id);
+        var company = await GetCompanyInfoAsync();
+        var bytes = _exportService.GenerateInvoiceDetailPdf(detail.PartnerName, "تفاصيل فواتير بائع/سائق", detail.Lines, company);
+        return File(bytes, "application/pdf", "invoice-detail.pdf");
+    }
+
     /// <summary>مشتري-side counterpart of FarmerInvoiceDetail above.</summary>
     [HttpGet("{id:int}/merchant-invoice-detail")]
     [RequirePermission(PermissionKeys.PartnersView)]
     public async Task<ActionResult<PartnerInvoiceDetailDto>> MerchantInvoiceDetail(int id) => Ok(await _partnerService.GetMerchantInvoiceDetailAsync(id));
+
+    /// <summary>مشتري-side counterpart of FarmerInvoiceDetailPrintPdf above.</summary>
+    [HttpGet("{id:int}/merchant-invoice-detail/print/pdf")]
+    [RequirePermission(PermissionKeys.PartnersView)]
+    public async Task<IActionResult> MerchantInvoiceDetailPrintPdf(int id)
+    {
+        var detail = await _partnerService.GetMerchantInvoiceDetailAsync(id);
+        var company = await GetCompanyInfoAsync();
+        var bytes = _exportService.GenerateInvoiceDetailPdf(detail.PartnerName, "تفاصيل فواتير مشتري", detail.Lines, company);
+        return File(bytes, "application/pdf", "invoice-detail.pdf");
+    }
 
     /// <summary>Same letterhead-building logic as ReportsController/InvoicesController's own copy —
     /// kept as its own copy here rather than shared, matching how these controllers already don't

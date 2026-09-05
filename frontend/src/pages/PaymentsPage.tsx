@@ -1,15 +1,90 @@
 import { useEffect, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import {
   createExpense, createPayment, deleteExpense, deletePayment,
-  listExpenses, listPayments, updateExpense, updatePayment,
+  listExpenses, listPayments, printExpensesPdf, printPaymentsListPdf, updateExpense, updatePayment,
 } from "../api/payments";
 import { listEmployees } from "../api/employees";
 import { listInvoices } from "../api/invoices";
-import type { EmployeeDto, ExpenseDto, InvoiceListItemDto, PaymentDirection, PaymentDto } from "../types";
+import { triggerBlobDownload } from "../api/invoices";
+import type { CheckClearanceStatus, EmployeeDto, ExpenseDto, InvoiceListItemDto, PaymentDirection, PaymentDto } from "../types";
 import { PartnerAutocomplete } from "../components/PartnerAutocomplete";
 import { formatCurrency, formatDate, todayLocalDateString } from "../lib/format";
 import { apiErrorMessage } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
+
+// Fixed preset list for "طريقة الدفع" — "أخرى" (other) reveals a free-text field for anything not
+// covered by the other three. "شيك" is what reveals the due-date/check-number/status fields below.
+const PAYMENT_METHOD_OPTIONS = ["نقدي", "حوالة", "شيك", "أخرى"];
+
+/// <summary>
+/// One method+amount line inside "تسجيل دفعة" — a single payment record can now be split across
+/// several of these in one submit (e.g. part نقدي + part شيك against the same invoice), each
+/// becoming its own Payment row on save (see PaymentFormModal.handleSave). "customMethod" only
+/// applies when method === "أخرى"; the check fields only apply when method === "شيك".
+/// </summary>
+interface PaymentLine {
+  method: string;
+  customMethod: string;
+  amount: string;
+  checkDueDate: string;
+  checkNumber: string;
+}
+
+function emptyLine(): PaymentLine {
+  return { method: "نقدي", customMethod: "", amount: "", checkDueDate: "", checkNumber: "" };
+}
+
+function resolveMethod(line: PaymentLine): string {
+  return line.method === "أخرى" ? line.customMethod.trim() : line.method;
+}
+
+/** Shared method/amount/check-detail fields for one split line inside PaymentFormModal. */
+function PaymentLineFields({ line, onChange, onRemove, showRemove }: {
+  line: PaymentLine;
+  onChange: (patch: Partial<PaymentLine>) => void;
+  onRemove?: () => void;
+  showRemove: boolean;
+}) {
+  const isCheck = line.method === "شيك";
+  return (
+    <div className="border border-gray-200 rounded-md p-3 space-y-2 relative">
+      {showRemove && (
+        <button type="button" className="absolute top-2 left-2 text-gray-400 hover:text-red-500 text-sm" onClick={onRemove}>✕</button>
+      )}
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <label className="label">طريقة الدفع</label>
+          <select className="input" value={line.method} onChange={(e) => onChange({ method: e.target.value })}>
+            {PAYMENT_METHOD_OPTIONS.map((m) => <option key={m} value={m}>{m}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="label">المبلغ (₪)</label>
+          <input className="input" type="number" min="0" step="0.01" value={line.amount} onChange={(e) => onChange({ amount: e.target.value })} />
+        </div>
+      </div>
+      {line.method === "أخرى" && (
+        <div>
+          <label className="label">حدد طريقة الدفع</label>
+          <input className="input" value={line.customMethod} onChange={(e) => onChange({ customMethod: e.target.value })} placeholder="مثال: بطاقة" />
+        </div>
+      )}
+      {isCheck && (
+        <div className="grid grid-cols-2 gap-2">
+          <div>
+            <label className="label">تاريخ استحقاق الشيك</label>
+            <input className="input" type="date" value={line.checkDueDate} onChange={(e) => onChange({ checkDueDate: e.target.value })} />
+          </div>
+          <div>
+            <label className="label">رقم الشيك (اختياري)</label>
+            <input className="input" value={line.checkNumber} onChange={(e) => onChange({ checkNumber: e.target.value })} />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 export function PaymentsPage() {
   const { hasPermission } = useAuth();
@@ -44,6 +119,8 @@ function PaymentsTab({ canCreate, canEdit, canDelete }: { canCreate: boolean; ca
   const [payments, setPayments] = useState<PaymentDto[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<PaymentDto | null>(null);
+  const [printing, setPrinting] = useState(false);
+  const [printError, setPrintError] = useState<string | null>(null);
 
   async function refresh() {
     const result = await listPayments({ pageSize: 50 });
@@ -62,11 +139,31 @@ function PaymentsTab({ canCreate, canEdit, canDelete }: { canCreate: boolean; ca
     }
   }
 
+  async function handlePrint() {
+    setPrinting(true);
+    setPrintError(null);
+    try {
+      const blob = await printPaymentsListPdf({});
+      triggerBlobDownload(blob, `payments-${todayLocalDateString()}.pdf`);
+    } catch (err) {
+      setPrintError(apiErrorMessage(err, "فشل إنشاء ملف الطباعة"));
+    } finally {
+      setPrinting(false);
+    }
+  }
+
   return (
     <div>
-      {canCreate && (
-        <button className="btn-primary mb-4" onClick={() => setShowForm(true)}>+ تسجيل دفعة</button>
-      )}
+      <div className="flex items-center gap-2 mb-4 flex-wrap">
+        {canCreate && (
+          <button className="btn-primary" onClick={() => setShowForm(true)}>+ تسجيل دفعة</button>
+        )}
+        <Link to="/checks" className="btn-secondary">📅 الشيكات</Link>
+        <button className="btn-secondary" onClick={handlePrint} disabled={printing}>
+          {printing ? "جاري التجهيز..." : "🖨️ طباعة"}
+        </button>
+        {printError && <span className="text-sm text-red-600">{printError}</span>}
+      </div>
       <div className="card overflow-x-auto">
         <table className="table-base">
           <thead>
@@ -82,7 +179,12 @@ function PaymentsTab({ canCreate, canEdit, canDelete }: { canCreate: boolean; ca
                 <td>{p.direction === "ToFarmer" ? "دفعة للبائع/السائق" : "دفعة من المشتري"}</td>
                 <td className="font-medium">{formatCurrency(p.amount)}</td>
                 <td className="text-gray-500 text-sm">{p.invoiceNumber ?? "—"}</td>
-                <td>{p.method || "—"}</td>
+                <td>
+                  {p.method || "—"}
+                  {p.checkDueDate && (
+                    <div className="text-xs text-gray-400">يستحق: {formatDate(p.checkDueDate)}</div>
+                  )}
+                </td>
                 <td className="text-gray-500">{p.notes || "—"}</td>
                 {showActionsColumn && (
                   <td className="whitespace-nowrap">
@@ -158,47 +260,74 @@ function PaymentFormModal({ onClose, onSaved }: { onClose: () => void; onSaved: 
   const [partnerText, setPartnerText] = useState("");
   const [direction, setDirection] = useState<PaymentDirection>("ToFarmer");
   const [invoiceId, setInvoiceId] = useState<number | null>(null);
-  const [amount, setAmount] = useState("");
+  // Several lines = the same payment split across methods at once (e.g. part نقدي + part شيك
+  // against the same invoice) — each becomes its own Payment row on save, all sharing the same
+  // partner/direction/invoice/date/notes below.
+  const [lines, setLines] = useState<PaymentLine[]>([emptyLine()]);
   const [date, setDate] = useState(() => todayLocalDateString());
-  const [method, setMethod] = useState("");
   const [notes, setNotes] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [justAdded, setJustAdded] = useState(false);
   const [savedOnce, setSavedOnce] = useState(false);
 
+  function updateLine(index: number, patch: Partial<PaymentLine>) {
+    setLines((prev) => prev.map((l, i) => (i === index ? { ...l, ...patch } : l)));
+  }
+  function addLine() {
+    setLines((prev) => [...prev, emptyLine()]);
+  }
+  function removeLine(index: number) {
+    setLines((prev) => prev.filter((_, i) => i !== index));
+  }
+
   async function handleSave() {
     const partnerName = partnerText.trim();
     if (!partner && !partnerName) { setError("يرجى إدخال اسم الشخص"); return; }
-    const amountValue = parseFloat(amount);
-    if (!amountValue || amountValue <= 0) { setError("المبلغ يجب أن يكون أكبر من صفر"); return; }
+    for (const [i, line] of lines.entries()) {
+      const amountValue = parseFloat(line.amount);
+      if (!amountValue || amountValue <= 0) { setError(`السطر ${i + 1}: المبلغ يجب أن يكون أكبر من صفر`); return; }
+      if (line.method === "شيك" && !line.checkDueDate) { setError(`السطر ${i + 1}: تاريخ استحقاق الشيك مطلوب`); return; }
+      if (line.method === "أخرى" && !line.customMethod.trim()) { setError(`السطر ${i + 1}: يرجى تحديد طريقة الدفع`); return; }
+    }
     setBusy(true);
     setError(null);
     try {
-      await createPayment({
-        partnerId: partner?.id,
-        partnerName: partner ? undefined : partnerName,
-        direction, amount: amountValue, date: new Date(date).toISOString(),
-        method: method || undefined, notes: notes || undefined,
-        invoiceId: partner ? invoiceId : null,
-      });
+      for (const [i, line] of lines.entries()) {
+        try {
+          const isCheck = line.method === "شيك";
+          await createPayment({
+            partnerId: partner?.id,
+            partnerName: partner ? undefined : partnerName,
+            direction, amount: parseFloat(line.amount), date: new Date(date).toISOString(),
+            method: resolveMethod(line) || undefined, notes: notes || undefined,
+            invoiceId: partner ? invoiceId : null,
+            checkDueDate: isCheck ? new Date(line.checkDueDate).toISOString() : null,
+            checkNumber: isCheck ? (line.checkNumber || undefined) : undefined,
+          });
+        } catch (err) {
+          throw new Error(`السطر ${i + 1}: ${apiErrorMessage(err, "فشل الحفظ")}${i > 0 ? " — الأسطر السابقة انحفظت فعليًا" : ""}`);
+        }
+      }
       onSaved();
-      // Stay open for the next payment (direction/date/method carried over — usually the
-      // same for a run of entries — only the person/amount/notes/invoice-link reset).
-      setPartner(null); setPartnerText(""); setAmount(""); setNotes(""); setInvoiceId(null);
+      // Stay open for the next payment (direction/date carried over — usually the same for a run
+      // of entries — only the person/notes/invoice-link/lines reset).
+      setPartner(null); setPartnerText(""); setNotes(""); setInvoiceId(null); setLines([emptyLine()]);
       setJustAdded(true);
       setSavedOnce(true);
       setTimeout(() => setJustAdded(false), 1200);
     } catch (err) {
-      setError(apiErrorMessage(err, "فشل تسجيل الدفعة"));
+      setError(err instanceof Error ? err.message : apiErrorMessage(err, "فشل تسجيل الدفعة"));
     } finally {
       setBusy(false);
     }
   }
 
+  const linesTotal = lines.reduce((sum, l) => sum + (parseFloat(l.amount) || 0), 0);
+
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-      <div className="card w-full max-w-md p-6">
+      <div className="card w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto">
         <h2 className="text-lg font-bold mb-4">تسجيل دفعة</h2>
         <div className="space-y-3">
           <div>
@@ -211,17 +340,23 @@ function PaymentFormModal({ onClose, onSaved }: { onClose: () => void; onSaved: 
           <PartnerAutocomplete label="الشخص" value={partner} onChange={setPartner} allowNew onFreeTextChange={setPartnerText} />
           <InvoiceLinkPicker partnerId={partner?.id ?? null} direction={direction} invoiceId={invoiceId} onChange={setInvoiceId} />
           <div>
-            <label className="label">المبلغ (₪)</label>
-            <input className="input" type="number" min="0" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} />
-          </div>
-          <div>
             <label className="label">التاريخ</label>
             <input className="input" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
           </div>
-          <div>
-            <label className="label">طريقة الدفع</label>
-            <input className="input" value={method} onChange={(e) => setMethod(e.target.value)} placeholder="نقدي / حوالة / شيك" />
+
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="label mb-0">طريقة/طرق الدفع</label>
+              {lines.length > 1 && <span className="text-xs text-gray-400">المجموع: {formatCurrency(linesTotal)}</span>}
+            </div>
+            {lines.map((line, i) => (
+              <PaymentLineFields key={i} line={line} onChange={(patch) => updateLine(i, patch)} onRemove={() => removeLine(i)} showRemove={lines.length > 1} />
+            ))}
+            <button type="button" className="text-sm text-brand-700 hover:underline" onClick={addLine}>
+              + إضافة طريقة دفع أخرى لنفس الدفعة (مثلاً: جزء نقدي وجزء شيكات)
+            </button>
           </div>
+
           <div>
             <label className="label">ملاحظات</label>
             <input className="input" value={notes} onChange={(e) => setNotes(e.target.value)} />
@@ -242,20 +377,45 @@ function PaymentEditModal({ payment, onClose, onSaved }: { payment: PaymentDto; 
   const [invoiceId, setInvoiceId] = useState<number | null>(payment.invoiceId ?? null);
   const [amount, setAmount] = useState(String(payment.amount));
   const [date, setDate] = useState(payment.date.slice(0, 10));
-  const [method, setMethod] = useState(payment.method ?? "");
+  // A known method (نقدي/حوالة/شيك) selects directly; anything else (including a payment saved
+  // before this picker existed) falls into "أخرى" with its original text preserved.
+  const knownMethod = payment.method != null && PAYMENT_METHOD_OPTIONS.slice(0, -1).includes(payment.method);
+  const [method, setMethod] = useState(knownMethod ? payment.method! : (payment.method ? "أخرى" : "نقدي"));
+  const [customMethod, setCustomMethod] = useState(knownMethod ? "" : (payment.method ?? ""));
+  const [checkDueDate, setCheckDueDate] = useState(payment.checkDueDate ? payment.checkDueDate.slice(0, 10) : "");
+  const [checkNumber, setCheckNumber] = useState(payment.checkNumber ?? "");
+  const [checkStatus, setCheckStatus] = useState<CheckClearanceStatus>(payment.checkStatus ?? "Pending");
+  // Only ever meaningful while checkStatus === "Cleared" — the actual date the check was
+  // cashed/deposited, distinct from checkDueDate (the nominal due date). Defaults to today the
+  // first time a check is marked Cleared, if it doesn't already have one.
+  const [checkClearedDate, setCheckClearedDate] = useState(payment.checkClearedDate ? payment.checkClearedDate.slice(0, 10) : "");
   const [notes, setNotes] = useState(payment.notes ?? "");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
+  const isCheck = method === "شيك";
+  const isCleared = checkStatus === "Cleared";
+
+  function handleCheckStatusChange(next: CheckClearanceStatus) {
+    setCheckStatus(next);
+    if (next === "Cleared" && !checkClearedDate) setCheckClearedDate(todayLocalDateString());
+  }
+
   async function handleSave() {
     const amountValue = parseFloat(amount);
     if (!amountValue || amountValue <= 0) { setError("المبلغ يجب أن يكون أكبر من صفر"); return; }
+    if (isCheck && !checkDueDate) { setError("تاريخ استحقاق الشيك مطلوب"); return; }
+    if (method === "أخرى" && !customMethod.trim()) { setError("يرجى تحديد طريقة الدفع"); return; }
     setBusy(true);
     setError(null);
     try {
       await updatePayment(payment.id, {
         amount: amountValue, date: new Date(date).toISOString(),
-        method: method || undefined, notes: notes || undefined, invoiceId,
+        method: (method === "أخرى" ? customMethod.trim() : method) || undefined, notes: notes || undefined, invoiceId,
+        checkDueDate: isCheck ? new Date(checkDueDate).toISOString() : null,
+        checkNumber: isCheck ? (checkNumber || undefined) : undefined,
+        checkStatus: isCheck ? checkStatus : null,
+        checkClearedDate: isCheck && isCleared && checkClearedDate ? new Date(checkClearedDate).toISOString() : null,
       });
       onSaved();
     } catch (err) {
@@ -281,8 +441,42 @@ function PaymentEditModal({ payment, onClose, onSaved }: { payment: PaymentDto; 
           </div>
           <div>
             <label className="label">طريقة الدفع</label>
-            <input className="input" value={method} onChange={(e) => setMethod(e.target.value)} placeholder="نقدي / حوالة / شيك" />
+            <select className="input" value={method} onChange={(e) => setMethod(e.target.value)}>
+              {PAYMENT_METHOD_OPTIONS.map((m) => <option key={m} value={m}>{m}</option>)}
+            </select>
           </div>
+          {method === "أخرى" && (
+            <div>
+              <label className="label">حدد طريقة الدفع</label>
+              <input className="input" value={customMethod} onChange={(e) => setCustomMethod(e.target.value)} />
+            </div>
+          )}
+          {isCheck && (
+            <>
+              <div>
+                <label className="label">تاريخ استحقاق الشيك</label>
+                <input className="input" type="date" value={checkDueDate} onChange={(e) => setCheckDueDate(e.target.value)} />
+              </div>
+              <div>
+                <label className="label">رقم الشيك (اختياري)</label>
+                <input className="input" value={checkNumber} onChange={(e) => setCheckNumber(e.target.value)} />
+              </div>
+              <div>
+                <label className="label">حالة الشيك</label>
+                <select className="input" value={checkStatus} onChange={(e) => handleCheckStatusChange(e.target.value as CheckClearanceStatus)}>
+                  <option value="Pending">قيد التحصيل</option>
+                  <option value="Cleared">تم الصرف</option>
+                  <option value="Bounced">مرتجع</option>
+                </select>
+              </div>
+              {isCleared && (
+                <div>
+                  <label className="label">تاريخ الصرف الفعلي</label>
+                  <input className="input" type="date" value={checkClearedDate} onChange={(e) => setCheckClearedDate(e.target.value)} />
+                </div>
+              )}
+            </>
+          )}
           <div>
             <label className="label">ملاحظات</label>
             <input className="input" value={notes} onChange={(e) => setNotes(e.target.value)} />
@@ -337,6 +531,8 @@ function ExpensesTab({ canCreate, canEdit, canDelete }: { canCreate: boolean; ca
   const [expenses, setExpenses] = useState<ExpenseDto[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<ExpenseDto | null>(null);
+  const [printing, setPrinting] = useState(false);
+  const [printError, setPrintError] = useState<string | null>(null);
 
   async function refresh() {
     const result = await listExpenses({ pageSize: 50 });
@@ -355,9 +551,28 @@ function ExpensesTab({ canCreate, canEdit, canDelete }: { canCreate: boolean; ca
     }
   }
 
+  async function handlePrint() {
+    setPrinting(true);
+    setPrintError(null);
+    try {
+      const blob = await printExpensesPdf({});
+      triggerBlobDownload(blob, `expenses-${todayLocalDateString()}.pdf`);
+    } catch (err) {
+      setPrintError(apiErrorMessage(err, "فشل إنشاء ملف الطباعة"));
+    } finally {
+      setPrinting(false);
+    }
+  }
+
   return (
     <div>
-      {canCreate && <button className="btn-primary mb-4" onClick={() => setShowForm(true)}>+ إضافة مصروف</button>}
+      <div className="flex items-center gap-2 mb-4 flex-wrap">
+        {canCreate && <button className="btn-primary" onClick={() => setShowForm(true)}>+ إضافة مصروف</button>}
+        <button className="btn-secondary" onClick={handlePrint} disabled={printing}>
+          {printing ? "جاري التجهيز..." : "🖨️ طباعة"}
+        </button>
+        {printError && <span className="text-sm text-red-600">{printError}</span>}
+      </div>
       <div className="card overflow-x-auto">
         <table className="table-base">
           <thead><tr><th>التاريخ</th><th>الوصف</th><th>الفئة</th><th>الموظف</th><th>المبلغ</th>{showActionsColumn && <th></th>}</tr></thead>

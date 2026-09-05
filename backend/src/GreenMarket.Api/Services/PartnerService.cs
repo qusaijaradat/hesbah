@@ -95,8 +95,11 @@ public class PartnerService : IPartnerService
             .Select(g => new { MerchantId = g.Key, Total = g.Sum(i => i.TotalValue) })
             .ToDictionaryAsync(x => x.MerchantId, x => x.Total);
 
+        // A check that bounced never actually paid anything — excluded here (and everywhere else
+        // "paid" is summed from Payments) so a bounced check doesn't silently understate what a
+        // merchant still owes. See CheckClearanceStatus.Bounced's doc comment.
         var paidByMerchant = await _db.Payments
-            .Where(p => merchantIds.Contains(p.PartnerId) && p.Direction == PaymentDirection.FromMerchant)
+            .Where(p => merchantIds.Contains(p.PartnerId) && p.Direction == PaymentDirection.FromMerchant && p.CheckStatus != CheckClearanceStatus.Bounced)
             .GroupBy(p => p.PartnerId)
             .Select(g => new { PartnerId = g.Key, Total = g.Sum(p => p.Amount) })
             .ToDictionaryAsync(x => x.PartnerId, x => x.Total);
@@ -219,23 +222,31 @@ public class PartnerService : IPartnerService
 
         // Method/Notes/linked invoice number: a payment can optionally be tied to one specific
         // invoice (InvoiceLinkPicker on the Payments page) — shown so "أي فاتورة سُدِّدت بهاي الدفعة"
-        // is visible right on the statement line, not just on the Payments page.
+        // is visible right on the statement line, not just on the Payments page. A bounced check
+        // never actually paid anything — excluded here too, same reasoning as ListAsync's
+        // paidByMerchant above — but it's still shown on the statement (Amount=0, a Description
+        // noting it bounced) rather than silently disappearing, so the trader can see it was
+        // recorded and then reversed rather than never having existed.
         var payments = await _db.Payments
             .Where(p => p.PartnerId == id && p.Direction == PaymentDirection.FromMerchant)
-            .Select(p => new { p.Date, p.Amount, p.Method, p.Notes, p.InvoiceId, LinkedInvoiceNumber = p.Invoice != null ? p.Invoice.InvoiceNumber : null })
+            .Select(p => new { p.Date, p.Amount, p.Method, p.Notes, p.InvoiceId, p.CheckStatus, LinkedInvoiceNumber = p.Invoice != null ? p.Invoice.InvoiceNumber : null })
             .ToListAsync();
 
         var entries = invoices.Select(i => new AccountStatementBuilder.Entry(
                 i.Date, $"فاتورة رقم {i.InvoiceNumber}", i.TotalValue,
                 InvoiceId: i.Id, InvoiceNumber: i.InvoiceNumber))
-            .Concat(payments.Select(p => new AccountStatementBuilder.Entry(
-                p.Date, "دفعة مستلمة", -p.Amount,
-                InvoiceId: p.InvoiceId, InvoiceNumber: p.LinkedInvoiceNumber, Method: p.Method, Notes: p.Notes)));
+            .Concat(payments.Select(p =>
+            {
+                var bounced = p.CheckStatus == CheckClearanceStatus.Bounced;
+                return new AccountStatementBuilder.Entry(
+                    p.Date, bounced ? "دفعة بشيك ارتد (لم تُحتسب)" : "دفعة مستلمة", bounced ? 0 : -p.Amount,
+                    InvoiceId: p.InvoiceId, InvoiceNumber: p.LinkedInvoiceNumber, Method: p.Method, Notes: p.Notes);
+            }));
 
         var openingBalance = partner.OpeningBalance ?? 0;
         var statement = AccountStatementBuilder.Build(entries, openingBalance);
         var totalPurchases = invoices.Sum(i => i.TotalValue);
-        var totalPaid = payments.Sum(p => p.Amount);
+        var totalPaid = payments.Where(p => p.CheckStatus != CheckClearanceStatus.Bounced).Sum(p => p.Amount);
         var remaining = openingBalance + totalPurchases - totalPaid;
         var isOverLimit = partner.CreditLimit is not null && remaining > partner.CreditLimit;
 
@@ -346,8 +357,9 @@ public class PartnerService : IPartnerService
             .Select(g => new { MerchantId = g.Key, Total = g.Sum(i => i.TotalValue) })
             .ToDictionaryAsync(x => x.MerchantId, x => x.Total);
 
+        // Same Bounced exclusion as ListAsync/GetMerchantAccountAsync — a bounced check isn't real money.
         var paidByMerchant = await _db.Payments
-            .Where(p => p.Direction == PaymentDirection.FromMerchant)
+            .Where(p => p.Direction == PaymentDirection.FromMerchant && p.CheckStatus != CheckClearanceStatus.Bounced)
             .GroupBy(p => p.PartnerId)
             .Select(g => new { PartnerId = g.Key, Total = g.Sum(p => p.Amount) })
             .ToDictionaryAsync(x => x.PartnerId, x => x.Total);

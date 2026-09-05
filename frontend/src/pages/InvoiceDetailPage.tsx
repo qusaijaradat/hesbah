@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { cancelInvoice, downloadInvoicePdf, getInvoice, triggerBlobDownload } from "../api/invoices";
+import { cancelInvoice, downloadFarmerInvoicePdf, downloadInvoicePdf, getInvoice, triggerBlobDownload } from "../api/invoices";
 import { getFarmerAccount } from "../api/partners";
 import { listSettings } from "../api/settings";
 import type { InvoiceDto } from "../types";
@@ -21,6 +21,7 @@ export function InvoiceDetailPage() {
   const [companyName, setCompanyName] = useState("Green Market");
   const [companyPhone, setCompanyPhone] = useState<string | null>(null);
   const [printing, setPrinting] = useState(false);
+  const [printingFarmerCopy, setPrintingFarmerCopy] = useState(false);
   const [sharing, setSharing] = useState(false);
   // Tracks which WhatsApp button is mid-send (fetching a farmer/driver's live account balance
   // takes a round trip) so only that one button shows a busy state.
@@ -52,7 +53,10 @@ export function InvoiceDetailPage() {
       if (role === "merchant") previousBalance = invoice.previousBalance;
       else if (role === "farmer" && invoice.farmerId) previousBalance = (await getFarmerAccount(invoice.farmerId)).remaining;
       else if (role === "driver" && invoice.driverId) previousBalance = (await getFarmerAccount(invoice.driverId)).remaining;
-      const message = buildStatementMessage(companyName, companyPhone, partnerName, [invoice], previousBalance);
+      // Commission is ONLY ever deducted on the farmer's own message — never merchant (§5), never
+      // driver (no commission at all).
+      const commissionTotal = role === "farmer" ? invoice.commission : undefined;
+      const message = buildStatementMessage(companyName, companyPhone, partnerName, [invoice], previousBalance, commissionTotal);
       window.open(buildWhatsAppLink(phone, message), "_blank");
     } finally {
       setSendingRole(null);
@@ -71,6 +75,20 @@ export function InvoiceDetailPage() {
       window.open(url, "_blank");
     } finally {
       setPrinting(false);
+    }
+  }
+
+  // "نسخة البائع" — same invoice, but shows and deducts this invoice's own commission (see
+  // ExportService.GenerateFarmerInvoicePdf's own doc comment). Only offered when farmerId is set.
+  async function handlePrintFarmerCopy() {
+    if (!invoice) return;
+    setPrintingFarmerCopy(true);
+    try {
+      const blob = await downloadFarmerInvoicePdf(invoice.id);
+      const url = URL.createObjectURL(blob);
+      window.open(url, "_blank");
+    } finally {
+      setPrintingFarmerCopy(false);
     }
   }
 
@@ -202,8 +220,21 @@ export function InvoiceDetailPage() {
           </div>
         )}
 
-        {/* Note: no commission line here — requirement doc §5, the market's commission never
-            appears on the merchant-facing invoice. */}
+        {/* Note: no commission line above (next to grandTotal/previousBalance) — requirement doc
+            §5, the market's commission never appears on the merchant-facing invoice. This panel
+            is for internal staff reference only (same convention as كشف حساب البائع already
+            showing commission per line) — it's never printed on the merchant's own PDF/message,
+            only on the separate "نسخة البائع" print/WhatsApp send below. */}
+        {invoice.farmerId && (
+          <div className="border-t pt-3 mt-3 text-sm bg-amber-50 rounded-md p-3">
+            <div className="font-semibold text-amber-800 mb-1">العمولة (البائع) — لمعلومات الموظف فقط</div>
+            <div className="flex flex-wrap gap-x-6 gap-y-1 text-gray-700">
+              <div>إجمالي المبيعات: <span className="font-medium">{formatCurrency(invoice.totalValue)}</span></div>
+              <div>العمولة ({(invoice.commissionRateApplied * 100).toLocaleString("en-US")}%): <span className="font-medium text-red-700">- {formatCurrency(invoice.commission)}</span></div>
+              <div>الصافي المستحق للبائع: <span className="font-semibold">{formatCurrency(invoice.netDueToFarmer)}</span></div>
+            </div>
+          </div>
+        )}
 
         {error && <div className="text-sm text-red-600 bg-red-50 rounded-md p-3 mt-4">{error}</div>}
         {notice && <div className="text-sm text-blue-700 bg-blue-50 rounded-md p-3 mt-4">{notice}</div>}
@@ -215,6 +246,11 @@ export function InvoiceDetailPage() {
           <button className="btn-secondary" disabled={printing} onClick={() => handlePrint(true)}>
             {printing ? "جاري التجهيز..." : "🖨️ طباعة (طابعة حرارية 80mm)"}
           </button>
+          {invoice.farmerId && (
+            <button className="btn-secondary" disabled={printingFarmerCopy} onClick={handlePrintFarmerCopy} title="نسخة تُظهر العمولة وتخصمها — للبائع فقط">
+              {printingFarmerCopy ? "جاري التجهيز..." : "🖨️ طباعة نسخة البائع (مع العمولة)"}
+            </button>
+          )}
           <button className="btn-secondary" disabled={sharing} onClick={handleShareFile} title="يفتح قائمة مشاركة النظام (واتساب وغيره) مع ملف الفاتورة مرفق">
             {sharing ? "جاري التجهيز..." : "📎 مشاركة الفاتورة (ملف)"}
           </button>

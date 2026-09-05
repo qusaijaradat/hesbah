@@ -12,6 +12,7 @@ public class PaymentConfiguration : IEntityTypeConfiguration<Payment>
         builder.Property(x => x.Amount).HasColumnType("numeric(14,2)");
         builder.Property(x => x.Method).HasMaxLength(50);
         builder.Property(x => x.Notes).HasMaxLength(500);
+        builder.Property(x => x.CheckNumber).HasMaxLength(50);
 
         builder.HasOne(x => x.Partner)
             .WithMany(p => p.Payments)
@@ -29,6 +30,9 @@ public class PaymentConfiguration : IEntityTypeConfiguration<Payment>
         builder.HasIndex(x => x.PartnerId);
         builder.HasIndex(x => x.Date);
         builder.HasIndex(x => x.InvoiceId);
+        // Used by ListChecksAsync (the "الشيكات" page) to find every check payment fast — that
+        // query filters on CheckDueDate != null and orders by it, so this index serves both.
+        builder.HasIndex(x => x.CheckDueDate);
     }
 }
 

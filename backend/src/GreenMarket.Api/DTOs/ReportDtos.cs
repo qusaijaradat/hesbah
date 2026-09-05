@@ -14,13 +14,16 @@ public class ReportFilterRequest
 /// Requirement doc §8: farmer (بائع) report — detailed per-seller breakdown, not just a single
 /// totals line. TotalBoxes sits alongside TotalWeightKg for the same reason InvoiceListItemDto's
 /// does (a box-only seller would otherwise show 0 weight and look empty). NetDue = TotalSalesValue
-/// - TotalCommission — what the market owes this farmer BEFORE payments/adjustments, kept
-/// alongside Remaining (which nets in OpeningBalance, every payment, and any Adjustment reversal)
-/// so both "how much did we owe from sales alone" and "how much is left right now" are visible at
-/// once. OpeningBalance is broken out on its own even though it's already folded into Remaining —
-/// same traceability convention as MerchantAccountDto/FarmerAccountDto. LastInvoiceDate is null
-/// only if InvoiceCount is 0, which can't happen here (a farmer only appears in this report at all
-/// because they have at least one matching invoice).
+/// - TotalCommission + (this farmer's own wood-price total across the period) — explicit
+/// requirement: the farmer is paid the full "سعر الخشب" amount too, never taxed by the commission,
+/// same as FarmerTransaction.Amount already reflects on their own ledger — what the market owes
+/// this farmer BEFORE payments/adjustments, kept alongside Remaining (which nets in OpeningBalance,
+/// every payment, and any Adjustment reversal) so both "how much did we owe from sales alone" and
+/// "how much is left right now" are visible at once. OpeningBalance is broken out on its own even
+/// though it's already folded into Remaining — same traceability convention as
+/// MerchantAccountDto/FarmerAccountDto. LastInvoiceDate is null only if InvoiceCount is 0, which
+/// can't happen here (a farmer only appears in this report at all because they have at least one
+/// matching invoice).
 /// </summary>
 public record FarmerReportRow(
     int FarmerId, string FarmerName,

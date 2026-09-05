@@ -60,12 +60,17 @@ public record InvoiceItemDto(int Id, string ItemName, decimal Quantity, UnitOfMe
 /// GrandTotal below (which stays the merchant-facing amount) — shown only on driver-facing
 /// surfaces (ExportService.GenerateDriverManifestPdf), where it's added to the driver's own total.
 ///
-/// Commission/NetDueToFarmer are this one invoice's own commission math (CommissionCalculator over
+/// Commission is this one invoice's own commission math (CommissionCalculator over
 /// TotalValue/CommissionRateApplied — never TotalValue+WoodTotal/TransportFee/BoxFeeTotal, same
 /// base the linked FarmerTransaction.Commission already uses, so this can never drift from the
-/// farmer's own ledger). Computed even when FarmerId is null (harmless, just meaningless/unused by
-/// the frontend then) — only ever shown on farmer-facing surfaces (the "نسخة البائع" print, and
-/// the "إرسال للبائع" WhatsApp message), never on anything the merchant sees.
+/// farmer's own ledger). NetDueToFarmer = TotalValue - Commission + WoodTotal (explicit
+/// requirement: the farmer is paid the FULL wood-price amount too, on top of what the merchant is
+/// separately charged for it above — never reduced by the commission, same flat treatment
+/// FarmerTransaction.Amount already gets) — this is the actual amount the farmer is owed for this
+/// invoice, matching FarmerTransaction.Amount on their Sale row exactly. Both are computed even
+/// when FarmerId is null (harmless, just meaningless/unused by the frontend then) — only ever
+/// shown on farmer-facing surfaces (the "نسخة البائع" print, and the "إرسال للبائع" WhatsApp
+/// message), never on anything the merchant sees.
 /// </summary>
 public record InvoiceDto(
     int Id, string InvoiceNumber, DateTimeOffset Date,

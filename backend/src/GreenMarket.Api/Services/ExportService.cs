@@ -481,11 +481,12 @@ public class ExportService : IExportService
                         col.Item().AlignRight().Text($"إجمالي الوزن: {invoice.TotalWeightKg:0.###} كغم");
                     if (totalBoxes > 0)
                         col.Item().AlignRight().Text($"إجمالي الصناديق: {totalBoxes:0.###}");
-                    // Informational only — wood/crate price is charged to the merchant, never
-                    // deducted from what's owed to the farmer, so it's shown here (cargo detail)
-                    // but deliberately kept OUT of the commission math and net-due figures below.
+                    // Wood/crate price is charged to the merchant (see GrandTotal) AND paid to the
+                    // farmer in full on top of the commission math (explicit requirement) — shown
+                    // here as its own line so "الصافي المستحق" below reconciles: TotalValue -
+                    // Commission + WoodTotal. Kept OUT of the commission math itself (never taxed).
                     if (invoice.WoodTotal > 0)
-                        col.Item().AlignRight().Text($"إجمالي الخشب (لا يدخل بحساب العمولة): ₪ {invoice.WoodTotal:0.##}").FontSize(9).FontColor(Colors.Grey.Darken1);
+                        col.Item().AlignRight().Text($"سعر الخشب (يُضاف للمستحق — لا يدخل بحساب العمولة): ₪ {invoice.WoodTotal:0.##}");
                     // Same informational-only treatment as WoodTotal above — رسم الصناديق is
                     // charged to the MERCHANT (see InvoiceDto.BoxFeeTotal), never deducted from
                     // what's owed to the farmer, so it's shown here as cargo detail but kept OUT
@@ -706,27 +707,25 @@ public class ExportService : IExportService
     /// item count) and الوزن (kg-unit item weight) alongside the wood price and fare already shown
     /// here — computed straight off that invoice's own Items/TotalWeightKg, same convention every
     /// other quantity column in this app uses (a Box-unit count and a Kg-unit weight side by side,
-    /// "—" for whichever one doesn't apply to that invoice's items). Quantity/wood stay purely
-    /// informational cargo detail — same as WoodTotal already was — never added into
-    /// grandTotal/الرصيد السابق below.
+    /// "—" for whichever one doesn't apply to that invoice's items). Quantity stays purely
+    /// informational cargo detail, never added into grandTotal/الرصيد السابق below.
     ///
-    /// أجرة الصناديق (explicit request): unlike the box count/weight/wood-price columns above,
-    /// this one IS real money owed to the driver — shown per invoice (its own DriverBoxFeeTotal)
-    /// and explained/summed in the footer, then folded into grandTotal alongside the transport
-    /// fee, so "الإجمالي المستحق للسائق" below is the actual total this manifest represents.
+    /// أجرة الصناديق and سعر الخشب (both explicit requests): unlike the box count/weight columns
+    /// above, these two ARE real money owed to the driver — سعر الخشب is paid to the driver in FULL
+    /// (same amount the merchant is separately charged for it, not split — explicit requirement),
+    /// on top of أجرة الصناديق (DriverBoxFeeTotal) — both shown per invoice and explained/summed in
+    /// the footer, then folded into grandTotal alongside the transport fee, so "الإجمالي المستحق
+    /// للسائق" below is the actual total this manifest represents.
     /// </summary>
     public byte[] GenerateDriverManifestPdf(string driverName, IReadOnlyList<InvoiceDto> invoices, CompanyInfo company, decimal previousBalance)
     {
         var orderedInvoices = invoices.OrderBy(i => i.Date).ToList();
         var totalDriverBoxFee = orderedInvoices.Sum(i => i.DriverBoxFeeTotal);
-        var grandTotal = orderedInvoices.Sum(i => i.TransportFee) + totalDriverBoxFee;
-        // Informational only — wood/crate price is charged to the MERCHANT, never owed to the
-        // driver, so it's shown per-invoice on this manifest (cargo detail) but deliberately kept
-        // OUT of grandTotal/الرصيد السابق below, unlike the merchant-facing PDFs where it's part
-        // of what's actually due.
+        // Explicit requirement: the driver is paid the full wood-price amount too (same amount the
+        // merchant is separately charged for it, not split) — folded into grandTotal alongside the
+        // transport fee and the box-handling fee, same treatment as totalDriverBoxFee.
         var woodTotal = orderedInvoices.Sum(i => i.WoodTotal);
-        // Same "informational cargo detail only" treatment as woodTotal above — never folded into
-        // grandTotal, which stays the driver's own transport-fee total.
+        var grandTotal = orderedInvoices.Sum(i => i.TransportFee) + totalDriverBoxFee + woodTotal;
         var totalBoxes = orderedInvoices.Sum(i => i.Items.Where(it => it.Unit == UnitOfMeasure.Box).Sum(it => it.Quantity));
         var totalWeightKg = orderedInvoices.Sum(i => i.TotalWeightKg);
 
@@ -796,10 +795,10 @@ public class ExportService : IExportService
                     if (totalWeightKg > 0)
                         col.Item().AlignRight().Text($"إجمالي الوزن: {totalWeightKg:0.###} كغم").FontSize(9);
                     if (woodTotal > 0)
-                        col.Item().AlignRight().Text($"إجمالي سعر الخشب (للعلم فقط — ليس من مستحقات السائق): ₪ {woodTotal:0.##}").FontSize(9);
+                        col.Item().AlignRight().Text($"إجمالي سعر الخشب (تُضاف لمستحقات السائق): ₪ {woodTotal:0.##}").FontSize(9);
                     if (totalDriverBoxFee > 0)
                         col.Item().AlignRight().Text($"إجمالي أجرة الصناديق (تُضاف لمستحقات السائق): ₪ {totalDriverBoxFee:0.##}").FontSize(9);
-                    col.Item().PaddingTop(4).AlignRight().Text($"الإجمالي المستحق للسائق (أجرة النقل + أجرة الصناديق): ₪ {grandTotal:0.##}").Bold().FontSize(13);
+                    col.Item().PaddingTop(4).AlignRight().Text($"الإجمالي المستحق للسائق (أجرة النقل + أجرة الصناديق + سعر الخشب): ₪ {grandTotal:0.##}").Bold().FontSize(13);
                     if (previousBalance != 0)
                     {
                         col.Item().PaddingTop(2).AlignRight().Text($"الرصيد السابق (رصيد حساب السائق الحالي): ₪ {previousBalance:0.##}").FontSize(10);
@@ -1110,7 +1109,10 @@ public class ExportService : IExportService
     /// invoice's CommissionRateApplied — never +wood, same base as everywhere else commission is
     /// computed) is summed per item, then all of it is summarized once more at the very end (grand
     /// sales total, grand commission, net due, then previousBalance added on top same as every
-    /// other statement PDF in this app).
+    /// other statement PDF in this app). Net/netDue both add the wood subtotal back in on top of
+    /// subtotal-minus-commission (explicit requirement: the farmer is paid the full wood-price
+    /// amount too, never taxed by the commission) — same total FarmerTransaction.Amount already
+    /// reflects on this farmer's own ledger, so this print can never drift from it.
     /// </summary>
     public byte[] GenerateFarmerStatementPdf(FarmerStatementDto statement, DateTimeOffset? dateFrom, DateTimeOffset? dateTo, CompanyInfo company, decimal previousBalance)
     {
@@ -1129,7 +1131,7 @@ public class ExportService : IExportService
                     Subtotal = subtotal,
                     WoodSubtotal = woodSubtotal,
                     Commission = commission,
-                    Net = subtotal - commission,
+                    Net = subtotal - commission + woodSubtotal,
                 };
             })
             .OrderBy(g => g.ItemName, StringComparer.CurrentCulture)
@@ -1140,7 +1142,7 @@ public class ExportService : IExportService
         var woodTotal = statement.Lines.Sum(l => l.WoodPrice);
         var itemsTotal = statement.Lines.Sum(l => l.LineTotal);
         var totalCommission = itemGroups.Sum(g => g.Commission);
-        var netDue = itemsTotal - totalCommission;
+        var netDue = itemsTotal - totalCommission + woodTotal;
 
         var document = Document.Create(container =>
         {
@@ -1227,6 +1229,55 @@ public class ExportService : IExportService
                                 row.AutoItem().PaddingRight(16).Text($"المجموع: ₪ {group.Subtotal:0.##}").Bold();
                                 row.AutoItem().PaddingRight(16).Text($"العمولة: - ₪ {group.Commission:0.##}").FontColor(Colors.Red.Darken1);
                                 row.AutoItem().Text($"الصافي: ₪ {group.Net:0.##}").Bold();
+                            });
+                        });
+                    }
+
+                    // Explicit request: a recap table gathering every item's own already-computed
+                    // Subtotal/Commission/Net (see itemGroups above — each figure here matches its
+                    // item's own table footer exactly, just collected in one place) so the reader
+                    // doesn't have to page back through every item's table to add them up by hand
+                    // before reaching the grand total in the page footer below.
+                    if (itemGroups.Count > 0)
+                    {
+                        mainCol.Item().PaddingTop(6).Column(summaryCol =>
+                        {
+                            summaryCol.Item().Text("ملخص الأصناف").Bold().FontSize(12);
+                            summaryCol.Item().Table(table =>
+                            {
+                                table.ColumnsDefinition(columns =>
+                                {
+                                    columns.RelativeColumn(3);   // الصنف
+                                    columns.RelativeColumn(2);   // المجموع
+                                    columns.RelativeColumn(2);   // العمولة
+                                    columns.RelativeColumn(2);   // الصافي
+                                });
+
+                                table.Header(header =>
+                                {
+                                    header.Cell().Element(HeaderCell).AlignRight().Text("الصنف");
+                                    header.Cell().Element(HeaderCell).AlignRight().Text("المجموع");
+                                    header.Cell().Element(HeaderCell).AlignRight().Text("العمولة");
+                                    header.Cell().Element(HeaderCell).AlignRight().Text("الصافي");
+                                });
+
+                                for (var i = 0; i < itemGroups.Count; i++)
+                                {
+                                    var group = itemGroups[i];
+                                    var shaded = i % 2 == 1;
+                                    table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(group.ItemName);
+                                    table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(group.Subtotal.ToString("0.##"));
+                                    table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(group.Commission > 0 ? $"- {group.Commission:0.##}" : "—");
+                                    table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(group.Net.ToString("0.##"));
+                                }
+
+                                // Grand total row inside the summary table itself — same "bold total
+                                // row at the bottom of its own table" convention already used in
+                                // GenerateDriverItemsStatementPdf's per-driver subtotal row.
+                                table.Cell().Element(c => DataCell(c, true)).AlignRight().Text("الإجمالي").Bold();
+                                table.Cell().Element(c => DataCell(c, true)).AlignRight().Text(itemsTotal.ToString("0.##")).Bold();
+                                table.Cell().Element(c => DataCell(c, true)).AlignRight().Text($"- {totalCommission:0.##}").Bold();
+                                table.Cell().Element(c => DataCell(c, true)).AlignRight().Text(netDue.ToString("0.##")).Bold();
                             });
                         });
                     }

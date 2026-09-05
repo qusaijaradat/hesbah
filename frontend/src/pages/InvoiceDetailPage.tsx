@@ -234,6 +234,10 @@ export function InvoiceDetailPage() {
             <div className="flex flex-wrap gap-x-6 gap-y-1 text-gray-700">
               <div>إجمالي المبيعات: <span className="font-medium">{formatCurrency(invoice.totalValue)}</span></div>
               <div>العمولة ({(invoice.commissionRateApplied * 100).toLocaleString("en-US")}%): <span className="font-medium text-red-700">- {formatCurrency(invoice.commission)}</span></div>
+              {/* يُضاف كامل المبلغ للبائع (لا تُخصم منه العمولة) — نفس ما يحصل عليه السائق أيضًا. */}
+              {invoice.woodTotal > 0 && (
+                <div>+ سعر الخشب: <span className="font-medium text-green-700">{formatCurrency(invoice.woodTotal)}</span></div>
+              )}
               <div>الصافي المستحق للبائع: <span className="font-semibold">{formatCurrency(invoice.netDueToFarmer)}</span></div>
             </div>
           </div>

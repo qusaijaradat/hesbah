@@ -60,6 +60,9 @@ public class ReportService : IReportService
                 TotalWeightKg = g.Sum(i => i.TotalWeightKg),
                 TotalBoxes = g.Sum(i => i.Items.Where(it => it.Unit == UnitOfMeasure.Box).Sum(it => it.Quantity)),
                 TotalSalesValue = g.Sum(i => i.TotalValue),
+                // Explicit requirement: the farmer is paid this in full on top of NetDue below —
+                // see FarmerReportRow's own doc comment.
+                TotalWoodTotal = g.Sum(i => i.Items.Sum(it => it.WoodPrice)),
                 LastInvoiceDate = (DateTimeOffset?)g.Max(i => i.Date)
             })
             .ToList();
@@ -108,7 +111,7 @@ public class ReportService : IReportService
             var opening = openingBalances.GetValueOrDefault(a.FarmerId);
             return new FarmerReportRow(
                 a.FarmerId, a.FarmerName, a.InvoiceCount, a.TotalWeightKg, a.TotalBoxes, a.TotalSalesValue,
-                commission, a.TotalSalesValue - commission, paidByFarmer.GetValueOrDefault(a.FarmerId),
+                commission, a.TotalSalesValue - commission + a.TotalWoodTotal, paidByFarmer.GetValueOrDefault(a.FarmerId),
                 opening + allTimeBalance.GetValueOrDefault(a.FarmerId), opening, a.LastInvoiceDate);
         })
         .OrderBy(r => r.FarmerName)
@@ -184,9 +187,10 @@ public class ReportService : IReportService
     /// scoped to Invoice.DriverId instead of Invoice.FarmerId, and with TotalTransportFee (there is
     /// no "sale"/commission concept for a driver) in place of TotalSalesValue/TotalCommission.
     /// TotalTransportFee folds in each invoice's own automatic "أجرة الصناديق" box-handling fee
-    /// (box-unit item count × Invoice.DriverBoxFeeApplied) alongside the manual TransportFee — same
-    /// "everything the driver earned" total the ledger (and Remaining below) already reflects, so
-    /// this never drifts out of sync with the driver's own كشف حساب.</summary>
+    /// (box-unit item count × Invoice.DriverBoxFeeApplied) AND its own "سعر الخشب" total (explicit
+    /// requirement: the driver is paid the full wood-price amount too) alongside the manual
+    /// TransportFee — same "everything the driver earned" total the ledger (and Remaining below)
+    /// already reflects, so this never drifts out of sync with the driver's own كشف حساب.</summary>
     public async Task<IReadOnlyList<DriverReportRow>> DriverReportAsync(ReportFilterRequest filter)
     {
         var invoiceQuery = _db.Invoices.Where(i => i.Status == InvoiceStatus.Active && i.DriverId != null);
@@ -203,7 +207,9 @@ public class ReportService : IReportService
                 DriverId = g.Key.DriverId,
                 DriverName = g.Key.Name,
                 InvoiceCount = g.Count(),
-                TotalTransportFee = g.Sum(i => i.TransportFee + i.Items.Where(it => it.Unit == UnitOfMeasure.Box).Sum(it => it.Quantity) * i.DriverBoxFeeApplied),
+                TotalTransportFee = g.Sum(i => i.TransportFee
+                    + i.Items.Where(it => it.Unit == UnitOfMeasure.Box).Sum(it => it.Quantity) * i.DriverBoxFeeApplied
+                    + i.Items.Sum(it => it.WoodPrice)),
                 LastInvoiceDate = (DateTimeOffset?)g.Max(i => i.Date)
             })
             .ToList();
@@ -292,8 +298,8 @@ public class ReportService : IReportService
 
     /// <summary>Driver counterpart — see DriverItemBreakdownRow's doc comment for why
     /// TotalTransportFee is computed once per INVOICE (never per item line) and then simply repeated
-    /// across that driver's rows rather than summed per item. Same "fold in أجرة الصناديق" treatment
-    /// as DriverReportAsync's own TotalTransportFee — see that method's doc comment.</summary>
+    /// across that driver's rows rather than summed per item. Same "fold in أجرة الصناديق AND سعر
+    /// الخشب" treatment as DriverReportAsync's own TotalTransportFee — see that method's doc comment.</summary>
     public async Task<IReadOnlyList<DriverItemBreakdownRow>> DriverItemBreakdownAsync(ReportFilterRequest filter)
     {
         var query = _db.Invoices.Where(i => i.Status == InvoiceStatus.Active && i.DriverId != null);
@@ -308,7 +314,9 @@ public class ReportService : IReportService
 
         var feeByDriver = invoices
             .GroupBy(i => i.DriverId!.Value)
-            .ToDictionary(g => g.Key, g => g.Sum(i => i.TransportFee + i.Items.Where(it => it.Unit == UnitOfMeasure.Box).Sum(it => it.Quantity) * i.DriverBoxFeeApplied));
+            .ToDictionary(g => g.Key, g => g.Sum(i => i.TransportFee
+                + i.Items.Where(it => it.Unit == UnitOfMeasure.Box).Sum(it => it.Quantity) * i.DriverBoxFeeApplied
+                + i.Items.Sum(it => it.WoodPrice)));
 
         return invoices
             .SelectMany(i => i.Items.Select(it => new { DriverId = i.DriverId!.Value, DriverName = i.Driver!.Name, it.ItemName, it.Unit, it.Quantity }))

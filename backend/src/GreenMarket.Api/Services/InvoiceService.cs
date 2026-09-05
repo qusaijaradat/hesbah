@@ -128,19 +128,24 @@ public class InvoiceService : IInvoiceService
                 Date = invoice.Date,
                 SaleValue = totals.TotalValue,
                 Commission = commissionResult.Commission,
-                Amount = commissionResult.NetDueToFarmer,
+                // Explicit requirement: "سعر الخشب" is paid out in full to the farmer too (on top
+                // of what the merchant is separately charged for it below), never reduced by the
+                // commission — same flat "on top of the commission math" treatment as WoodTotal
+                // gets everywhere else. See ToDto's own NetDueToFarmer for the read-side mirror.
+                Amount = commissionResult.NetDueToFarmer + totals.WoodTotal,
                 Notes = $"تسجيل تلقائي من الفاتورة رقم {invoice.InvoiceNumber}"
             });
             await _db.SaveChangesAsync();
         }
 
         // Same idea as the farmer's Sale row above, but for the driver's transport fee — no driver
-        // attached, or attached with neither a transport fee nor a box-handling fee, means nothing
-        // to post yet (the driver's ledger only grows once there's an actual amount owed to them
-        // for this invoice). Amount folds in driverBoxFeeTotal (explicit request) so the driver's
-        // account/statement/reports automatically reflect the box-handling fee alongside the
-        // manual transport fee, without a separate ledger row.
-        if (driver is not null && (invoice.TransportFee > 0 || driverBoxFeeTotal > 0))
+        // attached, or attached with neither a transport fee, a box-handling fee, nor a wood-price
+        // total, means nothing to post yet (the driver's ledger only grows once there's an actual
+        // amount owed to them for this invoice). Amount folds in driverBoxFeeTotal AND totals.WoodTotal
+        // (explicit requirement: the full wood-price amount is paid to the driver too, on top of what
+        // the merchant is separately charged for it) so the driver's account/statement/reports/manifest
+        // automatically reflect both alongside the manual transport fee, without a separate ledger row.
+        if (driver is not null && (invoice.TransportFee > 0 || driverBoxFeeTotal > 0 || totals.WoodTotal > 0))
         {
             _db.FarmerTransactions.Add(new FarmerTransaction
             {
@@ -148,7 +153,7 @@ public class InvoiceService : IInvoiceService
                 Type = FarmerTransactionType.TransportFee,
                 InvoiceId = invoice.Id,
                 Date = invoice.Date,
-                Amount = invoice.TransportFee + driverBoxFeeTotal,
+                Amount = invoice.TransportFee + driverBoxFeeTotal + totals.WoodTotal,
                 Notes = $"أجرة نقل تلقائية من الفاتورة {invoice.InvoiceNumber}"
             });
             await _db.SaveChangesAsync();
@@ -258,10 +263,11 @@ public class InvoiceService : IInvoiceService
         else if (existingSale is not null && previousFarmerId == farmer.Id)
         {
             // Same farmer as before — just correct the figures on their existing ledger row.
+            // Amount folds in totals.WoodTotal, same as CreateAsync — see its own comment.
             existingSale.Date = invoice.Date;
             existingSale.SaleValue = totals.TotalValue;
             existingSale.Commission = commissionResult.Commission;
-            existingSale.Amount = commissionResult.NetDueToFarmer;
+            existingSale.Amount = commissionResult.NetDueToFarmer + totals.WoodTotal;
             existingSale.Notes = $"Auto-generated from invoice {invoice.InvoiceNumber} (edited)";
         }
         else
@@ -278,7 +284,7 @@ public class InvoiceService : IInvoiceService
                 Date = invoice.Date,
                 SaleValue = totals.TotalValue,
                 Commission = commissionResult.Commission,
-                Amount = commissionResult.NetDueToFarmer,
+                Amount = commissionResult.NetDueToFarmer + totals.WoodTotal,
                 Notes = $"تسجيل تلقائي من الفاتورة رقم {invoice.InvoiceNumber} (بعد التعديل)"
             });
         }
@@ -289,18 +295,19 @@ public class InvoiceService : IInvoiceService
         var existingTransportFee = await _db.FarmerTransactions
             .SingleOrDefaultAsync(t => t.InvoiceId == invoice.Id && t.Type == FarmerTransactionType.TransportFee);
 
-        if (driver is null || (invoice.TransportFee <= 0 && driverBoxFeeTotal <= 0))
+        if (driver is null || (invoice.TransportFee <= 0 && driverBoxFeeTotal <= 0 && totals.WoodTotal <= 0))
         {
-            // Driver removed, or both the transport fee and box-handling fee zeroed out — nothing
-            // left to post.
+            // Driver removed, or the transport fee, box-handling fee, AND wood-price total all
+            // zeroed out — nothing left to post.
             if (existingTransportFee is not null) _db.FarmerTransactions.Remove(existingTransportFee);
         }
         else if (existingTransportFee is not null && previousDriverId == driver.Id)
         {
             // Same driver as before — just correct the fee/date on their existing ledger row.
-            // Amount folds in driverBoxFeeTotal, same as CreateAsync — see its own comment.
+            // Amount folds in driverBoxFeeTotal and totals.WoodTotal, same as CreateAsync — see its
+            // own comment.
             existingTransportFee.Date = invoice.Date;
-            existingTransportFee.Amount = invoice.TransportFee + driverBoxFeeTotal;
+            existingTransportFee.Amount = invoice.TransportFee + driverBoxFeeTotal + totals.WoodTotal;
             existingTransportFee.Notes = $"أجرة نقل تلقائية من الفاتورة {invoice.InvoiceNumber} (معدّلة)";
         }
         else
@@ -313,7 +320,7 @@ public class InvoiceService : IInvoiceService
                 Type = FarmerTransactionType.TransportFee,
                 InvoiceId = invoice.Id,
                 Date = invoice.Date,
-                Amount = invoice.TransportFee + driverBoxFeeTotal,
+                Amount = invoice.TransportFee + driverBoxFeeTotal + totals.WoodTotal,
                 Notes = $"أجرة نقل تلقائية من الفاتورة {invoice.InvoiceNumber} (معدّلة)"
             });
         }
@@ -657,10 +664,14 @@ public class InvoiceService : IInvoiceService
         var grandTotal = i.TotalValue + i.TransportFee + woodTotal + boxFeeTotal;
 
         // Same base as the linked FarmerTransaction.Commission (TotalValue only — never +wood/
-        // +transport/+box, see CommissionCalculator's own doc comment) so this can never drift from the
-        // farmer's own ledger. Computed even without a farmer attached (harmless/unused then) —
-        // see InvoiceDto's own doc comment for where this is and isn't shown.
+        // +transport/+box, see CommissionCalculator's own doc comment) so the COMMISSION itself can
+        // never drift from the farmer's own ledger. NetDueToFarmer below then adds woodTotal on top
+        // (explicit requirement: the farmer is paid the full wood-price amount too, same as the
+        // driver — see FarmerTransaction.Amount in CreateAsync/UpdateAsync) so THIS never drifts
+        // from the farmer's own ledger row either. Computed even without a farmer attached
+        // (harmless/unused then) — see InvoiceDto's own doc comment for where this is and isn't shown.
         var commissionResult = CommissionCalculator.Calculate(i.TotalValue, i.CommissionRateApplied);
+        var netDueToFarmer = commissionResult.NetDueToFarmer + woodTotal;
 
         return new(
             i.Id, i.InvoiceNumber, i.Date,
@@ -673,7 +684,7 @@ public class InvoiceService : IInvoiceService
             i.DriverBoxFeeApplied, driverBoxFeeTotal,
             grandTotal,
             previousBalance,
-            i.CommissionRateApplied, commissionResult.Commission, commissionResult.NetDueToFarmer,
+            i.CommissionRateApplied, commissionResult.Commission, netDueToFarmer,
             i.Items.Select(it => new InvoiceItemDto(it.Id, it.ItemName, it.Quantity, it.Unit, it.PricePerUnit, it.WoodPrice, it.LineTotal)).ToList());
     }
 }

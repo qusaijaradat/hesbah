@@ -40,6 +40,7 @@ builder.Services.AddScoped<IPartnerService, PartnerService>();
 builder.Services.AddScoped<IItemService, ItemService>();
 builder.Services.AddScoped<IInvoiceService, InvoiceService>();
 builder.Services.AddScoped<IPaymentService, PaymentService>();
+builder.Services.AddScoped<IBoxReturnService, BoxReturnService>();
 builder.Services.AddScoped<IExpenseService, ExpenseService>();
 builder.Services.AddScoped<IEmployeeService, EmployeeService>();
 builder.Services.AddScoped<IGoodsService, GoodsService>();
@@ -376,6 +377,49 @@ using (var scope = app.Services.CreateScope())
         app.Logger.LogError(ex, "Failed to add the payments.CheckClearedDate column — recording the actual clearing date of a check will not work until this is fixed.");
     }
 
+    // Same EnsureCreated gap as above: the new automatic "سعر الصندوق" (per-box fee) feature needs
+    // Invoice.BoxPriceApplied — the box-price rate locked in at creation time, same convention as
+    // CommissionRateApplied — on the existing "invoices" table.
+    try
+    {
+        await db.Database.ExecuteSqlRawAsync("""
+            ALTER TABLE invoices ADD COLUMN IF NOT EXISTS "BoxPriceApplied" numeric(8,2) NOT NULL DEFAULT 0;
+            """);
+    }
+    catch (Exception ex)
+    {
+        app.Logger.LogError(ex, "Failed to add the invoices.BoxPriceApplied column — the automatic per-box fee will not work until this is fixed.");
+    }
+
+    // Same EnsureCreated gap as "employees"/"farmer_goods_entries" above: the new "boxes owed"
+    // feature (a merchant's running empty-crate balance) needs a brand-new "box_returns" table,
+    // which EnsureCreated will not add to an already-existing database. No FK constraint on
+    // PartnerId, same tradeoff already accepted for every other guard here.
+    try
+    {
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE TABLE IF NOT EXISTS box_returns (
+                "Id" SERIAL PRIMARY KEY,
+                "PartnerId" integer NOT NULL,
+                "Date" timestamp with time zone NOT NULL,
+                "Quantity" numeric(14,3) NOT NULL DEFAULT 0,
+                "Notes" character varying(500) NULL,
+                "RecordedByUserId" integer NOT NULL DEFAULT 0,
+                "CreatedAt" timestamp with time zone NOT NULL DEFAULT now(),
+                "CreatedByUserId" integer NULL,
+                "UpdatedAt" timestamp with time zone NULL,
+                "UpdatedByUserId" integer NULL,
+                "IsDeleted" boolean NOT NULL DEFAULT FALSE
+            );
+            CREATE INDEX IF NOT EXISTS ix_box_returns_partnerid ON box_returns ("PartnerId");
+            CREATE INDEX IF NOT EXISTS ix_box_returns_date ON box_returns ("Date");
+            """);
+    }
+    catch (Exception ex)
+    {
+        app.Logger.LogError(ex, "Failed to create the box_returns table — recording/viewing a merchant's empty-crate returns will not work until this is fixed.");
+    }
+
     await DbSeeder.SeedAsync(db);
 }
 
@@ -392,19 +436,5 @@ app.UseCors();
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
-
-// ---------- Health ----------
-// Anonymous and dependency-free on purpose. The deploy pipeline polls this
-// through the public hostname to decide whether a rollout succeeded
-// (deploy/scripts/portainer.sh), and the container healthcheck polls it
-// locally — so it must answer 200 as soon as the app can serve requests, and
-// must not depend on anything that could make a healthy API look unhealthy.
-// The database is not probed here: schema creation and seeding already ran
-// above, so reaching this line at all means the connection worked.
-//
-// Removing this endpoint does not fail a build or a test — it fails every
-// deploy, several minutes in, as a health-gate timeout that looks like a
-// networking problem. It was dropped once already in 1c712fb.
-app.MapGet("/health", () => Results.Ok(new { status = "ok" })).AllowAnonymous();
 
 app.Run();

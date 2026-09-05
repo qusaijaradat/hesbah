@@ -89,6 +89,7 @@ public static class DbSeeder
                 PermissionKeys.ItemsView, PermissionKeys.ItemsCreate, PermissionKeys.ItemsEdit,
                 PermissionKeys.PaymentsView, PermissionKeys.PaymentsCreate, PermissionKeys.PaymentsEdit,
                 PermissionKeys.FarmerGoodsView, PermissionKeys.FarmerGoodsCreate, PermissionKeys.FarmerGoodsEdit,
+                PermissionKeys.BoxesView, PermissionKeys.BoxesCreate, PermissionKeys.BoxesEdit,
                 PermissionKeys.ReportsView
             },
             [SeedRoleNames.Accountant] = new[]
@@ -96,14 +97,14 @@ public static class DbSeeder
                 PermissionKeys.InvoicesView, PermissionKeys.PartnersView,
                 PermissionKeys.PaymentsView, PermissionKeys.PaymentsCreate, PermissionKeys.PaymentsEdit,
                 PermissionKeys.ExpensesView, PermissionKeys.ExpensesCreate, PermissionKeys.ExpensesEdit,
-                PermissionKeys.EmployeesView, PermissionKeys.FarmerGoodsView,
+                PermissionKeys.EmployeesView, PermissionKeys.FarmerGoodsView, PermissionKeys.BoxesView,
                 PermissionKeys.ReportsView, PermissionKeys.ReportsExport
             },
             [SeedRoleNames.Viewer] = new[]
             {
                 PermissionKeys.InvoicesView, PermissionKeys.PartnersView, PermissionKeys.PaymentsView,
                 PermissionKeys.ItemsView, PermissionKeys.EmployeesView, PermissionKeys.ExpensesView,
-                PermissionKeys.FarmerGoodsView,
+                PermissionKeys.FarmerGoodsView, PermissionKeys.BoxesView,
                 PermissionKeys.ReportsView
             },
         };
@@ -167,6 +168,7 @@ public static class DbSeeder
             new Setting { Key = Setting.Keys.RegistrationNumber, Value = "", Description = "Company/commercial registration number shown on the printed invoice header." },
             new Setting { Key = Setting.Keys.Phone, Value = "", Description = "Company phone number shown on the printed invoice header." },
             new Setting { Key = Setting.Keys.Address, Value = "", Description = "Company address shown on the printed invoice header." },
+            new Setting { Key = Setting.Keys.BoxPrice, Value = "0", Description = "سعر الصندوق الواحد (₪) — يُطبّق تلقائيًا كرسم إضافي على كل فاتورة تحتوي أصناف بوحدة الصندوق، بالإضافة لأي سعر خشب يدوي على السطر." },
         };
 
         var existing = await db.Settings.Select(s => s.Key).ToListAsync();

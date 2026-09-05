@@ -250,10 +250,29 @@ public class PartnerService : IPartnerService
         var remaining = openingBalance + totalPurchases - totalPaid;
         var isOverLimit = partner.CreditLimit is not null && remaining > partner.CreditLimit;
 
+        // "صناديق مطلوبة من المشتري" (explicit request) — a completely separate crate-count
+        // ledger, never mixed into the money figures above. BoxesGiven is derived live from this
+        // merchant's own Active invoices (same "never a separate mutable running-balance column"
+        // approach FarmerGoodsEntry/GoodsService already use for stock) rather than stored — see
+        // BoxReturn's own doc comment for BoxesReturned/BoxesRemaining.
+        var boxesGiven = await _db.Invoices
+            .Where(i => i.MerchantId == id && i.Status == InvoiceStatus.Active)
+            .SelectMany(i => i.Items)
+            .Where(it => it.Unit == UnitOfMeasure.Box)
+            .SumAsync(it => (decimal?)it.Quantity) ?? 0;
+
+        var boxReturns = await _db.BoxReturns
+            .Where(b => b.PartnerId == id)
+            .OrderByDescending(b => b.Date)
+            .Select(b => new BoxReturnDto(b.Id, b.PartnerId, b.Date, b.Quantity, b.Notes))
+            .ToListAsync();
+        var boxesReturned = boxReturns.Sum(b => b.Quantity);
+
         return new MerchantAccountDto(
             partner.Id, partner.Name,
             totalPurchases, totalPaid, remaining,
             partner.CreditLimit, isOverLimit, partner.OpeningBalance,
+            boxesGiven, boxesReturned, boxesGiven - boxesReturned, boxReturns,
             statement.Select(ToStatementLineDto).ToList());
     }
 

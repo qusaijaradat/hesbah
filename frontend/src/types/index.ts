@@ -80,6 +80,21 @@ export interface StatementLineDto {
   notes?: string | null;
 }
 
+/** One "empty crate return" record — see backend BoxReturn's own doc comment. */
+export interface BoxReturnDto {
+  id: number;
+  partnerId: number;
+  date: string;
+  quantity: number;
+  notes?: string | null;
+}
+
+export interface CreateBoxReturnRequest {
+  date: string;
+  quantity: number;
+  notes?: string | null;
+}
+
 export interface MerchantAccountDto {
   partnerId: number;
   name: string;
@@ -90,6 +105,14 @@ export interface MerchantAccountDto {
   isOverCreditLimit: boolean;
   /** Already folded into `remaining` — shown separately so the numbers stay traceable. */
   openingBalance?: number | null;
+  /** "صناديق مطلوبة من المشتري" — a crate COUNT, entirely separate from the money figures above.
+   * boxesGiven is derived live from this merchant's own Active invoices; boxesRemaining =
+   * boxesGiven − boxesReturned (never clamped — can legitimately go slightly negative if
+   * over-returned, same tolerance as the farmer-goods "available" figure). */
+  boxesGiven: number;
+  boxesReturned: number;
+  boxesRemaining: number;
+  boxReturns: BoxReturnDto[];
   statement: StatementLineDto[];
 }
 
@@ -145,7 +168,14 @@ export interface InvoiceDto {
   transportFee: number;
   /** Sum of every item's woodPrice. */
   woodTotal: number;
-  /** totalValue + transportFee + woodTotal — the actual amount charged to the merchant. */
+  /** This invoice's own box-unit item count (sum of quantity across Box-unit items). */
+  totalBoxes: number;
+  /** "سعر الصندوق" settings value locked in at this invoice's creation time. */
+  boxPriceApplied: number;
+  /** totalBoxes × boxPriceApplied — the automatic per-box fee (explicit request), separate
+   * from/additive to woodTotal. Already folded into grandTotal. */
+  boxFeeTotal: number;
+  /** totalValue + transportFee + woodTotal + boxFeeTotal — the actual amount charged to the merchant. */
   grandTotal: number;
   /** "الرصيد السابق" — what this merchant still owed from every one of their OTHER active
    * invoices minus every payment they've made, all-time (never negative — see backend
@@ -189,6 +219,9 @@ export interface InvoiceListItemDto {
   /** Already folded into grandTotal — broken out on its own so "طباعة الفواتير" can show
    * "سعر الخشب" as an explicit visible figure instead of it disappearing into the total. */
   woodTotal: number;
+  /** Same "broken out for visibility" treatment as woodTotal above, for the automatic "سعر
+   * الصندوق" fee — already folded into grandTotal. */
+  boxFeeTotal: number;
   /** This row's merchant's CURRENT overall account balance (same "المتبقي" their own كشف حساب
    * page shows) — shown on every one of their invoice rows on "طباعة الفواتير", not just once. */
   merchantRemaining: number;

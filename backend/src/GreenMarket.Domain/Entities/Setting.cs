@@ -23,5 +23,13 @@ public class Setting
         public const string RegistrationNumber = "market.registration_number";
         public const string Phone = "market.phone";
         public const string Address = "market.address";
+
+        /// <summary>"سعر الصندوق" — a per-box shekel fee, configurable so it can be raised later
+        /// without a code change. Applied AUTOMATICALLY to every invoice that has Box-unit items:
+        /// (total box-unit quantity on that invoice) × (this value AT THE TIME the invoice was
+        /// created — see Invoice.BoxPriceApplied). Completely separate/additive to the existing
+        /// manual per-line "سعر الخشب" (InvoiceItem.WoodPrice) — both can be non-zero on the same
+        /// invoice at once, per explicit request.</summary>
+        public const string BoxPrice = "boxes.price";
     }
 }

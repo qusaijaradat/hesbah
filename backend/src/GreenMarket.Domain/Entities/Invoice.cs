@@ -59,6 +59,19 @@ public class Invoice : AuditableEntity
     /// </summary>
     public decimal TransportFee { get; set; }
 
+    /// <summary>
+    /// Box-price ("سعر الصندوق") actually applied — copied from Settings.Keys.BoxPrice at creation
+    /// time, same lock-in convention as <see cref="CommissionRateApplied"/>, so a later change to
+    /// the settings value never retroactively alters an already-issued invoice. The actual fee
+    /// charged (BoxFeeTotal = box-unit item count × this rate) is NOT stored — it's computed on
+    /// read (InvoiceService.ToDto), same as WoodTotal, since the box count itself is always
+    /// re-derivable from Items. Completely separate from/additive to the existing manual per-line
+    /// WoodPrice — both can apply to the same invoice at once (explicit request). Kept OUT of
+    /// TotalValue for the same commission-base reason as TransportFee above; added back in only
+    /// for the merchant-facing grand total.
+    /// </summary>
+    public decimal BoxPriceApplied { get; set; }
+
     public int? CancelledByUserId { get; set; }
     public DateTimeOffset? CancelledAt { get; set; }
     public string? CancellationReason { get; set; }

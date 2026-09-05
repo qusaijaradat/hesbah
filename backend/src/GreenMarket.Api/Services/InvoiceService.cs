@@ -76,6 +76,11 @@ public class InvoiceService : IInvoiceService
 
         var commissionRate = await _settings.GetDecimalAsync(Setting.Keys.DefaultCommissionRate, 0.07m);
         var commissionResult = CommissionCalculator.Calculate(totals.TotalValue, commissionRate);
+        // Automatic "سعر الصندوق" fee (explicit request, separate from/additive to the manual
+        // per-line WoodPrice) — locked in NOW so a later change to the settings value never
+        // retroactively alters this invoice; the actual fee (TotalBoxes × this rate) is computed
+        // fresh on every read, not stored (see Invoice.BoxPriceApplied's own doc comment).
+        var boxPrice = await _settings.GetDecimalAsync(Setting.Keys.BoxPrice, 0m);
 
         var invoice = new Invoice
         {
@@ -89,6 +94,7 @@ public class InvoiceService : IInvoiceService
             TotalWeightKg = totals.TotalWeightKg,
             TotalValue = totals.TotalValue,
             CommissionRateApplied = commissionRate,
+            BoxPriceApplied = boxPrice,
             Items = totals.Lines.Select(l => new InvoiceItem
             {
                 ItemName = l.ItemName,
@@ -193,6 +199,9 @@ public class InvoiceService : IInvoiceService
 
         var commissionRate = await _settings.GetDecimalAsync(Setting.Keys.DefaultCommissionRate, 0.07m);
         var commissionResult = CommissionCalculator.Calculate(totals.TotalValue, commissionRate);
+        // Same re-lock-on-edit behavior as CommissionRateApplied below — an edit re-reads the
+        // CURRENT settings value, same tradeoff already accepted for the commission rate.
+        var boxPrice = await _settings.GetDecimalAsync(Setting.Keys.BoxPrice, 0m);
 
         var previousFarmerId = invoice.FarmerId;
         var previousDriverId = invoice.DriverId;
@@ -205,6 +214,7 @@ public class InvoiceService : IInvoiceService
         invoice.TotalWeightKg = totals.TotalWeightKg;
         invoice.TotalValue = totals.TotalValue;
         invoice.CommissionRateApplied = commissionRate;
+        invoice.BoxPriceApplied = boxPrice;
 
         // Replace the item lines wholesale rather than trying to diff old vs. new — EF Core
         // cascade-deletes anything removed from a required collection navigation like this one.
@@ -358,9 +368,16 @@ public class InvoiceService : IInvoiceService
 
         var otherInvoices = await _db.Invoices
             .Where(i => i.MerchantId == merchantId && i.Status == InvoiceStatus.Active && !excludeInvoiceIds.Contains(i.Id))
-            .Select(i => new { i.TotalValue, i.TransportFee, WoodTotal = i.Items.Sum(it => it.WoodPrice) })
+            .Select(i => new
+            {
+                i.TotalValue, i.TransportFee,
+                WoodTotal = i.Items.Sum(it => it.WoodPrice),
+                // Same "TotalBoxes × BoxPriceApplied, computed fresh, never stored" treatment as
+                // ToDto's own boxFeeTotal — see Invoice.BoxPriceApplied's doc comment.
+                BoxFeeTotal = i.Items.Where(it => it.Unit == UnitOfMeasure.Box).Sum(it => it.Quantity) * i.BoxPriceApplied
+            })
             .ToListAsync();
-        var totalOwed = otherInvoices.Sum(i => i.TotalValue + i.TransportFee + i.WoodTotal);
+        var totalOwed = otherInvoices.Sum(i => i.TotalValue + i.TransportFee + i.WoodTotal + i.BoxFeeTotal);
 
         var totalPaid = await _db.Payments
             .Where(p => p.PartnerId == merchantId && p.Direction == PaymentDirection.FromMerchant)
@@ -419,6 +436,7 @@ public class InvoiceService : IInvoiceService
                 TotalBoxes = i.Items.Where(it => it.Unit == UnitOfMeasure.Box).Sum(it => (decimal?)it.Quantity) ?? 0,
                 i.TotalValue, i.TransportFee,
                 WoodTotal = i.Items.Sum(it => (decimal?)it.WoodPrice) ?? 0,
+                i.BoxPriceApplied,
                 ItemNames = i.Items.Select(it => it.ItemName).ToList()
             })
             .ToListAsync();
@@ -444,17 +462,21 @@ public class InvoiceService : IInvoiceService
         foreach (var sellerId in sellerIds)
             sellerRemainingById[sellerId] = (await _partners.GetFarmerAccountAsync(sellerId)).Remaining;
 
-        var items = raw.Select(x => new InvoiceListItemDto(
+        var items = raw.Select(x =>
+        {
+            // Same "TotalBoxes × BoxPriceApplied, computed fresh" treatment as InvoiceService.ToDto.
+            var boxFeeTotal = x.TotalBoxes * x.BoxPriceApplied;
+            return new InvoiceListItemDto(
                 x.Id, x.InvoiceNumber, x.Date, x.MerchantId, x.MerchantName, x.MerchantWhatsApp,
                 x.FarmerId, x.FarmerName, x.FarmerWhatsApp, x.DriverId, x.DriverName, x.DriverWhatsApp,
                 x.Status, x.TotalWeightKg, x.TotalBoxes, x.TotalValue, x.TransportFee,
-                x.TotalValue + x.TransportFee + x.WoodTotal,
+                x.TotalValue + x.TransportFee + x.WoodTotal + boxFeeTotal,
                 string.Join("، ", x.ItemNames.Distinct()),
-                x.WoodTotal,
+                x.WoodTotal, boxFeeTotal,
                 merchantRemainingById.GetValueOrDefault(x.MerchantId),
                 x.FarmerId is not null ? sellerRemainingById.GetValueOrDefault(x.FarmerId.Value) : null,
-                x.DriverId is not null ? sellerRemainingById.GetValueOrDefault(x.DriverId.Value) : null))
-            .ToList();
+                x.DriverId is not null ? sellerRemainingById.GetValueOrDefault(x.DriverId.Value) : null);
+        }).ToList();
 
         return new PagedResult<InvoiceListItemDto> { Items = items, TotalCount = total, Page = filter.Page, PageSize = filter.PageSize };
     }
@@ -605,10 +627,15 @@ public class InvoiceService : IInvoiceService
         // Sum() on an empty in-memory List<decimal> is fine (returns 0, doesn't throw) — this is
         // LINQ-to-Objects over an already-materialized navigation, not a translated SQL query.
         var woodTotal = i.Items.Sum(it => it.WoodPrice);
-        var grandTotal = i.TotalValue + i.TransportFee + woodTotal;
+        // Automatic "سعر الصندوق" fee — box-unit item count × the rate locked in on THIS invoice
+        // at creation time (i.BoxPriceApplied), computed fresh here rather than stored, same
+        // treatment as woodTotal above. Separate from/additive to woodTotal.
+        var totalBoxes = i.Items.Where(it => it.Unit == UnitOfMeasure.Box).Sum(it => it.Quantity);
+        var boxFeeTotal = totalBoxes * i.BoxPriceApplied;
+        var grandTotal = i.TotalValue + i.TransportFee + woodTotal + boxFeeTotal;
 
         // Same base as the linked FarmerTransaction.Commission (TotalValue only — never +wood/
-        // +transport, see CommissionCalculator's own doc comment) so this can never drift from the
+        // +transport/+box, see CommissionCalculator's own doc comment) so this can never drift from the
         // farmer's own ledger. Computed even without a farmer attached (harmless/unused then) —
         // see InvoiceDto's own doc comment for where this is and isn't shown.
         var commissionResult = CommissionCalculator.Calculate(i.TotalValue, i.CommissionRateApplied);
@@ -619,7 +646,9 @@ public class InvoiceService : IInvoiceService
             i.FarmerId, i.Farmer?.Name, i.Farmer?.WhatsAppNumber,
             i.DriverId, i.Driver?.Name, i.Driver?.WhatsAppNumber,
             i.Status,
-            i.TotalWeightKg, i.TotalValue, i.TransportFee, woodTotal, grandTotal,
+            i.TotalWeightKg, i.TotalValue, i.TransportFee, woodTotal,
+            totalBoxes, i.BoxPriceApplied, boxFeeTotal,
+            grandTotal,
             previousBalance,
             i.CommissionRateApplied, commissionResult.Commission, commissionResult.NetDueToFarmer,
             i.Items.Select(it => new InvoiceItemDto(it.Id, it.ItemName, it.Quantity, it.Unit, it.PricePerUnit, it.WoodPrice, it.LineTotal)).ToList());

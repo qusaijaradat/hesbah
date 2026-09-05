@@ -38,21 +38,27 @@ public record InvoiceItemDto(int Id, string ItemName, decimal Quantity, UnitOfMe
 /// §5's "the market's commission does not appear on the merchant's invoice" is honored by simply
 /// never printing/messaging Commission/NetDueToFarmer below on anything that reaches the merchant
 /// (see ExportService.GenerateInvoicePdf's own doc comment — still commission-free). GrandTotal =
-/// TotalValue + TransportFee + WoodTotal (sum of every item's WoodPrice) — the actual amount the
-/// merchant pays, including the pass-through transport/crate costs that are excluded from
-/// TotalValue specifically so they never inflate the commission base. PreviousBalance is computed
+/// TotalValue + TransportFee + WoodTotal + BoxFeeTotal — the actual amount the merchant pays,
+/// including the pass-through transport/crate/box costs that are excluded from TotalValue
+/// specifically so they never inflate the commission base. PreviousBalance is computed
 /// (not stored) in InvoiceService — the merchant's manually-entered "الرصيد الافتتاحي"
 /// (Partner.OpeningBalance) plus what they still owed from every one of their OTHER Active
 /// invoices, minus every payment they've ever made, clamped to 0 (never shown negative even if
 /// they're in credit). Printed on the invoice as "الرصيد السابق" added on top of GrandTotal, so
 /// a newly-printed invoice always shows the full amount actually due, not just this one sale.
 ///
+/// TotalBoxes/BoxPriceApplied/BoxFeeTotal (explicit request): TotalBoxes is this invoice's own
+/// box-unit item count; BoxPriceApplied is the "سعر الصندوق" settings value locked in at this
+/// invoice's creation time (Invoice.BoxPriceApplied); BoxFeeTotal = TotalBoxes × BoxPriceApplied,
+/// computed fresh on every read (never stored) — same treatment as WoodTotal. Completely separate
+/// from/additive to WoodTotal — both can be non-zero on the same invoice at once.
+///
 /// Commission/NetDueToFarmer are this one invoice's own commission math (CommissionCalculator over
-/// TotalValue/CommissionRateApplied — never TotalValue+WoodTotal/TransportFee, same base the
-/// linked FarmerTransaction.Commission already uses, so this can never drift from the farmer's own
-/// ledger). Computed even when FarmerId is null (harmless, just meaningless/unused by the
-/// frontend then) — only ever shown on farmer-facing surfaces (the "نسخة البائع" print, and the
-/// "إرسال للبائع" WhatsApp message), never on anything the merchant sees.
+/// TotalValue/CommissionRateApplied — never TotalValue+WoodTotal/TransportFee/BoxFeeTotal, same
+/// base the linked FarmerTransaction.Commission already uses, so this can never drift from the
+/// farmer's own ledger). Computed even when FarmerId is null (harmless, just meaningless/unused by
+/// the frontend then) — only ever shown on farmer-facing surfaces (the "نسخة البائع" print, and
+/// the "إرسال للبائع" WhatsApp message), never on anything the merchant sees.
 /// </summary>
 public record InvoiceDto(
     int Id, string InvoiceNumber, DateTimeOffset Date,
@@ -60,7 +66,9 @@ public record InvoiceDto(
     int? FarmerId, string? FarmerName, string? FarmerWhatsApp,
     int? DriverId, string? DriverName, string? DriverWhatsApp,
     InvoiceStatus Status,
-    decimal TotalWeightKg, decimal TotalValue, decimal TransportFee, decimal WoodTotal, decimal GrandTotal,
+    decimal TotalWeightKg, decimal TotalValue, decimal TransportFee, decimal WoodTotal,
+    decimal TotalBoxes, decimal BoxPriceApplied, decimal BoxFeeTotal,
+    decimal GrandTotal,
     decimal PreviousBalance,
     decimal CommissionRateApplied, decimal Commission, decimal NetDueToFarmer,
     IReadOnlyList<InvoiceItemDto> Items);
@@ -93,6 +101,9 @@ public record InvoiceListItemDto(
     // GrandTotal already folds this in — broken out on its own too so a print/list view can show
     // "سعر الخشب" as its own visible figure instead of it disappearing silently into GrandTotal.
     decimal WoodTotal,
+    // Same "broken out for visibility" treatment as WoodTotal above, for the automatic "سعر
+    // الصندوق" fee (see InvoiceDto's own doc comment) — already folded into GrandTotal.
+    decimal BoxFeeTotal,
     // Bulk-print page's per-type sections ("قسم بائع/سائق/مشتري"): each person's CURRENT overall
     // account balance (same Remaining figure their own كشف حساب page shows — already includes their
     // opening balance and, for a merchant, every invoice's own wood total) shown alongside every one
@@ -154,7 +165,7 @@ public record CancelInvoiceRequest(string Reason);
 public record MergedInvoiceGroupDto(
     string MerchantName, DateTimeOffset Date,
     IReadOnlyList<InvoiceItemDto> Items,
-    decimal TotalWeightKg, decimal TotalValue, decimal WoodTotal, decimal TransportFee, decimal GrandTotal,
+    decimal TotalWeightKg, decimal TotalValue, decimal WoodTotal, decimal BoxFeeTotal, decimal TransportFee, decimal GrandTotal,
     decimal PreviousBalance);
 
 /// <summary>
@@ -190,3 +201,9 @@ public record FarmerStatementDto(int FarmerId, string FarmerName, IReadOnlyList<
 public record FarmerGoodsRow(DateTime Date, string ItemName, UnitOfMeasure Unit, decimal TotalQuantity, decimal WoodQuantity);
 
 public record FarmerGoodsDto(int FarmerId, string FarmerName, IReadOnlyList<FarmerGoodsRow> Rows);
+
+/// <summary>One "empty crate return" record — see BoxReturn's own doc comment. Quantity must be
+/// greater than zero (a correction is made by deleting the wrong row, not recording a negative one).</summary>
+public record CreateBoxReturnRequest(DateTimeOffset Date, decimal Quantity, string? Notes);
+
+public record BoxReturnDto(int Id, int PartnerId, DateTimeOffset Date, decimal Quantity, string? Notes);

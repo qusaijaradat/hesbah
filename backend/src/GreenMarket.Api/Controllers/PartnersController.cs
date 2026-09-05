@@ -18,13 +18,15 @@ public class PartnersController : ControllerBase
     private readonly IExportService _exportService;
     private readonly ISettingsService _settingsService;
     private readonly ICompanyLogoService _logoService;
+    private readonly IBoxReturnService _boxReturnService;
 
-    public PartnersController(IPartnerService partnerService, IExportService exportService, ISettingsService settingsService, ICompanyLogoService logoService)
+    public PartnersController(IPartnerService partnerService, IExportService exportService, ISettingsService settingsService, ICompanyLogoService logoService, IBoxReturnService boxReturnService)
     {
         _partnerService = partnerService;
         _exportService = exportService;
         _settingsService = settingsService;
         _logoService = logoService;
+        _boxReturnService = boxReturnService;
     }
 
     [HttpGet]
@@ -92,6 +94,28 @@ public class PartnersController : ControllerBase
     [HttpGet("{id:int}/merchant-account")]
     [RequirePermission(PermissionKeys.PartnersView)]
     public async Task<ActionResult<MerchantAccountDto>> MerchantAccount(int id) => Ok(await _partnerService.GetMerchantAccountAsync(id));
+
+    /// <summary>"صناديق مطلوبة من المشتري" (explicit request) — the merchant account page's own
+    /// GetMerchantAccountAsync call already returns the running given/returned/remaining balance;
+    /// this is just the history list on its own, for a dedicated "سجل الإرجاع" view if ever needed.
+    /// Gated by BoxesView, separate from PartnersView, so a role can be handed crate-tracking
+    /// without also seeing full partner records, or vice versa.</summary>
+    [HttpGet("{id:int}/box-returns")]
+    [RequirePermission(PermissionKeys.BoxesView)]
+    public async Task<ActionResult<IReadOnlyList<BoxReturnDto>>> BoxReturns(int id) => Ok(await _boxReturnService.ListAsync(id));
+
+    [HttpPost("{id:int}/box-returns")]
+    [RequirePermission(PermissionKeys.BoxesCreate)]
+    public async Task<ActionResult<BoxReturnDto>> CreateBoxReturn(int id, CreateBoxReturnRequest request) =>
+        Ok(await _boxReturnService.CreateAsync(id, request, CurrentUserId.Require(User)));
+
+    [HttpDelete("box-returns/{returnId:int}")]
+    [RequirePermission(PermissionKeys.BoxesDelete)]
+    public async Task<IActionResult> DeleteBoxReturn(int returnId)
+    {
+        await _boxReturnService.DeleteAsync(returnId);
+        return NoContent();
+    }
 
     /// <summary>"كشف حساب" print button on the مشتري account page — see
     /// ExportService.GenerateAccountStatementPdf's own doc comment.</summary>

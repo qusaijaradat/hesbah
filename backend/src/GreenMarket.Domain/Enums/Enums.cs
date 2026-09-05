@@ -149,6 +149,15 @@ public static class PermissionKeys
     public const string FarmerGoodsEdit = "farmerGoods.edit";
     public const string FarmerGoodsDelete = "farmerGoods.delete";
 
+    /// <summary>"صناديق مطلوبة من المشتري" (empty-crate return tracking, see BoxReturn) — separate
+    /// from Partners*/Invoices* so a role can record/view crate returns without also being able to
+    /// edit partner records or invoices, or vice versa. View also covers seeing the computed
+    /// given/returned/remaining crate balance on the merchant's own account page.</summary>
+    public const string BoxesView = "boxes.view";
+    public const string BoxesCreate = "boxes.create";
+    public const string BoxesEdit = "boxes.edit";
+    public const string BoxesDelete = "boxes.delete";
+
     public const string ReportsView = "reports.view";
     public const string ReportsExport = "reports.export";
 
@@ -184,6 +193,7 @@ public static class PermissionKeys
         ExpensesView, ExpensesCreate, ExpensesEdit, ExpensesDelete,
         EmployeesView, EmployeesCreate, EmployeesEdit, EmployeesDelete,
         FarmerGoodsView, FarmerGoodsCreate, FarmerGoodsEdit, FarmerGoodsDelete,
+        BoxesView, BoxesCreate, BoxesEdit, BoxesDelete,
         ReportsView, ReportsExport,
         SettingsView, SettingsEdit,
         UsersView, UsersCreate, UsersEdit,

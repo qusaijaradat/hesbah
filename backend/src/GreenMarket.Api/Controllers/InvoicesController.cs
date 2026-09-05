@@ -145,6 +145,7 @@ public class InvoicesController : ControllerBase
                 groupInvoices.Sum(i => i.TotalWeightKg),
                 groupInvoices.Sum(i => i.TotalValue),
                 groupInvoices.Sum(i => i.WoodTotal),
+                groupInvoices.Sum(i => i.BoxFeeTotal),
                 groupInvoices.Sum(i => i.TransportFee),
                 groupInvoices.Sum(i => i.GrandTotal),
                 previousBalance));

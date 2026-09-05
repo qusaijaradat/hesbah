@@ -375,6 +375,8 @@ public class ExportService : IExportService
                         col.Item().AlignRight().Text($"إجمالي الصناديق: {totalBoxes:0.###}");
                     if (invoice.WoodTotal > 0)
                         col.Item().AlignRight().Text($"إجمالي الخشب: ₪ {invoice.WoodTotal:0.##}").FontSize(thermalWidth ? 8 : 10);
+                    if (invoice.BoxFeeTotal > 0)
+                        col.Item().AlignRight().Text($"رسم الصناديق: ₪ {invoice.BoxFeeTotal:0.##}").FontSize(thermalWidth ? 8 : 10);
                     if (invoice.TransportFee > 0)
                         col.Item().AlignRight().Text($"أجرة النقل: ₪ {invoice.TransportFee:0.##}").FontSize(thermalWidth ? 8 : 10);
                     col.Item().PaddingTop(4).AlignRight().Text($"الإجمالي: ₪ {invoice.GrandTotal:0.##}").Bold().FontSize(13);
@@ -484,6 +486,12 @@ public class ExportService : IExportService
                     // but deliberately kept OUT of the commission math and net-due figures below.
                     if (invoice.WoodTotal > 0)
                         col.Item().AlignRight().Text($"إجمالي الخشب (لا يدخل بحساب العمولة): ₪ {invoice.WoodTotal:0.##}").FontSize(9).FontColor(Colors.Grey.Darken1);
+                    // Same informational-only treatment as WoodTotal above — رسم الصناديق is
+                    // charged to the MERCHANT (see InvoiceDto.BoxFeeTotal), never deducted from
+                    // what's owed to the farmer, so it's shown here as cargo detail but kept OUT
+                    // of the commission math and net-due figures below.
+                    if (invoice.BoxFeeTotal > 0)
+                        col.Item().AlignRight().Text($"رسم الصناديق (لا يدخل بحساب العمولة): ₪ {invoice.BoxFeeTotal:0.##}").FontSize(9).FontColor(Colors.Grey.Darken1);
                     col.Item().PaddingTop(4).AlignRight().Text($"إجمالي المبيعات: ₪ {invoice.TotalValue:0.##}").FontSize(12);
                     col.Item().AlignRight().Text($"العمولة ({invoice.CommissionRateApplied:0.##%}): - ₪ {invoice.Commission:0.##}").FontColor(Colors.Red.Darken1);
                     col.Item().PaddingTop(2).AlignRight().Text($"الصافي المستحق لهذه الفاتورة: ₪ {invoice.NetDueToFarmer:0.##}").Bold().FontSize(13);
@@ -671,6 +679,8 @@ public class ExportService : IExportService
                             col.Item().AlignRight().Text($"إجمالي الصناديق: {totalBoxes:0.###}");
                         if (group.WoodTotal > 0)
                             col.Item().AlignRight().Text($"إجمالي الخشب: ₪ {group.WoodTotal:0.##}").FontSize(10);
+                        if (group.BoxFeeTotal > 0)
+                            col.Item().AlignRight().Text($"رسم الصناديق: ₪ {group.BoxFeeTotal:0.##}").FontSize(10);
                         if (group.TransportFee > 0)
                             col.Item().AlignRight().Text($"أجرة النقل: ₪ {group.TransportFee:0.##}").FontSize(10);
                         col.Item().PaddingTop(4).AlignRight().Text($"الإجمالي: ₪ {group.GrandTotal:0.##}").Bold().FontSize(13);
@@ -690,11 +700,15 @@ public class ExportService : IExportService
 
     /// <summary>
     /// طباعة فاتورة السائق (bulk-print page's driver section, and the Dashboard's standalone
-    /// driver picker): NOT a goods hand-over list — no item/quantity detail at all, per explicit
-    /// request. This is how much أجرة النقل (transport fee) the market owes this driver: one row
+    /// driver picker): how much أجرة النقل (transport fee) the market owes this driver — one row
     /// per invoice he's attached to, showing that invoice's المشتري and its Invoice.TransportFee,
-    /// with a grand total at the bottom. Replaces the earlier per-farmer itemized manifest design
-    /// entirely.
+    /// with a grand total at the bottom. Explicit request: also show, per invoice, العدد (box-unit
+    /// item count) and الوزن (kg-unit item weight) alongside the wood price and fare already shown
+    /// here — computed straight off that invoice's own Items/TotalWeightKg, same convention every
+    /// other quantity column in this app uses (a Box-unit count and a Kg-unit weight side by side,
+    /// "—" for whichever one doesn't apply to that invoice's items). Quantity/wood stay purely
+    /// informational cargo detail — same as WoodTotal already was — never added into
+    /// grandTotal/الرصيد السابق below, which stays transport-fee-only exactly as before.
     /// </summary>
     public byte[] GenerateDriverManifestPdf(string driverName, IReadOnlyList<InvoiceDto> invoices, CompanyInfo company, decimal previousBalance)
     {
@@ -705,6 +719,10 @@ public class ExportService : IExportService
         // OUT of grandTotal/الرصيد السابق below, unlike the merchant-facing PDFs where it's part
         // of what's actually due.
         var woodTotal = orderedInvoices.Sum(i => i.WoodTotal);
+        // Same "informational cargo detail only" treatment as woodTotal above — never folded into
+        // grandTotal, which stays the driver's own transport-fee total.
+        var totalBoxes = orderedInvoices.Sum(i => i.Items.Where(it => it.Unit == UnitOfMeasure.Box).Sum(it => it.Quantity));
+        var totalWeightKg = orderedInvoices.Sum(i => i.TotalWeightKg);
 
         var document = Document.Create(container =>
         {
@@ -735,28 +753,39 @@ public class ExportService : IExportService
                         columns.RelativeColumn(3);
                         columns.RelativeColumn(2);
                         columns.RelativeColumn(2);
+                        columns.RelativeColumn(2);
+                        columns.RelativeColumn(2);
                     });
 
                     table.Header(header =>
                     {
                         header.Cell().Element(HeaderCell).AlignRight().Text("المشتري");
-                        header.Cell().Element(HeaderCell).AlignRight().Text("أجرة النقل");
+                        header.Cell().Element(HeaderCell).AlignRight().Text("العدد");
+                        header.Cell().Element(HeaderCell).AlignRight().Text("الوزن");
                         header.Cell().Element(HeaderCell).AlignRight().Text("سعر الخشب");
+                        header.Cell().Element(HeaderCell).AlignRight().Text("أجرة النقل");
                     });
 
                     for (var i = 0; i < orderedInvoices.Count; i++)
                     {
                         var invoice = orderedInvoices[i];
                         var shaded = i % 2 == 1;
+                        var boxCount = invoice.Items.Where(it => it.Unit == UnitOfMeasure.Box).Sum(it => it.Quantity);
                         table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(invoice.MerchantName);
-                        table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(invoice.TransportFee.ToString("0.##"));
+                        table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(boxCount > 0 ? boxCount.ToString("0.###") : "—");
+                        table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(invoice.TotalWeightKg > 0 ? $"{invoice.TotalWeightKg:0.###} كغم" : "—");
                         table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(invoice.WoodTotal > 0 ? invoice.WoodTotal.ToString("0.##") : "—");
+                        table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(invoice.TransportFee.ToString("0.##"));
                     }
                 });
 
                 page.Footer().ContentFromRightToLeft().Column(col =>
                 {
                     col.Item().LineHorizontal(1).LineColor(Colors.Grey.Darken1);
+                    if (totalBoxes > 0)
+                        col.Item().AlignRight().Text($"إجمالي الصناديق: {totalBoxes:0.###}").FontSize(9);
+                    if (totalWeightKg > 0)
+                        col.Item().AlignRight().Text($"إجمالي الوزن: {totalWeightKg:0.###} كغم").FontSize(9);
                     if (woodTotal > 0)
                         col.Item().AlignRight().Text($"إجمالي سعر الخشب (للعلم فقط — ليس من مستحقات السائق): ₪ {woodTotal:0.##}").FontSize(9);
                     col.Item().PaddingTop(4).AlignRight().Text($"إجمالي أجرة النقل: ₪ {grandTotal:0.##}").Bold().FontSize(13);
@@ -1294,6 +1323,8 @@ public class ExportService : IExportService
             // (same InvoiceDto.PreviousBalance, same "add it on top of GrandTotal" behavior).
             if (invoice.WoodTotal > 0)
                 col.Item().AlignRight().Text($"منها سعر الخشب: ₪ {invoice.WoodTotal:0.##}").FontSize(7);
+            if (invoice.BoxFeeTotal > 0)
+                col.Item().AlignRight().Text($"منها رسم الصناديق: ₪ {invoice.BoxFeeTotal:0.##}").FontSize(7);
             col.Item().PaddingTop(2).AlignRight().Text($"الإجمالي: ₪ {invoice.GrandTotal:0.##}").Bold().FontSize(10);
             if (invoice.PreviousBalance > 0)
             {

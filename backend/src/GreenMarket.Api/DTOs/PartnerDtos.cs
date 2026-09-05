@@ -30,11 +30,20 @@ public record UpdatePartnerRequest(string Name, PartnerType? Type, string? Whats
 /// CreditLimit/IsOverCreditLimit mirror the roadmap's "credit limit per merchant" feature — null
 /// CreditLimit means no limit is enforced and IsOverCreditLimit is always false in that case.
 /// OpeningBalance is the partner's manually-entered starting balance (0/null shown as null here) —
-/// already folded INTO Remaining, shown separately too so the statement's numbers are traceable.</summary>
+/// already folded INTO Remaining, shown separately too so the statement's numbers are traceable.
+///
+/// BoxesGiven/BoxesReturned/BoxesRemaining (explicit request, entirely separate from the money
+/// figures above — a crate count, not currency): BoxesGiven is the sum of box-unit item quantities
+/// across every one of this merchant's own Active invoices; BoxesReturned is the sum of Quantity
+/// across every BoxReturn row recorded against them; BoxesRemaining = BoxesGiven − BoxesReturned
+/// (never clamped — same "can legitimately show a small negative if over-returned" tolerance as
+/// FarmerGoodsEntry's own available-stock figure). BoxReturns is the raw history list so the
+/// account page can show/delete individual return records, not just the running totals.</summary>
 public record MerchantAccountDto(
     int PartnerId, string Name,
     decimal TotalPurchases, decimal TotalPaid, decimal Remaining,
     decimal? CreditLimit, bool IsOverCreditLimit, decimal? OpeningBalance,
+    decimal BoxesGiven, decimal BoxesReturned, decimal BoxesRemaining, IReadOnlyList<BoxReturnDto> BoxReturns,
     IReadOnlyList<StatementLineDto> Statement);
 
 /// <summary>Requirement doc §6: farmer/driver account = value sold or transport fees earned,

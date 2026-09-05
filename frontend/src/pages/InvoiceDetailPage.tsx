@@ -203,6 +203,9 @@ export function InvoiceDetailPage() {
             {invoice.woodTotal > 0 && (
               <div className="text-gray-500">إجمالي الخشب: <span className="font-semibold text-gray-900">{formatCurrency(invoice.woodTotal)}</span></div>
             )}
+            {invoice.boxFeeTotal > 0 && (
+              <div className="text-gray-500">رسم الصناديق: <span className="font-semibold text-gray-900">{formatCurrency(invoice.boxFeeTotal)}</span></div>
+            )}
             {invoice.transportFee > 0 && (
               <div className="text-gray-500">أجرة النقل: <span className="font-semibold text-gray-900">{formatCurrency(invoice.transportFee)}</span></div>
             )}

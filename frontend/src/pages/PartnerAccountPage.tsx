@@ -208,7 +208,7 @@ function BoxBalanceSection({ partnerId, account, onChanged }: { partnerId: numbe
         )}
       </div>
 
-      <div className="grid grid-cols-3 gap-3 mb-3">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
         <div className="text-center">
           <div className="text-xs text-gray-500">صناديق مُسلَّمة له</div>
           <div className="text-lg font-bold">{formatQuantity(account.boxesGiven, "Box")}</div>

@@ -22,7 +22,7 @@ export function UsersPage() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between flex-wrap gap-3 mb-6">
         <h1 className="text-2xl font-bold">المستخدمون</h1>
         {canCreate && <button className="btn-primary" onClick={() => setEditing("new")}>+ إضافة مستخدم</button>}
       </div>
@@ -106,7 +106,7 @@ function UserFormModal({ user, roles, onClose, onSaved }: {
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-      <div className="card w-full max-w-md p-6">
+      <div className="card w-full max-w-md p-6 max-h-[90vh] overflow-y-auto">
         <h2 className="text-lg font-bold mb-4">{user ? "تعديل مستخدم" : "إضافة مستخدم"}</h2>
         <div className="space-y-3">
           <div><label className="label">الاسم الكامل</label><input ref={nameRef} className="input" value={fullName} onChange={(e) => setFullName(e.target.value)} autoFocus /></div>

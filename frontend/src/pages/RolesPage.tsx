@@ -144,7 +144,7 @@ export function RolesPage() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between flex-wrap gap-3 mb-6">
         <h1 className="text-2xl font-bold">الأدوار والصلاحيات</h1>
         <button className="btn-primary" onClick={() => setEditing("new")}>+ إضافة دور</button>
       </div>

@@ -119,7 +119,7 @@ export function InvoicesPage() {
   return (
     <div>
       {notice && <div className="text-sm text-blue-700 bg-blue-50 rounded-md p-3 mb-4">{notice}</div>}
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between flex-wrap gap-3 mb-6">
         <h1 className="text-2xl font-bold">الفواتير</h1>
         <div className="flex gap-2">
           {hasPermission("reports.export") && (

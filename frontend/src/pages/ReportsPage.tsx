@@ -42,7 +42,7 @@ export function ReportsPage() {
     <div>
       <h1 className="text-2xl font-bold mb-6">التقارير</h1>
 
-      <div className="flex gap-2 mb-4">
+      <div className="flex flex-wrap gap-2 mb-4">
         <button className={tab === "farmers" ? "btn-primary" : "btn-secondary"} onClick={() => setTab("farmers")}>تقرير البائعين</button>
         <button className={tab === "merchants" ? "btn-primary" : "btn-secondary"} onClick={() => setTab("merchants")}>تقرير المشترين</button>
         <button className={tab === "drivers" ? "btn-primary" : "btn-secondary"} onClick={() => setTab("drivers")}>تقرير السائقين</button>

@@ -402,7 +402,7 @@ function PaymentEditModal({ payment, onClose, onSaved }: { payment: PaymentDto; 
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-      <div className="card w-full max-w-md p-6">
+      <div className="card w-full max-w-md p-6 max-h-[90vh] overflow-y-auto">
         <h2 className="text-lg font-bold mb-4">تعديل دفعة — {payment.partnerName}</h2>
         <div className="space-y-3">
           <InvoiceLinkPicker partnerId={payment.partnerId} direction={payment.direction} invoiceId={invoiceId} onChange={setInvoiceId} />
@@ -660,7 +660,7 @@ function ExpenseFormModal({ onClose, onSaved }: { onClose: () => void; onSaved: 
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-      <div className="card w-full max-w-md p-6">
+      <div className="card w-full max-w-md p-6 max-h-[90vh] overflow-y-auto">
         <h2 className="text-lg font-bold mb-4">إضافة مصروف</h2>
         <div className="space-y-3">
           <div><label className="label">الوصف</label><input ref={descRef} className="input" value={description} onChange={(e) => setDescription(e.target.value)} autoFocus /></div>
@@ -707,7 +707,7 @@ function ExpenseEditModal({ expense, onClose, onSaved }: { expense: ExpenseDto; 
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-      <div className="card w-full max-w-md p-6">
+      <div className="card w-full max-w-md p-6 max-h-[90vh] overflow-y-auto">
         <h2 className="text-lg font-bold mb-4">تعديل مصروف</h2>
         <div className="space-y-3">
           <div><label className="label">الوصف</label><input className="input" value={description} onChange={(e) => setDescription(e.target.value)} autoFocus /></div>

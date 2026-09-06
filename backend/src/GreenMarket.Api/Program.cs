@@ -378,6 +378,34 @@ using (var scope = app.Services.CreateScope())
         app.Logger.LogError(ex, "Failed to add the payments.CheckClearedDate column — recording the actual clearing date of a check will not work until this is fixed.");
     }
 
+    // One-time data backfill for the "a check only counts once it has cleared" rule (see
+    // Domain/Services/PaymentRules). The merchant side recomputes its balance from the payments
+    // table on every read, so it picked the new rule up for free — but a payment TO a farmer or
+    // driver posts a STORED farmer_transactions row, and every uncleared check recorded before
+    // this change is still sitting there at its full amount, showing those people as paid when
+    // they haven't been. This zeroes exactly those rows: the same thing PaymentService.UpdateAsync
+    // now does whenever such a payment is saved, applied to the ones that predate it. Marking the
+    // check Cleared later restores the real amount, as it would for any other check.
+    //
+    // Idempotent (the Amount <> 0 guard makes a re-run a no-op) and narrow — it never touches a
+    // cash payment, a cleared check, or any non-Payment ledger row. CheckStatus 2 = Cleared.
+    try
+    {
+        await db.Database.ExecuteSqlRawAsync("""
+            UPDATE farmer_transactions ft
+            SET "Amount" = 0
+            FROM payments p
+            WHERE ft."PaymentId" = p."Id"
+              AND p."CheckStatus" IS NOT NULL
+              AND p."CheckStatus" <> 2
+              AND ft."Amount" <> 0;
+            """);
+    }
+    catch (Exception ex)
+    {
+        app.Logger.LogError(ex, "Failed to zero out farmer/driver ledger rows for checks that have not cleared — their balances may still count an uncleared check as paid until this is fixed.");
+    }
+
     // Same EnsureCreated gap as above: the new automatic "سعر الصندوق" (per-box fee) feature needs
     // Invoice.BoxPriceApplied — the box-price rate locked in at creation time, same convention as
     // CommissionRateApplied — on the existing "invoices" table.

@@ -1,7 +1,10 @@
 import { apiClient } from "./client";
 import type { CheckClearanceStatus, PagedResult, PaymentDirection, PaymentDto, ExpenseDto } from "../types";
 
-export async function listPayments(params: { partnerId?: number; page?: number; pageSize?: number }) {
+/** `invoiceId` narrows to one invoice's own payments — several rows for one invoice is normal,
+ * since a payment split across methods (and a check payment split across several checks) is
+ * stored as one row per check/method. Backs the invoice edit page's payments section. */
+export async function listPayments(params: { partnerId?: number; invoiceId?: number; page?: number; pageSize?: number }) {
   const { data } = await apiClient.get<PagedResult<PaymentDto>>("/payments", { params });
   return data;
 }

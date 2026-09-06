@@ -56,6 +56,8 @@ function rangeFor(range: QuickRange): { dateFrom?: string; dateTo?: string } {
 type Role = "Merchant" | "Farmer" | "Driver";
 
 const ROLE_LABEL: Record<Role, string> = { Merchant: "مشتري", Farmer: "بائع", Driver: "سائق" };
+/** Plural form, for the "استثناء ..." picker's own label/placeholder. */
+const ROLE_PLURAL_LABEL: Record<Role, string> = { Merchant: "المشترين", Farmer: "الباعة", Driver: "السواق" };
 const ROLE_PARTNER_TYPES: Record<Role, PartnerType[]> = {
   Merchant: ["Merchant", "Both"],
   Farmer: ["Farmer", "Both"],
@@ -77,6 +79,11 @@ function useRoleSection(role: Role) {
   const [invoiceNumberFrom, setInvoiceNumberFrom] = useState("");
   const [invoiceNumberTo, setInvoiceNumberTo] = useState("");
   const [partnerPick, setPartnerPick] = useState<{ id: number; name: string } | null>(null);
+  // "استثناء أسماء" — people of THIS section's own role whose invoices should be left out of the
+  // run ("اطبع الكل هذا الأسبوع إلا هدول الاثنين"). Kept as {id,name} rather than plain names
+  // because two people can share a display name — the exclusion has to bite on identity, and the
+  // name is only there to label the chip.
+  const [excluded, setExcluded] = useState<{ id: number; name: string }[]>([]);
   const [result, setResult] = useState<InvoiceListItemDto[]>([]);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [loading, setLoading] = useState(false);
@@ -90,6 +97,15 @@ function useRoleSection(role: Role) {
           dateTo: customTo ? endOfDay(new Date(customTo)).toISOString() : undefined,
         }
       : rangeFor(quickRange);
+
+    // Each section excludes names of its OWN role only — see InvoiceFilter.excludeMerchantIds.
+    const excludedIds = excluded.length > 0 ? excluded.map((p) => p.id) : undefined;
+    const excludeFilter: Partial<InvoiceFilter> =
+      role === "Merchant"
+        ? { excludeMerchantIds: excludedIds }
+        : role === "Farmer"
+        ? { excludeFarmerIds: excludedIds }
+        : { excludeDriverIds: excludedIds };
 
     const roleFilter: Partial<InvoiceFilter> =
       role === "Merchant"
@@ -106,6 +122,7 @@ function useRoleSection(role: Role) {
       page: 1,
       pageSize: 500,
       ...roleFilter,
+      ...excludeFilter,
     };
   }
 
@@ -123,10 +140,15 @@ function useRoleSection(role: Role) {
     }
   }
 
+  // Adding/removing an excluded name re-runs the search the same way picking a person does (the
+  // invoice-number range still waits for "تطبيق الفلاتر", as it always has). Joined into a string
+  // because the array itself is a new identity on every render.
+  const excludedKey = excluded.map((p) => p.id).join(",");
+
   useEffect(() => {
     refresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [quickRange, partnerPick?.id]);
+  }, [quickRange, partnerPick?.id, excludedKey]);
 
   function toggleOne(id: number) {
     setSelected((prev) => {
@@ -148,10 +170,12 @@ function useRoleSection(role: Role) {
       // Merchant tab (explicit request): several invoices for the same merchant on the same
       // calendar day print as ONE combined invoice, regardless of which farmer/driver supplied
       // each one — so this tab uses the merged-invoice endpoint instead of the quadrant-grid bulk
-      // print the Farmer/Driver tabs still use.
+      // print the Farmer/Driver tabs still use. Both produce THIS section's own document type: a
+      // "فاتورة بائع" from the بائع tab and a "فاتورة سائق" from the سائق tab, never the buyer's
+      // copy (which is what every tab used to hand out).
       const blob = role === "Merchant"
         ? await printMerchantMergedInvoicesPdf(Array.from(selected))
-        : await printInvoicesBulkPdf(Array.from(selected));
+        : await printInvoicesBulkPdf(Array.from(selected), role);
       triggerBlobDownload(blob, `invoices-${ROLE_FILE_SLUG[role]}-${todayLocalDateString()}.pdf`);
     } catch {
       setError("فشل إنشاء ملف الطباعة");
@@ -161,10 +185,17 @@ function useRoleSection(role: Role) {
   }
 
   const selectedRows = result.filter((i) => selected.has(i.id));
+  // Every figure here is this SECTION'S own side (see SectionPrintBar) — a بائع section summing
+  // the merchant's grand total, the way this used to, is a number that means nothing to a seller.
   const totals = {
     value: selectedRows.reduce((sum, i) => sum + i.totalValue, 0),
     wood: selectedRows.reduce((sum, i) => sum + i.woodTotal, 0),
     grand: selectedRows.reduce((sum, i) => sum + i.grandTotal, 0),
+    commission: selectedRows.reduce((sum, i) => sum + i.commission, 0),
+    netDueToFarmer: selectedRows.reduce((sum, i) => sum + i.netDueToFarmer, 0),
+    transport: selectedRows.reduce((sum, i) => sum + i.transportFee, 0),
+    driverBoxFee: selectedRows.reduce((sum, i) => sum + i.driverBoxFeeTotal, 0),
+    driverDue: selectedRows.reduce((sum, i) => sum + i.driverDue, 0),
   };
 
   return {
@@ -172,6 +203,7 @@ function useRoleSection(role: Role) {
     quickRange, setQuickRange, customFrom, setCustomFrom, customTo, setCustomTo,
     invoiceNumberFrom, setInvoiceNumberFrom, invoiceNumberTo, setInvoiceNumberTo,
     partnerPick, setPartnerPick,
+    excluded, setExcluded,
     result, selected, setSelected, loading, printing, error, setError,
     buildFilter, refresh, toggleOne, toggleAll, handlePrint, totals,
   };
@@ -210,6 +242,68 @@ function useItemsBreakdown<T>(section: RoleSection, fetchRows: (filter: ReportFi
   }, [section.quickRange, section.customFrom, section.customTo, section.partnerPick?.id]);
 
   return { rows, loading, printing, setPrinting, error, setError };
+}
+
+/**
+ * "استثناء أسماء" — pick any number of people of this section's OWN role to leave out of the run
+ * (explicit request: print everything for the period EXCEPT these names, on all three sections,
+ * each against its own role's list). Picking a name adds a chip; the chip's ✕ puts them back in.
+ *
+ * The list is built from the same PartnerAutocomplete the "تصفية حسب" picker above uses, with the
+ * same role-restricted suggestions — so the بائع section can only ever exclude باعة, and there's
+ * no second way to type a name that has to be kept in sync.
+ */
+function ExcludedPartnersPicker({ section }: { section: RoleSection }) {
+  const plural = ROLE_PLURAL_LABEL[section.role];
+  // Bumped on every pick — including one that changes nothing (an already-excluded name) — so the
+  // key below always changes and the field always clears. Counting the chips instead would leave
+  // a re-picked name sitting in the box.
+  const [pickCount, setPickCount] = useState(0);
+
+  function add(partner: { id: number; name: string } | null) {
+    if (!partner) return;
+    setPickCount((n) => n + 1);
+    section.setExcluded((prev) => (prev.some((p) => p.id === partner.id) ? prev : [...prev, partner]));
+  }
+
+  return (
+    <div>
+      <div className="w-full max-w-xs">
+        <PartnerAutocomplete
+          // Remounting is what empties the box for the next name: the component keeps its own
+          // typed text, and `value` stays null here by design (a pick is consumed into the chip
+          // list below, never held in the field).
+          key={pickCount}
+          label={`استثناء ${plural} من الطباعة (اختياري)`}
+          value={null}
+          onChange={add}
+          placeholder="اختر اسمًا لاستثنائه، ويمكن اختيار أكثر من واحد..."
+          types={ROLE_PARTNER_TYPES[section.role]}
+        />
+      </div>
+      {section.excluded.length > 0 && (
+        <div className="flex flex-wrap gap-2 mt-2">
+          {section.excluded.map((partner) => (
+            <span key={partner.id} className="inline-flex items-center gap-1 text-sm bg-red-50 text-red-700 border border-red-200 rounded-full ps-3 pe-2 py-1">
+              {partner.name}
+              <button
+                type="button" className="text-red-400 hover:text-red-700" title={`إلغاء استثناء ${partner.name}`}
+                onClick={() => section.setExcluded((prev) => prev.filter((p) => p.id !== partner.id))}
+              >
+                ✕
+              </button>
+            </span>
+          ))}
+          <button
+            type="button" className="text-xs text-gray-500 hover:underline self-center"
+            onClick={() => section.setExcluded([])}
+          >
+            مسح كل الاستثناءات
+          </button>
+        </div>
+      )}
+    </div>
+  );
 }
 
 /** Shared filter bar (period + invoice-number range + optional person picker) used by all 3 sections. */
@@ -267,6 +361,8 @@ function SectionFilters({ section }: { section: RoleSection }) {
         />
       </div>
 
+      <ExcludedPartnersPicker section={section} />
+
       <div>
         <button className="btn-secondary" onClick={section.refresh} disabled={section.loading}>
           {section.loading ? "جاري البحث..." : "🔍 تطبيق الفلاتر"}
@@ -277,17 +373,61 @@ function SectionFilters({ section }: { section: RoleSection }) {
 }
 
 /**
- * Full-detail results table for one section — always shows سعر الخشب as its own column (never
- * folded silently into الإجمالي) plus the role-relevant remaining balance ("متبقي ...") for that
- * row's own مشتري/بائع/سائق, per the explicit requirement that both stay visibly broken out.
+ * Results table for one section, showing ONLY that section's own side (explicit request: "بقسم
+ * البائع بظهر اشي إلو علاقة بالمشتري وكمان نفس الإشي عند سائق ... بكل قسم بدي اطبع الفواتير
+ * الخاصة فيه"). Every row used to carry all three names (المشتري/البائع/السائق) plus the
+ * merchant's القيمة/الإجمالي on every tab, so a بائع run was read against the buyer's numbers.
+ *
+ * Now each tab names only its own counterparty and shows only its own money — the same figures
+ * that role's printed copy carries (see backend ExportService.InvoiceCard):
+ *   مشتري — القيمة، سعر الخشب، رسم الصناديق، الإجمالي
+ *   بائع  — قيمة المبيعات، سعر الخشب، العمولة، الصافي المستحق
+ *   سائق  — أجرة النقل، أجرة الصناديق، سعر الخشب، المستحق للسائق
+ * سعر الخشب stays its own column on all three (never folded silently into a total), as does the
+ * role-relevant "متبقي ..." balance — both per the earlier explicit requirement.
  */
 function SectionTable({ section }: { section: RoleSection }) {
-  const remainingLabel = `متبقي ${ROLE_LABEL[section.role]}`;
+  const { role } = section;
+
+  /** This row's counterparty on THIS section's side — the only person shown. */
+  function partyOf(inv: InvoiceListItemDto): string {
+    if (role === "Merchant") return inv.merchantName;
+    if (role === "Farmer") return inv.farmerName ?? "—";
+    return inv.driverName ?? "—";
+  }
+
   function remainingOf(inv: InvoiceListItemDto): number | null | undefined {
-    if (section.role === "Merchant") return inv.merchantRemaining;
-    if (section.role === "Farmer") return inv.farmerRemaining;
+    if (role === "Merchant") return inv.merchantRemaining;
+    if (role === "Farmer") return inv.farmerRemaining;
     return inv.driverRemaining;
   }
+
+  // The money columns between "الكمية" and "متبقي ...", per role — the same figures that role's
+  // own printed copy carries, and nothing from the other two sides.
+  const moneyColumns: { label: string; value: (inv: InvoiceListItemDto) => number; bold?: boolean; red?: boolean }[] =
+    role === "Merchant"
+      ? [
+          { label: "القيمة", value: (i) => i.totalValue, bold: true },
+          { label: "سعر الخشب", value: (i) => i.woodTotal },
+          { label: "رسم الصناديق", value: (i) => i.boxFeeTotal },
+          { label: "الإجمالي", value: (i) => i.grandTotal, bold: true },
+        ]
+      : role === "Farmer"
+      ? [
+          { label: "قيمة المبيعات", value: (i) => i.totalValue, bold: true },
+          { label: "سعر الخشب", value: (i) => i.woodTotal },
+          { label: "العمولة", value: (i) => i.commission, red: true },
+          { label: "الصافي المستحق", value: (i) => i.netDueToFarmer, bold: true },
+        ]
+      : [
+          { label: "أجرة النقل", value: (i) => i.transportFee, bold: true },
+          { label: "أجرة الصناديق", value: (i) => i.driverBoxFeeTotal },
+          { label: "سعر الخشب", value: (i) => i.woodTotal },
+          { label: "المستحق للسائق", value: (i) => i.driverDue, bold: true },
+        ];
+
+  // checkbox + رقم الفاتورة + التاريخ + الطرف + الأصناف + الكمية + money + متبقي
+  const columnCount = 6 + moneyColumns.length + 1;
 
   return (
     <div className="card overflow-x-auto mb-4">
@@ -297,22 +437,18 @@ function SectionTable({ section }: { section: RoleSection }) {
             <th><input type="checkbox" checked={section.result.length > 0 && section.selected.size === section.result.length} onChange={section.toggleAll} /></th>
             <th>رقم الفاتورة</th>
             <th>التاريخ</th>
-            <th>المشتري</th>
-            <th>البائع</th>
-            <th>السائق</th>
+            <th>{ROLE_LABEL[role]}</th>
             <th>الأصناف</th>
             <th>الكمية</th>
-            <th>القيمة</th>
-            <th>سعر الخشب</th>
-            <th>الإجمالي</th>
-            <th>{remainingLabel}</th>
+            {moneyColumns.map((column) => <th key={column.label}>{column.label}</th>)}
+            <th>{`متبقي ${ROLE_LABEL[role]}`}</th>
           </tr>
         </thead>
         <tbody>
           {section.loading ? (
-            <tr><td colSpan={12} className="text-center text-gray-400 py-6">جاري التحميل...</td></tr>
+            <tr><td colSpan={columnCount} className="text-center text-gray-400 py-6">جاري التحميل...</td></tr>
           ) : section.result.length === 0 ? (
-            <tr><td colSpan={12} className="text-center text-gray-400 py-6">لا توجد فواتير مطابقة</td></tr>
+            <tr><td colSpan={columnCount} className="text-center text-gray-400 py-6">لا توجد فواتير مطابقة</td></tr>
           ) : (
             section.result.map((inv) => {
               const remaining = remainingOf(inv);
@@ -321,18 +457,21 @@ function SectionTable({ section }: { section: RoleSection }) {
                   <td><input type="checkbox" checked={section.selected.has(inv.id)} onChange={() => section.toggleOne(inv.id)} /></td>
                   <td className="font-mono text-sm">{inv.invoiceNumber}</td>
                   <td>{formatDate(inv.date)}</td>
-                  <td>{inv.merchantName}</td>
-                  <td>{inv.farmerName ?? "—"}</td>
-                  <td>{inv.driverName ?? "—"}</td>
+                  <td>{partyOf(inv)}</td>
                   <td className="text-xs">{inv.itemsSummary || "—"}</td>
                   <td>
                     {inv.totalWeightKg > 0 && <div>{formatWeight(inv.totalWeightKg)}</div>}
                     {inv.totalBoxes > 0 && <div>{formatQuantity(inv.totalBoxes, "Box")}</div>}
                     {inv.totalWeightKg === 0 && inv.totalBoxes === 0 && "—"}
                   </td>
-                  <td className="font-semibold">{formatCurrency(inv.totalValue)}</td>
-                  <td>{inv.woodTotal > 0 ? formatCurrency(inv.woodTotal) : "—"}</td>
-                  <td className="font-semibold">{formatCurrency(inv.grandTotal)}</td>
+                  {moneyColumns.map((column) => {
+                    const value = column.value(inv);
+                    return (
+                      <td key={column.label} className={`${column.bold ? "font-semibold" : ""} ${column.red ? "text-red-600" : ""}`}>
+                        {value > 0 ? formatCurrency(value) : "—"}
+                      </td>
+                    );
+                  })}
                   <td className={remaining != null && remaining < 0 ? "text-red-600 font-semibold" : "font-semibold"}>
                     {remaining != null ? formatCurrency(remaining) : "—"}
                   </td>
@@ -349,18 +488,39 @@ function SectionTable({ section }: { section: RoleSection }) {
 function SectionPrintBar({ section }: { section: RoleSection }) {
   return (
     <div className="card p-4 flex items-center justify-between flex-wrap gap-3 mb-4">
+      {/* Totals for THIS section's side only — matching its table columns and its printed copy.
+          A بائع section used to sum the merchant's grand total (product + خشب + رسم الصناديق +
+          أجرة النقل), which is money the seller neither receives nor owes. */}
       <div className="text-sm text-gray-600 space-x-3 space-x-reverse">
         <span>محدد: <span className="font-semibold">{section.selected.size}</span> فاتورة</span>
-        <span> — إجمالي القيمة: <span className="font-semibold">{formatCurrency(section.totals.value)}</span></span>
-        <span> — إجمالي سعر الخشب: <span className="font-semibold">{formatCurrency(section.totals.wood)}</span></span>
-        <span> — الإجمالي الكلي: <span className="font-semibold">{formatCurrency(section.totals.grand)}</span></span>
+        {section.role === "Merchant" ? (
+          <>
+            <span> — إجمالي القيمة: <span className="font-semibold">{formatCurrency(section.totals.value)}</span></span>
+            <span> — إجمالي سعر الخشب: <span className="font-semibold">{formatCurrency(section.totals.wood)}</span></span>
+            <span> — الإجمالي الكلي: <span className="font-semibold">{formatCurrency(section.totals.grand)}</span></span>
+          </>
+        ) : section.role === "Farmer" ? (
+          <>
+            <span> — إجمالي المبيعات: <span className="font-semibold">{formatCurrency(section.totals.value)}</span></span>
+            <span> — إجمالي سعر الخشب: <span className="font-semibold">{formatCurrency(section.totals.wood)}</span></span>
+            <span> — إجمالي العمولة: <span className="font-semibold text-red-600">{formatCurrency(section.totals.commission)}</span></span>
+            <span> — الصافي المستحق للباعة: <span className="font-semibold">{formatCurrency(section.totals.netDueToFarmer)}</span></span>
+          </>
+        ) : (
+          <>
+            <span> — إجمالي أجرة النقل: <span className="font-semibold">{formatCurrency(section.totals.transport)}</span></span>
+            <span> — إجمالي أجرة الصناديق: <span className="font-semibold">{formatCurrency(section.totals.driverBoxFee)}</span></span>
+            <span> — إجمالي سعر الخشب: <span className="font-semibold">{formatCurrency(section.totals.wood)}</span></span>
+            <span> — المستحق للسواق: <span className="font-semibold">{formatCurrency(section.totals.driverDue)}</span></span>
+          </>
+        )}
       </div>
       <button className="btn-primary" onClick={section.handlePrint} disabled={section.printing || section.selected.size === 0}>
         {section.printing
           ? "جاري التجهيز..."
           : section.role === "Merchant"
-          ? `🖨️ طباعة فواتير ${ROLE_LABEL[section.role]} (فاتورة مجمّعة لكل مشتري/يوم)`
-          : `🖨️ طباعة فواتير ${ROLE_LABEL[section.role]} (4 بالصفحة)`}
+          ? "🖨️ طباعة فواتير مشتري (فاتورة مجمّعة لكل مشتري/يوم)"
+          : `🖨️ طباعة فواتير ${ROLE_LABEL[section.role]} (فاتورة ${ROLE_LABEL[section.role]} — 4 بالصفحة)`}
       </button>
     </div>
   );
@@ -742,15 +902,15 @@ export function BulkPrintPage() {
   // carried through too so the same group can also drive a WhatsApp send button.
   const driverGroups = useMemo(() => {
     const selectedRows = driverSection.result.filter((i) => driverSection.selected.has(i.id) && i.driverName);
-    const byDriver = new Map<string | number, { key: string | number; driverId?: number | null; driverName: string; driverWhatsApp?: string | null; invoiceIds: number[]; totalTransportFee: number }>();
+    const byDriver = new Map<string | number, { key: string | number; driverId?: number | null; driverName: string; driverWhatsApp?: string | null; invoiceIds: number[]; totalDriverDue: number }>();
     for (const inv of selectedRows) {
       const key = inv.driverId ?? inv.driverName!;
       const existing = byDriver.get(key);
       if (existing) {
         existing.invoiceIds.push(inv.id);
-        existing.totalTransportFee += inv.transportFee;
+        existing.totalDriverDue += inv.driverDue;
       } else {
-        byDriver.set(key, { key, driverId: inv.driverId, driverName: inv.driverName!, driverWhatsApp: inv.driverWhatsApp, invoiceIds: [inv.id], totalTransportFee: inv.transportFee });
+        byDriver.set(key, { key, driverId: inv.driverId, driverName: inv.driverName!, driverWhatsApp: inv.driverWhatsApp, invoiceIds: [inv.id], totalDriverDue: inv.driverDue });
       }
     }
     return Array.from(byDriver.values()).sort((a, b) => a.driverName.localeCompare(b.driverName, "ar"));
@@ -880,10 +1040,14 @@ export function BulkPrintPage() {
 
       {activeTab === "Driver" && (
         <div className="card p-4 mb-4">
-          <h2 className="font-semibold mb-1">طباعة فاتورة سائق</h2>
-          <p className="text-xs text-gray-500 mb-3">استخدم حقل "تصفية حسب سائق" أعلاه لاختيار السائق — بيلمّ له تلقائيًا كل فواتيره ضمن الفترة المحددة أعلاه.</p>
+          {/* Renamed from "طباعة فاتورة سائق": this button has always produced the driver's
+              consolidated كشف أجرة نقل (GenerateDriverManifestPdf), not an invoice — and now that
+              the section's own print button really does produce a per-invoice "فاتورة سائق", the
+              old label was pointing at the wrong document. */}
+          <h2 className="font-semibold mb-1">طباعة كشف السائق (مجمّع للفترة)</h2>
+          <p className="text-xs text-gray-500 mb-3">استخدم حقل "تصفية حسب سائق" أعلاه لاختيار السائق — بيلمّ له تلقائيًا كل فواتيره ضمن الفترة المحددة أعلاه بكشف أجرة نقل واحد. لطباعة فواتير السائق نفسها (فاتورة لكل فاتورة) استخدم زر الطباعة أسفل الجدول.</p>
           <button className="btn-primary" disabled={!driverSection.partnerPick || driverStandaloneBusy} onClick={handlePrintDriverStandalone}>
-            {driverStandaloneBusy ? "جاري التجهيز..." : "🖨️ طباعة فاتورة السائق"}
+            {driverStandaloneBusy ? "جاري التجهيز..." : "🖨️ طباعة كشف السائق"}
           </button>
           {driverStandaloneError && <div className="text-sm text-red-600 bg-red-50 rounded-md p-2 mt-3">{driverStandaloneError}</div>}
         </div>
@@ -1009,7 +1173,7 @@ export function BulkPrintPage() {
               <tr>
                 <th>السائق</th>
                 <th>عدد الفواتير</th>
-                <th>إجمالي أجرة النقل</th>
+                <th>المستحق للسائق</th>
                 <th></th>
               </tr>
             </thead>
@@ -1018,7 +1182,7 @@ export function BulkPrintPage() {
                 <tr key={g.key}>
                   <td className="font-medium">{g.driverName}</td>
                   <td>{g.invoiceIds.length}</td>
-                  <td className="font-semibold">{formatCurrency(g.totalTransportFee)}</td>
+                  <td className="font-semibold">{formatCurrency(g.totalDriverDue)}</td>
                   <td>
                     <div className="flex flex-wrap gap-2">
                       <button

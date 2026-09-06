@@ -36,7 +36,9 @@ public interface IExportService
     /// see GenerateFarmerInvoicePdf's own doc comment.</summary>
     byte[] GenerateFarmerInvoicePdf(InvoiceDto invoice, CompanyInfo company, decimal previousBalance);
 
-    byte[] GenerateInvoicesBulkPdf(IReadOnlyList<InvoiceDto> invoices, CompanyInfo company);
+    /// <summary>The three bulk-print sections all go through here, each asking for its OWN
+    /// side.s copy of the same invoices — see InvoiceCard for what each role shows.</summary>
+    byte[] GenerateInvoicesBulkPdf(IReadOnlyList<InvoiceDto> invoices, CompanyInfo company, InvoicePrintRole role);
 
     /// <summary>Bulk-print page's merchant-section print button — see GenerateMergedInvoicesPdf's
     /// own doc comment.</summary>
@@ -347,7 +349,7 @@ public class ExportService : IExportService
                         else
                         {
                             table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(item.Unit == UnitOfMeasure.Box ? item.Quantity.ToString("0.###") : "—");
-                            table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(item.Unit == UnitOfMeasure.Kg ? $"{item.Quantity:0.###} كغم" : "—");
+                            table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(WeightCell(item.Unit, item.Quantity));
                         }
                         // PricePerUnit == 0 means "not priced yet, will be priced later" (see
                         // InvoiceNewPage/InvoiceEditPage's now-optional price field) — flagged
@@ -470,7 +472,7 @@ public class ExportService : IExportService
                         var unpriced = item.PricePerUnit == 0;
                         table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(item.ItemName);
                         table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(item.Unit == UnitOfMeasure.Box ? item.Quantity.ToString("0.###") : "—");
-                        table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(item.Unit == UnitOfMeasure.Kg ? $"{item.Quantity:0.###} كغم" : "—");
+                        table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(WeightCell(item.Unit, item.Quantity));
                         table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(unpriced ? "غير مسعّر" : item.PricePerUnit.ToString("0.##"));
                         table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(item.WoodPrice > 0 ? item.WoodPrice.ToString("0.##") : "—");
                         table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(unpriced ? "غير مسعّر" : item.LineTotal.ToString("0.##"));
@@ -524,9 +526,14 @@ public class ExportService : IExportService
     /// rather than letting the used quadrants collapse to the top of the page. Invoices are laid
     /// out in the exact order they were passed in (the caller's selected/filtered order — see
     /// InvoiceService.GetManyAsync). Same conventions as the single-invoice PDF: no invoice number
-    /// and no commission line (§5) shown on the printed page.
+    /// shown on the printed page, and no commission line (§5) on the MERCHANT copy.
+    ///
+    /// <paramref name="role"/> decides whose copy comes out: the بائع section prints "فاتورة بائع",
+    /// the سائق section "فاتورة سائق", the مشتري section "فاتورة مشتري" — each carrying only its
+    /// own side's counterparty and money (see InvoiceCard). Before this, every section printed the
+    /// merchant's copy, so a seller was handed a "فاتورة مشتري" addressed to the buyer.
     /// </summary>
-    public byte[] GenerateInvoicesBulkPdf(IReadOnlyList<InvoiceDto> invoices, CompanyInfo company)
+    public byte[] GenerateInvoicesBulkPdf(IReadOnlyList<InvoiceDto> invoices, CompanyInfo company, InvoicePrintRole role)
     {
         const int perPage = 4;
         const int perRow = 2;
@@ -581,7 +588,7 @@ public class ExportService : IExportService
                                     var index = slotStart + i;
                                     var cell = row.RelativeItem();
                                     if (index < pageInvoices.Count)
-                                        cell.Element(c => InvoiceCard(c, pageInvoices[index], company));
+                                        cell.Element(c => InvoiceCard(c, pageInvoices[index], company, role));
                                     // else: blank quadrant — the cell above still reserves its
                                     // share of the row's width so the grid stays evenly divided.
                                 }
@@ -667,7 +674,7 @@ public class ExportService : IExportService
                             var unpriced = item.PricePerUnit == 0;
                             table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(item.ItemName);
                             table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(item.Unit == UnitOfMeasure.Box ? item.Quantity.ToString("0.###") : "—");
-                            table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(item.Unit == UnitOfMeasure.Kg ? $"{item.Quantity:0.###} كغم" : "—");
+                            table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(WeightCell(item.Unit, item.Quantity));
                             table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(unpriced ? "غير مسعّر" : item.PricePerUnit.ToString("0.##"));
                             table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(item.WoodPrice > 0 ? item.WoodPrice.ToString("0.##") : "—");
                             table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(unpriced ? "غير مسعّر" : item.LineTotal.ToString("0.##"));
@@ -785,7 +792,7 @@ public class ExportService : IExportService
                         var boxCount = invoice.Items.Where(it => it.Unit == UnitOfMeasure.Box).Sum(it => it.Quantity);
                         table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(invoice.MerchantName);
                         table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(boxCount > 0 ? boxCount.ToString("0.###") : "—");
-                        table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(invoice.TotalWeightKg > 0 ? $"{invoice.TotalWeightKg:0.###} كغم" : "—");
+                        table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(WeightText(invoice.TotalWeightKg));
                         table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(invoice.WoodTotal > 0 ? invoice.WoodTotal.ToString("0.##") : "—");
                         table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(invoice.DriverBoxFeeTotal > 0 ? invoice.DriverBoxFeeTotal.ToString("0.##") : "—");
                         table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(invoice.TransportFee.ToString("0.##"));
@@ -899,7 +906,7 @@ public class ExportService : IExportService
                             table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(group.MerchantName);
                             table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(item.ItemName);
                             table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(item.Unit == UnitOfMeasure.Box ? item.TotalQuantity.ToString("0.###") : "—");
-                            table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(item.Unit == UnitOfMeasure.Kg ? $"{item.TotalQuantity:0.###} كغم" : "—");
+                            table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(WeightCell(item.Unit, item.TotalQuantity));
                             table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(item.TotalValue.ToString("0.##"));
                             rowIndex++;
                         }
@@ -993,7 +1000,7 @@ public class ExportService : IExportService
                             table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(group.FarmerName);
                             table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(item.ItemName);
                             table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(item.Unit == UnitOfMeasure.Box ? item.TotalQuantity.ToString("0.###") : "—");
-                            table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(item.Unit == UnitOfMeasure.Kg ? $"{item.TotalQuantity:0.###} كغم" : "—");
+                            table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(WeightCell(item.Unit, item.TotalQuantity));
                             table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(item.TotalValue.ToString("0.##"));
                             rowIndex++;
                         }
@@ -1083,7 +1090,7 @@ public class ExportService : IExportService
                             table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(group.DriverName);
                             table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(item.ItemName);
                             table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(item.Unit == UnitOfMeasure.Box ? item.TotalQuantity.ToString("0.###") : "—");
-                            table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(item.Unit == UnitOfMeasure.Kg ? $"{item.TotalQuantity:0.###} كغم" : "—");
+                            table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(WeightCell(item.Unit, item.TotalQuantity));
                             rowIndex++;
                         }
                         table.Cell().ColumnSpan(3).Element(c => DataCell(c, true)).AlignRight().Text($"إجمالي أجرة نقل {group.DriverName}").Bold();
@@ -1220,7 +1227,7 @@ public class ExportService : IExportService
                                     var unpriced = line.PricePerUnit == 0;
                                     table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text($"{line.Date:yyyy-MM-dd}");
                                     table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(line.Unit == UnitOfMeasure.Box ? line.Quantity.ToString("0.###") : "—");
-                                    table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(line.Unit == UnitOfMeasure.Kg ? $"{line.Quantity:0.###} كغم" : "—");
+                                    table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(WeightCell(line.Unit, line.Quantity));
                                     table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(unpriced ? "غير مسعّر" : line.PricePerUnit.ToString("0.##"));
                                     table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(line.WoodPrice > 0 ? line.WoodPrice.ToString("0.##") : "—");
                                     table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(unpriced ? "غير مسعّر" : line.LineTotal.ToString("0.##"));
@@ -1319,10 +1326,28 @@ public class ExportService : IExportService
         return document.GeneratePdf();
     }
 
-    /// <summary>One quarter-page "card" for GenerateInvoicesBulkPdf — the same content as the
-    /// single-invoice PDF (company header, date, merchant, items, total) just shrunk down and
-    /// boxed so four of them read as four distinct invoices on one sheet rather than one blob.</summary>
-    private void InvoiceCard(IContainer container, InvoiceDto invoice, CompanyInfo company)
+    /// <summary>
+    /// One quarter-page "card" for GenerateInvoicesBulkPdf — the same content as the single-invoice
+    /// PDF, shrunk down and boxed so four of them read as four distinct invoices on one sheet
+    /// rather than one blob. Rendered as the copy belonging to <paramref name="role"/>:
+    ///
+    ///  • Merchant — "فاتورة مشتري": what the buyer owes. Product + خشب + رسم الصناديق folded into
+    ///    GrandTotal, plus their الرصيد السابق. Commission stays invisible here (requirement §5),
+    ///    and so do البائع/السائق (same reasoning as GenerateInvoicePdf).
+    ///  • Farmer — "فاتورة بائع": what the seller is owed. Sale value, the commission deducted off
+    ///    it, and سعر الخشب added back on top — the same math as GenerateFarmerInvoicePdf's
+    ///    "نسخة البائع". Deliberately carries NO merchant grand total, no رسم الصناديق (that's
+    ///    charged to the buyer, never deducted from the seller) and no merchant الرصيد السابق.
+    ///  • Driver — "فاتورة سائق": what the driver is owed. Cargo (عدد/وزن, no per-item price — a
+    ///    driver has no per-item price at all) plus أجرة النقل + أجرة الصناديق + سعر الخشب, the
+    ///    exact same three components GenerateDriverManifestPdf sums, so the two documents can
+    ///    never disagree about what a driver is due. No commission, no sale value.
+    ///
+    /// A card only ever shows sections belonging to its own role — that's the whole point of the
+    /// parameter, and why the totals block below is a per-role branch rather than a shared block
+    /// with a few things hidden.
+    /// </summary>
+    private void InvoiceCard(IContainer container, InvoiceDto invoice, CompanyInfo company, InvoicePrintRole role)
     {
         // Explicitly RTL (not just inherited from the caller's page-level setting) so this card
         // renders correctly — right-aligned text, and the item table's "الصنف" column as the
@@ -1345,11 +1370,24 @@ public class ExportService : IExportService
                 if (!string.IsNullOrWhiteSpace(company.Phone))
                     textCol.Item().AlignCenter().Text($"هاتف: {company.Phone}").FontSize(7);
             });
-            col.Item().Text("فاتورة مشتري").Bold().FontSize(9);
+            // Title and counterparty are the role's own — a بائع copy is addressed to the بائع,
+            // never "المطلوب من {merchant}". A missing name can't normally happen (the Farmer and
+            // Driver sections only ever select invoices that HAVE one — see InvoiceFilterRequest's
+            // HasFarmer/HasDriver), so "—" is a last-resort placeholder, not an expected state.
+            var (title, partyLabel, partyName) = role switch
+            {
+                InvoicePrintRole.Farmer => ("فاتورة بائع", "البائع", invoice.FarmerName),
+                InvoicePrintRole.Driver => ("فاتورة سائق", "السائق", invoice.DriverName),
+                _ => ("فاتورة مشتري", "المطلوب من", invoice.MerchantName),
+            };
+            col.Item().Text(title).Bold().FontSize(9);
             col.Item().Text($"التاريخ: {invoice.Date:yyyy-MM-dd}").FontSize(8);
-            col.Item().Text($"المطلوب من: {invoice.MerchantName}").FontSize(8);
-            // البائع/السائق deliberately NOT shown here — same reasoning as GenerateInvoicePdf.
+            col.Item().Text($"{partyLabel}: {(string.IsNullOrWhiteSpace(partyName) ? "—" : partyName)}").FontSize(8);
+            // The OTHER two parties are deliberately never shown — same reasoning as
+            // GenerateInvoicePdf: each copy names only its own counterparty.
             col.Item().PaddingTop(4).LineHorizontal(0.5f).LineColor(Colors.Grey.Lighten1);
+
+            var isDriverCopy = role == InvoicePrintRole.Driver;
 
             col.Item().PaddingTop(4).Table(table =>
             {
@@ -1357,16 +1395,25 @@ public class ExportService : IExportService
                 {
                     columns.RelativeColumn(4);
                     columns.RelativeColumn(2);
-                    columns.RelativeColumn(2);
-                    columns.RelativeColumn(2);
+                    // A driver hauls the goods, he doesn't sell them — there IS no per-item price
+                    // on his side (see DriverItemBreakdownRow), so his card lists cargo only and
+                    // drops the price/total columns entirely instead of printing empty ones.
+                    if (!isDriverCopy)
+                    {
+                        columns.RelativeColumn(2);
+                        columns.RelativeColumn(2);
+                    }
                 });
 
                 table.Header(header =>
                 {
                     header.Cell().Element(MiniHeaderCell).AlignRight().Text("الصنف");
                     header.Cell().Element(MiniHeaderCell).AlignRight().Text("الكمية");
-                    header.Cell().Element(MiniHeaderCell).AlignRight().Text("السعر");
-                    header.Cell().Element(MiniHeaderCell).AlignRight().Text("الإجمالي");
+                    if (!isDriverCopy)
+                    {
+                        header.Cell().Element(MiniHeaderCell).AlignRight().Text("السعر");
+                        header.Cell().Element(MiniHeaderCell).AlignRight().Text("الإجمالي");
+                    }
                 });
 
                 for (var i = 0; i < invoice.Items.Count; i++)
@@ -1376,27 +1423,68 @@ public class ExportService : IExportService
                     var unpriced = item.PricePerUnit == 0;
                     table.Cell().Element(c => MiniDataCell(c, shaded)).AlignRight().Text(item.ItemName);
                     table.Cell().Element(c => MiniDataCell(c, shaded)).AlignRight().Text($"{item.Quantity:0.###} {ArabicUnitLabel(item.Unit)}");
+                    if (isDriverCopy) continue;
                     table.Cell().Element(c => MiniDataCell(c, shaded)).AlignRight().Text(unpriced ? "غير مسعّر" : item.PricePerUnit.ToString("0.##"));
                     table.Cell().Element(c => MiniDataCell(c, shaded)).AlignRight().Text(unpriced ? "غير مسعّر" : item.LineTotal.ToString("0.##"));
                 }
             });
 
             col.Item().PaddingTop(4).LineHorizontal(0.5f).LineColor(Colors.Grey.Lighten1);
-            // Card is a quarter-page — a per-line wood/transport breakdown doesn't fit, so this
-            // shows GrandTotal directly (product + wood + transport) rather than the sub-total
-            // breakdown the full single-invoice PDF shows above, plus a compact "منها سعر الخشب"
-            // line so the wood/crate charge stays visible instead of disappearing silently into
-            // GrandTotal. الرصيد السابق mirrors the single-invoice PDF's own treatment exactly
-            // (same InvoiceDto.PreviousBalance, same "add it on top of GrandTotal" behavior).
-            if (invoice.WoodTotal > 0)
-                col.Item().AlignRight().Text($"منها سعر الخشب: ₪ {invoice.WoodTotal:0.##}").FontSize(7);
-            if (invoice.BoxFeeTotal > 0)
-                col.Item().AlignRight().Text($"منها رسم الصناديق: ₪ {invoice.BoxFeeTotal:0.##}").FontSize(7);
-            col.Item().PaddingTop(2).AlignRight().Text($"الإجمالي: ₪ {invoice.GrandTotal:0.##}").Bold().FontSize(10);
-            if (invoice.PreviousBalance > 0)
+
+            switch (role)
             {
-                col.Item().AlignRight().Text($"الرصيد السابق: ₪ {invoice.PreviousBalance:0.##}").FontSize(7);
-                col.Item().PaddingTop(1).AlignRight().Text($"الإجمالي المستحق: ₪ {(invoice.GrandTotal + invoice.PreviousBalance):0.##}").Bold().FontSize(10);
+                case InvoicePrintRole.Farmer:
+                    // Mirrors GenerateFarmerInvoicePdf's footer: TotalValue - Commission +
+                    // WoodTotal = NetDueToFarmer. رسم الصناديق is charged to the merchant and never
+                    // deducted from the seller, so it has no place on this copy at all.
+                    col.Item().AlignRight().Text($"إجمالي المبيعات: ₪ {invoice.TotalValue:0.##}").FontSize(8);
+                    if (invoice.WoodTotal > 0)
+                        col.Item().AlignRight().Text($"سعر الخشب (يُضاف للمستحق): ₪ {invoice.WoodTotal:0.##}").FontSize(7);
+                    col.Item().AlignRight().Text($"العمولة ({invoice.CommissionRateApplied:0.##%}): - ₪ {invoice.Commission:0.##}").FontSize(7).FontColor(Colors.Red.Darken1);
+                    col.Item().PaddingTop(2).AlignRight().Text($"الصافي المستحق: ₪ {invoice.NetDueToFarmer:0.##}").Bold().FontSize(10);
+                    break;
+
+                case InvoicePrintRole.Driver:
+                {
+                    // Same three components, in the same order, as GenerateDriverManifestPdf's
+                    // footer — أجرة النقل + أجرة الصناديق + سعر الخشب (the driver is paid the full
+                    // wood price too, per the explicit requirement documented there) — so a
+                    // per-invoice driver copy and the driver's consolidated manifest can never
+                    // disagree about what he's owed.
+                    var totalBoxes = invoice.Items.Where(it => it.Unit == UnitOfMeasure.Box).Sum(it => it.Quantity);
+                    if (totalBoxes > 0)
+                        col.Item().AlignRight().Text($"إجمالي الصناديق: {totalBoxes:0.###}").FontSize(7);
+                    if (invoice.TotalWeightKg > 0)
+                        col.Item().AlignRight().Text($"إجمالي الوزن: {invoice.TotalWeightKg:0.###} كغم").FontSize(7);
+                    col.Item().AlignRight().Text($"أجرة النقل: ₪ {invoice.TransportFee:0.##}").FontSize(8);
+                    if (invoice.DriverBoxFeeTotal > 0)
+                        col.Item().AlignRight().Text($"أجرة الصناديق: ₪ {invoice.DriverBoxFeeTotal:0.##}").FontSize(7);
+                    if (invoice.WoodTotal > 0)
+                        col.Item().AlignRight().Text($"سعر الخشب: ₪ {invoice.WoodTotal:0.##}").FontSize(7);
+                    var driverDue = invoice.TransportFee + invoice.DriverBoxFeeTotal + invoice.WoodTotal;
+                    col.Item().PaddingTop(2).AlignRight().Text($"الإجمالي المستحق للسائق: ₪ {driverDue:0.##}").Bold().FontSize(10);
+                    break;
+                }
+
+                default:
+                    // Card is a quarter-page — a per-line wood/transport breakdown doesn't fit, so
+                    // this shows GrandTotal directly (product + wood + transport) rather than the
+                    // sub-total breakdown the full single-invoice PDF shows, plus a compact "منها
+                    // سعر الخشب" line so the wood/crate charge stays visible instead of
+                    // disappearing silently into GrandTotal. الرصيد السابق mirrors the
+                    // single-invoice PDF's own treatment exactly (same InvoiceDto.PreviousBalance,
+                    // same "add it on top of GrandTotal" behavior).
+                    if (invoice.WoodTotal > 0)
+                        col.Item().AlignRight().Text($"منها سعر الخشب: ₪ {invoice.WoodTotal:0.##}").FontSize(7);
+                    if (invoice.BoxFeeTotal > 0)
+                        col.Item().AlignRight().Text($"منها رسم الصناديق: ₪ {invoice.BoxFeeTotal:0.##}").FontSize(7);
+                    col.Item().PaddingTop(2).AlignRight().Text($"الإجمالي: ₪ {invoice.GrandTotal:0.##}").Bold().FontSize(10);
+                    if (invoice.PreviousBalance > 0)
+                    {
+                        col.Item().AlignRight().Text($"الرصيد السابق: ₪ {invoice.PreviousBalance:0.##}").FontSize(7);
+                        col.Item().PaddingTop(1).AlignRight().Text($"الإجمالي المستحق: ₪ {(invoice.GrandTotal + invoice.PreviousBalance):0.##}").Bold().FontSize(10);
+                    }
+                    break;
             }
         });
     }
@@ -1450,6 +1538,31 @@ public class ExportService : IExportService
         UnitOfMeasure.Box => "صندوق",
         _ => unit.ToString()
     };
+
+    /// <summary>
+    /// A weight of zero prints as "—", never "0.000 كغم" (explicit request, applied across the
+    /// whole system): on paper, 0 كغم isn't a measurement — it's a line that simply isn't sold by
+    /// weight, or a total with no weighed goods behind it — and a literal zero there reads as
+    /// "weighed, came out empty". Mirrors the frontend's own formatWeight so a printed document
+    /// and the screen it came from never disagree. Used for every weight VALUE; totals lines that
+    /// are already hidden entirely when there's no weight stay hidden rather than printing a dash.
+    /// </summary>
+    private static string WeightText(decimal kg) => kg > 0 ? $"{kg:0.###} كغم" : "—";
+
+    /// <summary>An item row's quantity column, which only ever carries a weight when that line is
+    /// priced by the kilo — a box-priced line has its count in its own column instead.</summary>
+    private static string WeightCell(UnitOfMeasure unit, decimal quantity) =>
+        unit == UnitOfMeasure.Kg ? WeightText(quantity) : "—";
+
+    /// <summary>
+    /// A goods-stock number (وارد/مباع/متوفر), where the unit lives in its own column so the value
+    /// prints bare. Same zero rule as above for a Kg row — that value IS a weight — while a zero
+    /// BOX count stays a real "0": a count of crates, where zero is a genuine answer. Mirrors the
+    /// frontend's formatQuantity exactly, so the printed stock sheet and the on-screen table it
+    /// came from read identically.
+    /// </summary>
+    private static string StockQuantityText(UnitOfMeasure unit, decimal value) =>
+        value == 0 && unit == UnitOfMeasure.Kg ? "—" : $"{value:0.###}";
 
     /// <summary>One-page end-of-day summary, printable at the end of a shift. Label/value pairs rather
     /// than a table, since there's only ever one row of data (this one day).</summary>
@@ -2131,9 +2244,9 @@ public class ExportService : IExportService
                         var shaded = i % 2 == 1;
                         table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(r.ItemName);
                         table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(ArabicUnitLabel(r.Unit));
-                        table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text($"{r.TotalReceived:0.###}");
-                        table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text($"{r.TotalSold:0.###}");
-                        table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text($"{r.Available:0.###}").Bold();
+                        table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(StockQuantityText(r.Unit, r.TotalReceived));
+                        table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(StockQuantityText(r.Unit, r.TotalSold));
+                        table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(StockQuantityText(r.Unit, r.Available)).Bold();
                         table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(r.WoodReceived > 0 ? $"{r.WoodReceived:0.###}" : "—");
                     }
                 });

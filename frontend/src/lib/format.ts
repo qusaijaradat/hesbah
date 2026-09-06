@@ -2,7 +2,18 @@ export function formatCurrency(value: number): string {
   return `₪ ${value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
+/**
+ * A zero weight reads as "—", not "0 كغم" (explicit request, app-wide): on an invoice or a
+ * statement, 0 كغم isn't a measurement — it's a line that simply isn't sold by weight (a
+ * box-priced item), or a total with no weighed goods behind it at all. Printing a literal zero
+ * there invites reading it as "weighed, came out empty".
+ *
+ * Handled here in the formatter rather than at each call site so every screen, table and WhatsApp
+ * message gets it without a `> 0` check of its own — several call sites already had one, and the
+ * ones that didn't were exactly where "0 كغم" was showing up.
+ */
 export function formatWeight(value: number): string {
+  if (value === 0) return "—";
   return `${value.toLocaleString("en-US", { maximumFractionDigits: 3 })} كغم`;
 }
 
@@ -17,7 +28,14 @@ export const PAYMENT_DIRECTION_LABELS: Record<"FromMerchant" | "ToFarmer" | "ToD
   ToDriver: "للسائق",
 };
 
+/**
+ * Same rule as formatWeight for a Kg quantity — it IS a weight, just reached through the
+ * unit-generic helper, so "0 كغم" turns into "—" here too. A zero BOX count is left as a real
+ * "0 صندوق": that's a count of physical crates, where zero is a genuine answer rather than an
+ * absent measurement, and the request was specifically about الوزن.
+ */
 export function formatQuantity(value: number, unit: "Kg" | "Box"): string {
+  if (value === 0 && unit === "Kg") return "—";
   return `${value.toLocaleString("en-US", { maximumFractionDigits: 3 })} ${UNIT_LABELS[unit]}`;
 }
 

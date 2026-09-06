@@ -122,7 +122,21 @@ public record InvoiceListItemDto(
     // opening balance and, for a merchant, every invoice's own wood total) shown alongside every one
     // of their invoices, not just one. FarmerRemaining/DriverRemaining are null when the invoice has
     // no farmer/driver attached — see InvoiceService.ListAsync for how these are batch-computed.
-    decimal MerchantRemaining, decimal? FarmerRemaining, decimal? DriverRemaining);
+    decimal MerchantRemaining, decimal? FarmerRemaining, decimal? DriverRemaining,
+    // Each bulk-print section shows only its OWN side's money (explicit request: "بكل قسم بدي
+    // اطبع الفواتير الخاصة فيه"), so the list row has to carry the farmer's and the driver's
+    // figures too — not just the merchant-facing TotalValue/GrandTotal it used to. These are the
+    // exact same numbers the matching printed copy shows (see ExportService.InvoiceCard), so the
+    // screen and the paper can't disagree:
+    //   Commission / NetDueToFarmer — TotalValue × the invoice's own locked-in rate, and
+    //     TotalValue − Commission + WoodTotal (the seller is paid the full wood price on top,
+    //     never taxed by the commission). Same math as InvoiceService.ToDto.
+    //   DriverBoxFeeTotal / DriverDue — TotalBoxes × the invoice's own locked-in أجرة الصناديق
+    //     rate, and TransportFee + that + WoodTotal, matching the driver's own ledger row.
+    // All four are computed even when no farmer/driver is attached (harmless and unused then),
+    // same convention as InvoiceDto's own Commission/NetDueToFarmer.
+    decimal Commission, decimal NetDueToFarmer,
+    decimal DriverBoxFeeTotal, decimal DriverDue);
 
 /// <summary>Requirement doc §7 filters: date range, merchant, farmer/driver, item, user, invoice number, weight, amount.</summary>
 public class InvoiceFilterRequest
@@ -139,6 +153,21 @@ public class InvoiceFilterRequest
     /// back to every invoice. Ignored (no extra filtering) when null/false.</summary>
     public bool? HasFarmer { get; set; }
     public bool? HasDriver { get; set; }
+
+    /// <summary>
+    /// Bulk-print page's per-section "استثناء أسماء" filter: drop every invoice whose
+    /// merchant/farmer/driver is one of these people, so a print run can cover "everyone this
+    /// week EXCEPT these two" without picking the rest one by one. Each section only ever fills
+    /// the list matching its OWN role (the بائع section excludes باعة, the مشتري section
+    /// مشترين, the سائق section سواق — explicit request), which is exactly why these are three
+    /// separate lists instead of one shared "exclude these partners": excluding a name on the
+    /// مشتري section must not also drop invoices where that same person happens to be the بائع.
+    /// Null/empty = no exclusion. Excluding a partner never drops invoices that simply have no
+    /// farmer/driver attached — only ones actually belonging to an excluded person.
+    /// </summary>
+    public List<int>? ExcludeMerchantIds { get; set; }
+    public List<int>? ExcludeFarmerIds { get; set; }
+    public List<int>? ExcludeDriverIds { get; set; }
 
     public string? ItemName { get; set; }
     public int? CreatedByUserId { get; set; }
@@ -159,6 +188,21 @@ public class InvoiceFilterRequest
 
     public int Page { get; set; } = 1;
     public int PageSize { get; set; } = 25;
+}
+
+/// <summary>
+/// Whose copy of an invoice a bulk print run produces (explicit request: "عند الضغط على طباعة
+/// فاتورة سائق أو بائع أو مشتري، تتم طباعة فاتورة السائق إذا كان نوعه سائق ... وليس فاتورة نوع
+/// آخر"). The bulk-print page's three sections each print their OWN side's document: the same
+/// invoices, but with that side's counterparty, its own money, and nothing that belongs to the
+/// other two (no commission on a driver's copy, no merchant grand total on a farmer's, and so on)
+/// — see ExportService.InvoiceCard for exactly what each one shows.
+/// </summary>
+public enum InvoicePrintRole
+{
+    Merchant,
+    Farmer,
+    Driver
 }
 
 public record CancelInvoiceRequest(string Reason);

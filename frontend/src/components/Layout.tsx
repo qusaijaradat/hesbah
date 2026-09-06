@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { Link, NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
+import { ChecksDueTodayBanner } from "./ChecksDueTodayBanner";
 
 const NAV_ITEMS = [
   { to: "/", label: "لوحة التحكم", permission: null },
@@ -110,6 +111,11 @@ export function Layout({ children }: { children: ReactNode }) {
           </button>
           <div className="text-sm font-bold">🥬 الحسبة</div>
         </header>
+
+        {/* Above <main>, so it sits at the very top of whatever page is open. Gated on
+            payments.view because the checks it reads need that permission anyway — a role without
+            it would just get a 403 and no banner. */}
+        {hasPermission("payments.view") && <ChecksDueTodayBanner />}
 
         <main className="flex-1 p-4 sm:p-6 bg-gray-50 min-w-0">{children}</main>
       </div>

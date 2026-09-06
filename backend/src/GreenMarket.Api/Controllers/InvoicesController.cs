@@ -123,10 +123,12 @@ public class InvoicesController : ControllerBase
 
     /// <summary>Bulk-print page: the selected (already filtered) invoices, each printed as its
     /// own separate invoice (own header/items/total, no merging across merchants), four to a
-    /// physical A4 page.</summary>
+    /// physical A4 page. `role` decides WHOSE copy is produced — the بائع section asks for
+    /// Farmer, the سائق section for Driver (see ExportService.InvoiceCard). Defaults to Merchant
+    /// so an older caller that doesn't pass it keeps the exact behavior it had.</summary>
     [HttpGet("print/pdf")]
     [RequirePermission(PermissionKeys.InvoicesView)]
-    public async Task<IActionResult> PrintBulkPdf([FromQuery] List<int> ids)
+    public async Task<IActionResult> PrintBulkPdf([FromQuery] List<int> ids, [FromQuery] InvoicePrintRole role = InvoicePrintRole.Merchant)
     {
         if (ids is null || ids.Count == 0)
             return BadRequest(new { error = "يرجى اختيار فاتورة واحدة على الأقل." });
@@ -134,8 +136,8 @@ public class InvoicesController : ControllerBase
 
         var invoices = await _invoiceService.GetManyAsync(ids);
         var company = await GetCompanyInfoAsync();
-        var bytes = _exportService.GenerateInvoicesBulkPdf(invoices, company);
-        return File(bytes, "application/pdf", "invoices-bulk.pdf");
+        var bytes = _exportService.GenerateInvoicesBulkPdf(invoices, company, role);
+        return File(bytes, "application/pdf", $"invoices-bulk-{role.ToString().ToLowerInvariant()}.pdf");
     }
 
     /// <summary>Bulk-print page's merchant-section print button (explicit request): several

@@ -14,7 +14,7 @@ import { apiErrorMessage } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { useSelection } from "../lib/useSelection";
 import { runBulkDelete, summarizeBulkDelete } from "../lib/bulkDelete";
-import { PAYMENT_METHOD_OPTIONS, PaymentLineFields, emptyLine, resolveMethod } from "../components/PaymentLineFields";
+import { CHECK_METHOD, PAYMENT_METHOD_OPTIONS, PaymentLineFields, emptyLine, lineTotal, paymentRequestsFromLine, validatePaymentLine } from "../components/PaymentLineFields";
 import type { PaymentLine } from "../components/PaymentLineFields";
 
 export function PaymentsPage() {
@@ -249,26 +249,28 @@ function PaymentFormModal({ onClose, onSaved }: { onClose: () => void; onSaved: 
     const partnerName = partnerText.trim();
     if (!partner && !partnerName) { setError("يرجى إدخال اسم الشخص"); return; }
     for (const [i, line] of lines.entries()) {
-      const amountValue = parseFloat(line.amount);
-      if (!amountValue || amountValue <= 0) { setError(`السطر ${i + 1}: المبلغ يجب أن يكون أكبر من صفر`); return; }
-      if (line.method === "شيك" && !line.checkDueDate) { setError(`السطر ${i + 1}: تاريخ استحقاق الشيك مطلوب`); return; }
-      if (line.method === "أخرى" && !line.customMethod.trim()) { setError(`السطر ${i + 1}: يرجى تحديد طريقة الدفع`); return; }
+      const problem = validatePaymentLine(line, `السطر ${i + 1}`);
+      if (problem) { setError(problem); return; }
+      if (lineTotal(line) <= 0) { setError(`السطر ${i + 1}: المبلغ يجب أن يكون أكبر من صفر`); return; }
     }
     setBusy(true);
     setError(null);
     try {
       for (const [i, line] of lines.entries()) {
         try {
-          const isCheck = line.method === "شيك";
-          await createPayment({
-            partnerId: partner?.id,
-            partnerName: partner ? undefined : partnerName,
-            direction, amount: parseFloat(line.amount), date: new Date(date).toISOString(),
-            method: resolveMethod(line) || undefined, notes: notes || undefined,
-            invoiceId: partner ? invoiceId : null,
-            checkDueDate: isCheck ? new Date(line.checkDueDate).toISOString() : null,
-            checkNumber: isCheck ? (line.checkNumber || undefined) : undefined,
-          });
+          // A شيك line fans out into one Payment row per check, so each shows up and clears
+          // independently on the "الشيكات" page — see paymentRequestsFromLine.
+          for (const request of paymentRequestsFromLine(line)) {
+            await createPayment({
+              partnerId: partner?.id,
+              partnerName: partner ? undefined : partnerName,
+              direction, amount: request.amount, date: new Date(date).toISOString(),
+              method: request.method, notes: notes || undefined,
+              invoiceId: partner ? invoiceId : null,
+              checkDueDate: request.checkDueDate,
+              checkNumber: request.checkNumber,
+            });
+          }
         } catch (err) {
           throw new Error(`السطر ${i + 1}: ${apiErrorMessage(err, "فشل الحفظ")}${i > 0 ? " — الأسطر السابقة انحفظت فعليًا" : ""}`);
         }
@@ -287,7 +289,7 @@ function PaymentFormModal({ onClose, onSaved }: { onClose: () => void; onSaved: 
     }
   }
 
-  const linesTotal = lines.reduce((sum, l) => sum + (parseFloat(l.amount) || 0), 0);
+  const linesTotal = lines.reduce((sum, l) => sum + lineTotal(l), 0);
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
@@ -374,10 +376,14 @@ function PaymentEditModal({ payment, onClose, onSaved }: { payment: PaymentDto; 
   // first time a check is marked Cleared, if it doesn't already have one.
   const [checkClearedDate, setCheckClearedDate] = useState(payment.checkClearedDate ? payment.checkClearedDate.slice(0, 10) : "");
   const [notes, setNotes] = useState(payment.notes ?? "");
+  // Extra methods/checks to record ALONGSIDE this row, for "دفعت كمان شيكين على نفس الدفعة".
+  // Each one is saved as its own new payment (same person/direction/invoice/date), because that's
+  // how a split payment is stored everywhere else — this row itself stays exactly one check.
+  const [extraLines, setExtraLines] = useState<PaymentLine[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const isCheck = method === "شيك";
+  const isCheck = method === CHECK_METHOD;
   const isCleared = checkStatus === "Cleared";
 
   function handleCheckStatusChange(next: CheckClearanceStatus) {
@@ -385,11 +391,20 @@ function PaymentEditModal({ payment, onClose, onSaved }: { payment: PaymentDto; 
     if (next === "Cleared" && !checkClearedDate) setCheckClearedDate(todayLocalDateString());
   }
 
+  function updateExtraLine(index: number, patch: Partial<PaymentLine>) {
+    setExtraLines((prev) => prev.map((l, i) => (i === index ? { ...l, ...patch } : l)));
+  }
+
   async function handleSave() {
     const amountValue = parseFloat(amount);
     if (!amountValue || amountValue <= 0) { setError("المبلغ يجب أن يكون أكبر من صفر"); return; }
     if (isCheck && !checkDueDate) { setError("تاريخ استحقاق الشيك مطلوب"); return; }
     if (method === "أخرى" && !customMethod.trim()) { setError("يرجى تحديد طريقة الدفع"); return; }
+    for (const [i, line] of extraLines.entries()) {
+      const problem = validatePaymentLine(line, `الإضافة ${i + 1}`);
+      if (problem) { setError(problem); return; }
+      if (lineTotal(line) <= 0) { setError(`الإضافة ${i + 1}: المبلغ يجب أن يكون أكبر من صفر`); return; }
+    }
     setBusy(true);
     setError(null);
     try {
@@ -401,9 +416,25 @@ function PaymentEditModal({ payment, onClose, onSaved }: { payment: PaymentDto; 
         checkStatus: isCheck ? checkStatus : null,
         checkClearedDate: isCheck && isCleared && checkClearedDate ? new Date(checkClearedDate).toISOString() : null,
       });
+      // Only after the edit itself lands, so a rejected edit doesn't leave new rows behind for a
+      // payment that never changed.
+      for (const [i, line] of extraLines.entries()) {
+        try {
+          for (const request of paymentRequestsFromLine(line)) {
+            await createPayment({
+              partnerId: payment.partnerId, direction: payment.direction,
+              amount: request.amount, date: new Date(date).toISOString(),
+              method: request.method, notes: notes || undefined, invoiceId,
+              checkDueDate: request.checkDueDate, checkNumber: request.checkNumber,
+            });
+          }
+        } catch (err) {
+          throw new Error(`تم حفظ التعديل، لكن تعذر إضافة (الإضافة ${i + 1}): ${apiErrorMessage(err, "فشل الحفظ")}`);
+        }
+      }
       onSaved();
     } catch (err) {
-      setError(apiErrorMessage(err, "فشل الحفظ"));
+      setError(err instanceof Error ? err.message : apiErrorMessage(err, "فشل الحفظ"));
     } finally {
       setBusy(false);
     }
@@ -461,6 +492,23 @@ function PaymentEditModal({ payment, onClose, onSaved }: { payment: PaymentDto; 
               )}
             </>
           )}
+
+          {/* Adding to an existing payment: extra methods, or extra checks on top of this one.
+              Each becomes its own new payment row for the same person/invoice/date. */}
+          <div className="space-y-2 border-t border-gray-200 pt-3">
+            {extraLines.length > 0 && <label className="label mb-0">إضافات على نفس الدفعة</label>}
+            {extraLines.map((line, i) => (
+              <PaymentLineFields
+                key={i} line={line} onChange={(patch) => updateExtraLine(i, patch)}
+                onRemove={() => setExtraLines((prev) => prev.filter((_, index) => index !== i))} showRemove
+              />
+            ))}
+            <button type="button" className="text-sm text-brand-700 hover:underline"
+              onClick={() => setExtraLines((prev) => [...prev, emptyLine()])}>
+              + إضافة شيكات أو طريقة دفع أخرى على نفس الدفعة
+            </button>
+          </div>
+
           <div>
             <label className="label">ملاحظات</label>
             <input className="input" value={notes} onChange={(e) => setNotes(e.target.value)} />

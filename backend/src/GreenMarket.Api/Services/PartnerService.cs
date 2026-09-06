@@ -97,11 +97,11 @@ public class PartnerService : IPartnerService
             .Select(g => new { MerchantId = g.Key, Total = g.Sum(i => i.TotalValue) })
             .ToDictionaryAsync(x => x.MerchantId, x => x.Total);
 
-        // A check that bounced never actually paid anything — excluded here (and everywhere else
-        // "paid" is summed from Payments) so a bounced check doesn't silently understate what a
-        // merchant still owes. See CheckClearanceStatus.Bounced's doc comment.
+        // A check only counts once it has actually cleared — see PaymentRules, which every
+        // "paid" sum in the app now goes through.
         var paidByMerchant = await _db.Payments
-            .Where(p => merchantIds.Contains(p.PartnerId) && p.Direction == PaymentDirection.FromMerchant && p.CheckStatus != CheckClearanceStatus.Bounced)
+            .Where(PaymentRules.CountsTowardBalanceExpression)
+            .Where(p => merchantIds.Contains(p.PartnerId) && p.Direction == PaymentDirection.FromMerchant)
             .GroupBy(p => p.PartnerId)
             .Select(g => new { PartnerId = g.Key, Total = g.Sum(p => p.Amount) })
             .ToDictionaryAsync(x => x.PartnerId, x => x.Total);
@@ -246,11 +246,11 @@ public class PartnerService : IPartnerService
 
         // Method/Notes/linked invoice number: a payment can optionally be tied to one specific
         // invoice (InvoiceLinkPicker on the Payments page) — shown so "أي فاتورة سُدِّدت بهاي الدفعة"
-        // is visible right on the statement line, not just on the Payments page. A bounced check
-        // never actually paid anything — excluded here too, same reasoning as ListAsync's
-        // paidByMerchant above — but it's still shown on the statement (Amount=0, a Description
-        // noting it bounced) rather than silently disappearing, so the trader can see it was
-        // recorded and then reversed rather than never having existed.
+        // is visible right on the statement line, not just on the Payments page. A check that
+        // hasn't cleared (still قيد التحصيل, or bounced) never actually paid anything — it doesn't
+        // move the running balance (see PaymentRules), but it IS still listed, at 0 with a
+        // description saying why, so the trader can see it was recorded and what state it's in
+        // rather than it silently not existing.
         var payments = await _db.Payments
             .Where(p => p.PartnerId == id && p.Direction == PaymentDirection.FromMerchant)
             .Select(p => new { p.Date, p.Amount, p.Method, p.Notes, p.InvoiceId, p.CheckStatus, LinkedInvoiceNumber = p.Invoice != null ? p.Invoice.InvoiceNumber : null })
@@ -261,16 +261,21 @@ public class PartnerService : IPartnerService
                 InvoiceId: i.Id, InvoiceNumber: i.InvoiceNumber))
             .Concat(payments.Select(p =>
             {
-                var bounced = p.CheckStatus == CheckClearanceStatus.Bounced;
+                var counts = PaymentRules.CountsTowardBalance(p.CheckStatus);
+                var description = counts
+                    ? "دفعة مستلمة"
+                    : p.CheckStatus == CheckClearanceStatus.Bounced
+                    ? "دفعة بشيك ارتد (لم تُحتسب)"
+                    : "دفعة بشيك قيد التحصيل (لم تُحتسب بعد)";
                 return new AccountStatementBuilder.Entry(
-                    p.Date, bounced ? "دفعة بشيك ارتد (لم تُحتسب)" : "دفعة مستلمة", bounced ? 0 : -p.Amount,
+                    p.Date, description, counts ? -p.Amount : 0,
                     InvoiceId: p.InvoiceId, InvoiceNumber: p.LinkedInvoiceNumber, Method: p.Method, Notes: p.Notes);
             }));
 
         var openingBalance = partner.OpeningBalance ?? 0;
         var statement = AccountStatementBuilder.Build(entries, openingBalance);
         var totalPurchases = invoices.Sum(i => i.TotalValue);
-        var totalPaid = payments.Where(p => p.CheckStatus != CheckClearanceStatus.Bounced).Sum(p => p.Amount);
+        var totalPaid = payments.Where(p => PaymentRules.CountsTowardBalance(p.CheckStatus)).Sum(p => p.Amount);
         var remaining = openingBalance + totalPurchases - totalPaid;
         var isOverLimit = partner.CreditLimit is not null && remaining > partner.CreditLimit;
 
@@ -400,9 +405,10 @@ public class PartnerService : IPartnerService
             .Select(g => new { MerchantId = g.Key, Total = g.Sum(i => i.TotalValue) })
             .ToDictionaryAsync(x => x.MerchantId, x => x.Total);
 
-        // Same Bounced exclusion as ListAsync/GetMerchantAccountAsync — a bounced check isn't real money.
+        // Same "only cleared checks count" rule as ListAsync/GetMerchantAccountAsync — see PaymentRules.
         var paidByMerchant = await _db.Payments
-            .Where(p => p.Direction == PaymentDirection.FromMerchant && p.CheckStatus != CheckClearanceStatus.Bounced)
+            .Where(PaymentRules.CountsTowardBalanceExpression)
+            .Where(p => p.Direction == PaymentDirection.FromMerchant)
             .GroupBy(p => p.PartnerId)
             .Select(g => new { PartnerId = g.Key, Total = g.Sum(p => p.Amount) })
             .ToDictionaryAsync(x => x.PartnerId, x => x.Total);

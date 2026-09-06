@@ -9,7 +9,7 @@ import { apiErrorMessage } from "../api/client";
 import { formatCurrency, formatQuantity, todayLocalDateString } from "../lib/format";
 import type { MerchantAccountDto, UnitOfMeasure } from "../types";
 import { CREDIT_LIMIT_UI_ENABLED } from "../lib/featureFlags";
-import { PaymentLineFields, emptyLine, resolveMethod } from "../components/PaymentLineFields";
+import { PaymentLineFields, emptyLine, lineTotal, paymentRequestsFromLine, validatePaymentLine } from "../components/PaymentLineFields";
 import type { PaymentLine } from "../components/PaymentLineFields";
 
 interface Row {
@@ -108,7 +108,7 @@ export function InvoiceNewPage() {
   const woodTotal = parsedRows.reduce((sum, r) => sum + r.woodPrice, 0);
   const transportFeeValue = parseFloat(transportFee) || 0;
   const grandTotal = totalValue + woodTotal + transportFeeValue;
-  const paidAmountValue = paymentLines.reduce((sum, l) => sum + (parseFloat(l.amount) || 0), 0);
+  const paidAmountValue = paymentLines.reduce((sum, l) => sum + lineTotal(l), 0);
   const remainingOnThisInvoice = grandTotal - paidAmountValue;
 
   useEffect(() => {
@@ -175,11 +175,13 @@ export function InvoiceNewPage() {
     // "دفعة عند الإصدار" (explicit request: can split across several methods) — validated BEFORE
     // creating the invoice, so a bad check due date is caught up front instead of leaving an
     // invoice saved with no way to also record its payment.
-    const paymentLinesToRecord = paymentLines.filter((l) => (parseFloat(l.amount) || 0) > 0);
-    for (const [i, line] of paymentLinesToRecord.entries()) {
-      if (line.method === "شيك" && !line.checkDueDate) { setError(`الدفعة - السطر ${i + 1}: تاريخ استحقاق الشيك مطلوب`); return; }
-      if (line.method === "أخرى" && !line.customMethod.trim()) { setError(`الدفعة - السطر ${i + 1}: يرجى تحديد طريقة الدفع`); return; }
+    // Validated across ALL lines (even zero ones) before filtering, so a check line with a due
+    // date but no amount typed in yet is caught as the half-filled entry it is.
+    for (const [i, line] of paymentLines.entries()) {
+      const problem = validatePaymentLine(line, `الدفعة - السطر ${i + 1}`);
+      if (problem) { setError(problem); return; }
     }
+    const paymentLinesToRecord = paymentLines.filter((l) => lineTotal(l) > 0);
 
     setBusy(true);
     try {
@@ -201,18 +203,20 @@ export function InvoiceNewPage() {
       let paymentError: string | undefined;
       for (const [i, line] of paymentLinesToRecord.entries()) {
         try {
-          const isCheck = line.method === "شيك";
-          await createPayment({
-            partnerId: invoice.merchantId,
-            direction: "FromMerchant",
-            amount: parseFloat(line.amount),
-            date: new Date(date).toISOString(),
-            method: resolveMethod(line) || undefined,
-            notes: `دفعة عند إصدار الفاتورة ${invoice.invoiceNumber}`,
-            invoiceId: invoice.id,
-            checkDueDate: isCheck ? new Date(line.checkDueDate).toISOString() : null,
-            checkNumber: isCheck ? (line.checkNumber || undefined) : undefined,
-          });
+          // One Payment row per check on a شيك line — see paymentRequestsFromLine.
+          for (const request of paymentRequestsFromLine(line)) {
+            await createPayment({
+              partnerId: invoice.merchantId,
+              direction: "FromMerchant",
+              amount: request.amount,
+              date: new Date(date).toISOString(),
+              method: request.method,
+              notes: `دفعة عند إصدار الفاتورة ${invoice.invoiceNumber}`,
+              invoiceId: invoice.id,
+              checkDueDate: request.checkDueDate,
+              checkNumber: request.checkNumber,
+            });
+          }
         } catch (err) {
           paymentError = `تعذر تسجيل الدفعة (السطر ${i + 1}): ${apiErrorMessage(err, "فشل الحفظ")}${i > 0 ? " — الأسطر السابقة انحفظت فعليًا" : ""}`;
           break;

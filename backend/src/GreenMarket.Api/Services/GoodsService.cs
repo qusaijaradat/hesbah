@@ -104,6 +104,11 @@ public class GoodsService : IGoodsService
     /// ItemName+Unit key already used elsewhere. Sold is scoped to invoices that actually have a
     /// farmer attached (i.FarmerId != null) and joined back to that same farmer, consistent with the
     /// per-farmer version only ever counting that farmer's own invoices.
+    ///
+    /// Only rows with something left show up: a fully sold-out (farmer, item) is dropped entirely
+    /// rather than listed at zero — see the Where at the end for why negative rows are kept. The
+    /// per-farmer Stock list on "بضاعة الباعة" deliberately still shows its zero rows: that page is
+    /// one farmer's full intake picture, where "brought 100, sold 100" is the answer, not noise.
     /// </summary>
     public async Task<IReadOnlyList<GoodsStockRow>> GetGlobalStockAsync()
     {
@@ -139,6 +144,14 @@ public class GoodsService : IGoodsService
             var farmerName = receivedByKey.TryGetValue(key, out var r2) ? r2.FarmerName : soldByKey[key].FarmerName;
             return new GoodsStockRow(display, key.Unit, received, sold, received - sold, wood, key.FarmerId, farmerName);
         })
+        // "البضاعة المتوفرة حاليًا" means exactly that: an item a farmer brought in and has since
+        // sold out of (Available == 0) is finished business and just pads the table — explicit
+        // request to drop the whole row, not blank the number. Deliberately `!= 0` and NOT `> 0`:
+        // a NEGATIVE row means more was sold than was ever logged as received, which is a missing
+        // "إضافة بضاعة" entry someone needs to see and fix (see GetForFarmerAsync's own doc
+        // comment for why those rows exist at all) — hiding those would bury the very problem
+        // they're there to surface.
+        .Where(r => r.Available != 0)
         .OrderBy(r => r.FarmerName).ThenBy(r => r.ItemName)
         .ToList();
     }

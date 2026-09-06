@@ -1,8 +1,16 @@
 import { apiClient } from "./client";
+import { serializeQueryParams } from "./queryParams";
 import type { FarmerGoodsDto, InvoiceDto, InvoiceFilter, InvoiceItemInput, InvoiceListItemDto, PagedResult } from "../types";
 
+// The filter now carries array fields (the "استثناء أسماء" exclusion lists), which axios would
+// otherwise send in a bracket form ASP.NET Core doesn't bind — see serializeQueryParams.
+const filterSerializer = { serialize: serializeQueryParams };
+
 export async function listInvoices(filter: InvoiceFilter) {
-  const { data } = await apiClient.get<PagedResult<InvoiceListItemDto>>("/invoices", { params: filter });
+  const { data } = await apiClient.get<PagedResult<InvoiceListItemDto>>("/invoices", {
+    params: filter,
+    paramsSerializer: filterSerializer,
+  });
   return data;
 }
 
@@ -64,15 +72,25 @@ export async function downloadFarmerInvoicePdf(id: number) {
 }
 
 export async function downloadInvoicesExcel(filter: InvoiceFilter) {
-  const { data } = await apiClient.get("/invoices/export/excel", { params: filter, responseType: "blob" });
+  const { data } = await apiClient.get("/invoices/export/excel", {
+    params: filter,
+    paramsSerializer: filterSerializer,
+    responseType: "blob",
+  });
   return data as Blob;
 }
 
+/** Whose copy of an invoice a bulk print run produces — see backend InvoicePrintRole. */
+export type InvoicePrintRole = "Merchant" | "Farmer" | "Driver";
+
 // Built as a plain query string (not axios's array-params handling) because ASP.NET Core's
 // default model binding for `List<int> ids` expects repeated "ids=1&ids=2", not "ids[]=1&ids[]=2".
-export async function printInvoicesBulkPdf(ids: number[]) {
+//
+// `role` is what makes the بائع section print "فاتورة بائع" and the سائق section "فاتورة سائق",
+// instead of every section printing the buyer's copy the way it used to.
+export async function printInvoicesBulkPdf(ids: number[], role: InvoicePrintRole) {
   const query = ids.map((id) => `ids=${id}`).join("&");
-  const { data } = await apiClient.get(`/invoices/print/pdf?${query}`, { responseType: "blob" });
+  const { data } = await apiClient.get(`/invoices/print/pdf?${query}&role=${role}`, { responseType: "blob" });
   return data as Blob;
 }
 

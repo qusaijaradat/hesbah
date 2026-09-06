@@ -71,13 +71,15 @@ public enum PaymentDirection
 /// </summary>
 public enum CheckClearanceStatus
 {
-    /// <summary>Received but not yet cashed/deposited — the common starting state.</summary>
+    /// <summary>Received but not yet cashed/deposited — the common starting state. Counts as money
+    /// only once it becomes <see cref="Cleared"/>; see Domain.Services.PaymentRules.</summary>
     Pending = 1,
 
-    /// <summary>Successfully cashed/deposited.</summary>
+    /// <summary>Successfully cashed/deposited — the ONLY state in which a check counts toward any
+    /// balance, statement, report or daily-closing figure (see Domain.Services.PaymentRules).</summary>
     Cleared = 2,
 
-    /// <summary>Came back from the bank unpaid ("ارتد" / "مرتجع").</summary>
+    /// <summary>Came back from the bank unpaid ("ارتد" / "مرتجع"). Never counts.</summary>
     Bounced = 3
 }
 

@@ -2,6 +2,7 @@ using GreenMarket.Api.Common;
 using GreenMarket.Api.DTOs;
 using GreenMarket.Domain.Entities;
 using GreenMarket.Domain.Enums;
+using GreenMarket.Domain.Services;
 using GreenMarket.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
@@ -15,7 +16,11 @@ public interface IPaymentService
     /// <summary>Single-payment lookup for the edit form — previously the edit screen had to fetch
     /// and filter the whole paged list to find one row instead of asking for it directly.</summary>
     Task<PaymentDto> GetAsync(int id);
-    Task<PagedResult<PaymentDto>> ListAsync(int? partnerId, int page, int pageSize);
+    /// <summary>Both filters are optional and independent. `invoiceId` backs the invoice edit
+    /// page's "الدفعات على هذه الفاتورة" section — one invoice's payments can be several rows,
+    /// since a payment split across methods (and a check-payment split across several checks)
+    /// stores one row per check/method.</summary>
+    Task<PagedResult<PaymentDto>> ListAsync(int? partnerId, int? invoiceId, int page, int pageSize);
     Task<PaymentDto> UpdateAsync(int id, UpdatePaymentRequest request);
     Task DeleteAsync(int id);
 
@@ -78,14 +83,19 @@ public class PaymentService : IPaymentService
         // in PartnerService.GetMerchantAccountAsync from Payments directly.
         if (request.Direction is PaymentDirection.ToFarmer or PaymentDirection.ToDriver)
         {
+            // A brand-new check always starts Pending, so it posts as 0 — the farmer/driver hasn't
+            // been paid until it clears (see PaymentRules). The ledger row is still created, so
+            // the payment is visible on their statement right away, and UpdateAsync flips the
+            // amount to the real one the moment someone marks the check Cleared.
+            var counts = PaymentRules.CountsTowardBalance(payment.CheckStatus);
             _db.FarmerTransactions.Add(new FarmerTransaction
             {
                 FarmerId = partner.Id,
                 Type = FarmerTransactionType.Payment,
                 PaymentId = payment.Id,
                 Date = payment.Date,
-                Amount = -payment.Amount,
-                Notes = payment.Notes
+                Amount = counts ? -payment.Amount : 0,
+                Notes = counts ? payment.Notes : $"{payment.Notes} (شيك قيد التحصيل — لم يُحتسب بعد)".Trim()
             });
             await _db.SaveChangesAsync();
         }
@@ -102,7 +112,7 @@ public class PaymentService : IPaymentService
         return ToDto(payment, payment.Partner.Name, payment.Invoice?.InvoiceNumber);
     }
 
-    public async Task<PagedResult<PaymentDto>> ListAsync(int? partnerId, int page, int pageSize)
+    public async Task<PagedResult<PaymentDto>> ListAsync(int? partnerId, int? invoiceId, int page, int pageSize)
     {
         // PaymentsController's own print button calls this with pageSize=10000 (print
         // everything matching the current filter) — ceiling set above that instead of the usual
@@ -111,6 +121,7 @@ public class PaymentService : IPaymentService
 
         var query = _db.Payments.Include(p => p.Partner).Include(p => p.Invoice).AsQueryable();
         if (partnerId is not null) query = query.Where(p => p.PartnerId == partnerId);
+        if (invoiceId is not null) query = query.Where(p => p.InvoiceId == invoiceId);
 
         var total = await query.CountAsync();
         var items = await query.OrderByDescending(p => p.Date)
@@ -174,15 +185,19 @@ public class PaymentService : IPaymentService
             var transaction = await _db.FarmerTransactions.SingleOrDefaultAsync(t => t.PaymentId == payment.Id);
             if (transaction is not null)
             {
-                // A bounced check never actually paid the farmer/driver anything — posting it as 0
-                // instead of -Amount keeps their remaining balance correct (see
-                // CheckClearanceStatus.Bounced's doc comment; same fix as PartnerService's merchant
-                // side). Moving OFF Bounced (back to Pending/Cleared) restores the real amount.
-                transaction.Amount = payment.CheckStatus == CheckClearanceStatus.Bounced ? 0 : -payment.Amount;
+                // A check only pays the farmer/driver once it clears — anything else posts as 0
+                // instead of -Amount, keeping their remaining balance correct (see PaymentRules).
+                // This is the write-side mirror of the merchant-side rule in PartnerService, and
+                // it works in both directions: marking a check Cleared restores the real amount,
+                // marking it back to Pending/Bounced zeroes it again.
+                var counts = PaymentRules.CountsTowardBalance(payment.CheckStatus);
+                transaction.Amount = counts ? -payment.Amount : 0;
                 transaction.Date = payment.Date;
-                transaction.Notes = payment.CheckStatus == CheckClearanceStatus.Bounced
+                transaction.Notes = counts
+                    ? payment.Notes
+                    : payment.CheckStatus == CheckClearanceStatus.Bounced
                     ? $"{payment.Notes} (شيك ارتد — لم يُحتسب)".Trim()
-                    : payment.Notes;
+                    : $"{payment.Notes} (شيك قيد التحصيل — لم يُحتسب بعد)".Trim();
             }
         }
 

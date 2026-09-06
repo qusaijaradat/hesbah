@@ -469,11 +469,12 @@ public class InvoiceService : IInvoiceService
             .ToListAsync();
         var totalOwed = otherInvoices.Sum(i => i.TotalValue + i.TransportFee + i.WoodTotal + i.BoxFeeTotal);
 
-        // Bounced checks excluded — same reasoning as PartnerService's own "paid" total (see
-        // CheckClearanceStatus.Bounced's doc comment): a check that came back never actually paid
-        // anything, so it must not make the printed "previous balance" understate what's still owed.
+        // Only cleared checks count (see PaymentRules) — a check still قيد التحصيل, or one that
+        // came back, never actually paid anything, so it must not make the printed "previous
+        // balance" understate what's still owed.
         var totalPaid = await _db.Payments
-            .Where(p => p.PartnerId == merchantId && p.Direction == PaymentDirection.FromMerchant && p.CheckStatus != CheckClearanceStatus.Bounced)
+            .Where(PaymentRules.CountsTowardBalanceExpression)
+            .Where(p => p.PartnerId == merchantId && p.Direction == PaymentDirection.FromMerchant)
             .SumAsync(p => (decimal?)p.Amount) ?? 0;
 
         return Math.Max(0, openingBalance + totalOwed - totalPaid);
@@ -503,6 +504,16 @@ public class InvoiceService : IInvoiceService
         if (filter.DriverId is not null) query = query.Where(i => i.DriverId == filter.DriverId);
         if (filter.HasFarmer == true) query = query.Where(i => i.FarmerId != null);
         if (filter.HasDriver == true) query = query.Where(i => i.DriverId != null);
+        // "استثناء أسماء" (see InvoiceFilterRequest.ExcludeMerchantIds' doc comment). Held in
+        // locals so the lambdas capture the list itself rather than the filter object, and so the
+        // nullable-column cases can spell out "no farmer attached at all still passes" explicitly
+        // instead of relying on how SQL's NOT IN treats NULL.
+        if (filter.ExcludeMerchantIds is { Count: > 0 } excludedMerchants)
+            query = query.Where(i => !excludedMerchants.Contains(i.MerchantId));
+        if (filter.ExcludeFarmerIds is { Count: > 0 } excludedFarmers)
+            query = query.Where(i => i.FarmerId == null || !excludedFarmers.Contains(i.FarmerId.Value));
+        if (filter.ExcludeDriverIds is { Count: > 0 } excludedDrivers)
+            query = query.Where(i => i.DriverId == null || !excludedDrivers.Contains(i.DriverId.Value));
         if (filter.Status is not null) query = query.Where(i => i.Status == filter.Status);
         if (!string.IsNullOrWhiteSpace(filter.InvoiceNumber)) query = query.Where(i => i.InvoiceNumber.Contains(filter.InvoiceNumber));
         if (!string.IsNullOrWhiteSpace(filter.InvoiceNumberFrom)) query = query.Where(i => i.InvoiceNumber.CompareTo(filter.InvoiceNumberFrom) >= 0);
@@ -536,6 +547,10 @@ public class InvoiceService : IInvoiceService
                 i.TotalValue, i.TransportFee,
                 WoodTotal = i.Items.Sum(it => (decimal?)it.WoodPrice) ?? 0,
                 i.BoxPriceApplied,
+                // Both rates are locked in per invoice at creation time — pulled here so the
+                // farmer-side and driver-side figures below can be derived per row.
+                i.CommissionRateApplied,
+                i.DriverBoxFeeApplied,
                 ItemNames = i.Items.Select(it => it.ItemName).ToList()
             })
             .ToListAsync();
@@ -565,6 +580,12 @@ public class InvoiceService : IInvoiceService
         {
             // Same "TotalBoxes × BoxPriceApplied, computed fresh" treatment as InvoiceService.ToDto.
             var boxFeeTotal = x.TotalBoxes * x.BoxPriceApplied;
+            // Farmer-side and driver-side money, derived exactly the way ToDto derives them for a
+            // single invoice — through CommissionCalculator rather than a second inline formula,
+            // so a list row can never disagree with the invoice's own DTO, its printed copy, or
+            // the partner's ledger. See InvoiceListItemDto's doc comment.
+            var commissionResult = CommissionCalculator.Calculate(x.TotalValue, x.CommissionRateApplied);
+            var driverBoxFeeTotal = x.TotalBoxes * x.DriverBoxFeeApplied;
             return new InvoiceListItemDto(
                 x.Id, x.InvoiceNumber, x.Date, x.MerchantId, x.MerchantName, x.MerchantWhatsApp,
                 x.FarmerId, x.FarmerName, x.FarmerWhatsApp, x.DriverId, x.DriverName, x.DriverWhatsApp,
@@ -574,7 +595,9 @@ public class InvoiceService : IInvoiceService
                 x.WoodTotal, boxFeeTotal,
                 merchantRemainingById.GetValueOrDefault(x.MerchantId),
                 x.FarmerId is not null ? sellerRemainingById.GetValueOrDefault(x.FarmerId.Value) : null,
-                x.DriverId is not null ? sellerRemainingById.GetValueOrDefault(x.DriverId.Value) : null);
+                x.DriverId is not null ? sellerRemainingById.GetValueOrDefault(x.DriverId.Value) : null,
+                commissionResult.Commission, commissionResult.NetDueToFarmer + x.WoodTotal,
+                driverBoxFeeTotal, x.TransportFee + driverBoxFeeTotal + x.WoodTotal);
         }).ToList();
 
         return new PagedResult<InvoiceListItemDto> { Items = items, TotalCount = total, Page = filter.Page, PageSize = filter.PageSize };

@@ -10,6 +10,10 @@ import type { GoodsStockRow } from "../types";
  * getGoodsGlobalStockForReports) — same GoodsService.GetGlobalStockAsync data, reached through each
  * page's own permission. Always a live all-time running total, never scoped to any date filter the
  * page around it might have, and never tied to picking any one person.
+ *
+ * Only stock that's actually still there is listed — a (farmer, item) sold down to zero is dropped
+ * from the result entirely, server-side. A NEGATIVE "المتوفر" is kept and shown in red: it means
+ * more was sold than was ever logged as received, i.e. a missing "إضافة بضاعة" entry to go fix.
  */
 export function GoodsGlobalStockCard({
   rows, loading, error,
@@ -30,7 +34,9 @@ export function GoodsGlobalStockCard({
           {loading ? (
             <tr><td colSpan={7} className="text-center text-gray-400 py-6">جاري التحميل...</td></tr>
           ) : rows.length === 0 ? (
-            <tr><td colSpan={7} className="text-center text-gray-400 py-6">لا توجد بضاعة مسجلة بعد</td></tr>
+            // Sold-out rows are dropped server-side (see GoodsService.GetGlobalStockAsync), so an
+            // empty table here means "nothing left in stock", not "nothing was ever recorded".
+            <tr><td colSpan={7} className="text-center text-gray-400 py-6">لا توجد بضاعة متوفرة حاليًا</td></tr>
           ) : (
             rows.map((r, idx) => (
               <tr key={idx}>

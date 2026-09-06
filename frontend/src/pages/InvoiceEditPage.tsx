@@ -1,12 +1,15 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { PartnerAutocomplete } from "../components/PartnerAutocomplete";
 import { ItemAutocomplete } from "../components/ItemAutocomplete";
+import { InvoicePaymentsEditor } from "../components/InvoicePaymentsEditor";
+import type { InvoicePaymentsEditorHandle } from "../components/InvoicePaymentsEditor";
 import { getInvoice, updateInvoice } from "../api/invoices";
 import { getMerchantAccount } from "../api/partners";
 import { apiErrorMessage } from "../api/client";
 import { formatCurrency, formatQuantity, localDateInputValue } from "../lib/format";
 import type { MerchantAccountDto, UnitOfMeasure } from "../types";
+import { useAuth } from "../auth/AuthContext";
 import { CREDIT_LIMIT_UI_ENABLED } from "../lib/featureFlags";
 
 interface Row {
@@ -72,6 +75,7 @@ function priceLabel(unit: UnitOfMeasure) {
 export function InvoiceEditPage() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { hasPermission } = useAuth();
   const [loading, setLoading] = useState(true);
   const [notEditable, setNotEditable] = useState(false);
   const [invoiceNumber, setInvoiceNumber] = useState("");
@@ -96,6 +100,12 @@ export function InvoiceEditPage() {
   const [originalMerchantId, setOriginalMerchantId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // "الدفعات على هذه الفاتورة" — owns its own rows and writes them through this handle as part of
+  // this page's single save, so the invoice and its payments never end up half-applied.
+  const paymentsRef = useRef<InvoicePaymentsEditorHandle>(null);
+  const [paidTotal, setPaidTotal] = useState(0);
+  // Stable identity so the editor's "report my total upward" effect doesn't re-run every render.
+  const handlePaidTotalChange = useCallback((value: number) => setPaidTotal(value), []);
 
   useEffect(() => {
     if (!id) return;
@@ -189,7 +199,7 @@ export function InvoiceEditPage() {
 
     setBusy(true);
     try {
-      await updateInvoice(Number(id), {
+      const saved = await updateInvoice(Number(id), {
         date: new Date(date).toISOString(),
         merchantId: merchant?.id,
         merchantName: merchant ? undefined : merchantName,
@@ -200,6 +210,16 @@ export function InvoiceEditPage() {
         transportFee: transportFeeValue,
         items,
       });
+      // After the invoice, and using ITS merchant id — a payment added in the same edit that also
+      // changed the buyer has to attach to the new one. A failure here leaves the invoice edit
+      // saved, so the message says so rather than reading as "nothing was saved".
+      try {
+        await paymentsRef.current?.save(saved.merchantId);
+      } catch (err) {
+        setError(`تم حفظ تعديلات الفاتورة، لكن: ${err instanceof Error ? err.message : apiErrorMessage(err, "فشل حفظ الدفعات")}`);
+        setBusy(false);
+        return;
+      }
       navigate(`/invoices/${id}`);
     } catch (err) {
       setError(apiErrorMessage(err, "فشل تعديل الفاتورة"));
@@ -370,12 +390,39 @@ export function InvoiceEditPage() {
               <div className="font-medium">{formatCurrency(transportFeeValue)}</div>
             </div>
           )}
+          {paidTotal > 0 && (
+            <div>
+              <div className="text-gray-500">المدفوع</div>
+              <div className="font-medium">{formatCurrency(paidTotal)}</div>
+            </div>
+          )}
           <div className="text-end ms-auto">
             <div className="text-gray-500">الإجمالي الكلي</div>
             <div className="font-bold text-lg text-brand-700">{formatCurrency(grandTotal)}</div>
+            {paidTotal > 0 && (
+              <div className="text-xs text-gray-500 mt-1">الباقي بعد الدفعات: {formatCurrency(grandTotal - paidTotal)}</div>
+            )}
           </div>
         </div>
       </div>
+
+      {/* Reading this section already needs payments.view (the list call enforces it server-side),
+          so a role without it gets no section at all rather than a permission error banner sitting
+          on an otherwise fine invoice form. */}
+      {hasPermission("payments.view") && (
+        <div className="card p-5 mb-4">
+          <InvoicePaymentsEditor
+            ref={paymentsRef}
+            invoiceId={Number(id)}
+            invoiceNumber={invoiceNumber}
+            date={date}
+            canCreate={hasPermission("payments.create")}
+            canEdit={hasPermission("payments.edit")}
+            canDelete={hasPermission("payments.delete")}
+            onTotalChange={handlePaidTotalChange}
+          />
+        </div>
+      )}
 
       {error && <div className="text-sm text-red-600 bg-red-50 rounded-md p-3 mb-4">{error}</div>}
 

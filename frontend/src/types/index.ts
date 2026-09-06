@@ -239,6 +239,15 @@ export interface InvoiceListItemDto {
    * no farmer/driver attached. */
   farmerRemaining?: number | null;
   driverRemaining?: number | null;
+  /** Farmer-side money for this invoice — the same figures its printed "فاتورة بائع" shows.
+   * netDueToFarmer = totalValue − commission + woodTotal (the seller is paid the full wood price
+   * on top, never taxed by the commission). See backend InvoiceListItemDto. */
+  commission: number;
+  netDueToFarmer: number;
+  /** Driver-side money — same figures its printed "فاتورة سائق" and the driver's كشف أجرة نقل
+   * show. driverDue = transportFee + driverBoxFeeTotal + woodTotal. */
+  driverBoxFeeTotal: number;
+  driverDue: number;
 }
 
 export interface InvoiceFilter {
@@ -251,6 +260,12 @@ export interface InvoiceFilter {
    * at all — used when that section's own picker is left blank. See backend InvoiceFilterRequest. */
   hasFarmer?: boolean;
   hasDriver?: boolean;
+  /** "طباعة الفواتير" per-section "استثناء أسماء": drop invoices belonging to these people. One
+   * list per role — each section only ever fills its own, so excluding a name as a مشتري can't
+   * also drop invoices where that person is the بائع. See backend InvoiceFilterRequest. */
+  excludeMerchantIds?: number[];
+  excludeFarmerIds?: number[];
+  excludeDriverIds?: number[];
   itemName?: string;
   invoiceNumber?: string;
   invoiceNumberFrom?: string;

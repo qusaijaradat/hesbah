@@ -29,8 +29,8 @@ public class PaymentsController : ControllerBase
 
     [HttpGet]
     [RequirePermission(PermissionKeys.PaymentsView)]
-    public async Task<ActionResult> List(int? partnerId, int page = 1, int pageSize = 25) =>
-        Ok(await _paymentService.ListAsync(partnerId, page, pageSize));
+    public async Task<ActionResult> List(int? partnerId, int? invoiceId, int page = 1, int pageSize = 25) =>
+        Ok(await _paymentService.ListAsync(partnerId, invoiceId, page, pageSize));
 
     /// <summary>"الشيكات" page — every payment recorded as a check, soonest-due first, optionally
     /// narrowed to one status. Same PaymentsView permission as the rest of this controller — it's a
@@ -59,7 +59,7 @@ public class PaymentsController : ControllerBase
     [RequirePermission(PermissionKeys.PaymentsView)]
     public async Task<IActionResult> PrintPaymentsPdf(DateTimeOffset? from, DateTimeOffset? to)
     {
-        var result = await _paymentService.ListAsync(null, 1, 10000);
+        var result = await _paymentService.ListAsync(null, null, 1, 10000);
         var items = result.Items.Where(p => (from is null || p.Date >= from) && (to is null || p.Date <= to)).ToList();
         var company = await GetCompanyInfoAsync();
         var bytes = _exportService.GeneratePaymentsListPdf(items, company, from, to);

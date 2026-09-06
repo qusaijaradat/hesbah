@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { suggestPartners } from "../api/partners";
+import { useSuggestionKeyboard } from "../lib/useSuggestionKeyboard";
 import type { PartnerSuggestionDto, PartnerType } from "../types";
 
 /**
@@ -61,6 +62,22 @@ export function PartnerAutocomplete({
     fetchSuggestions(text);
   }
 
+  /** Shared by the mouse (clicking a row) and the keyboard (Enter on the highlighted row). */
+  function pickSuggestion(suggestion: PartnerSuggestionDto) {
+    onChange({ id: suggestion.id, name: suggestion.name });
+    onFreeTextChange?.(suggestion.name);
+    setQuery(suggestion.name);
+    setOpen(false);
+  }
+
+  const keyboard = useSuggestionKeyboard({
+    open,
+    items: suggestions,
+    onOpen: () => fetchSuggestions(query),
+    onClose: () => setOpen(false),
+    onPick: pickSuggestion,
+  });
+
   return (
     <div className="relative">
       <label className="label">{label}</label>
@@ -71,26 +88,29 @@ export function PartnerAutocomplete({
         onChange={(e) => handleInput(e.target.value)}
         onFocus={() => fetchSuggestions(query)}
         onBlur={() => setTimeout(() => setOpen(false), 150)}
+        onKeyDown={keyboard.handleKeyDown}
       />
       {/* Small dropdown marker so the field visibly reads as a picker, not plain text. */}
       <span className="pointer-events-none absolute inset-y-0 end-2 top-6 flex items-center text-gray-400 text-xs">▾</span>
       {open && (
-        <ul className="absolute z-10 mt-1 w-full max-h-56 overflow-auto rounded-md border border-gray-200 bg-white shadow-lg">
+        <ul role="listbox" className="absolute z-10 mt-1 w-full max-h-56 overflow-auto rounded-md border border-gray-200 bg-white shadow-lg">
           {suggestions.length > 0 ? (
-            suggestions.map((s) => (
+            suggestions.map((s, index) => (
               <li
                 key={s.id}
-                className="cursor-pointer px-3 py-2 text-sm hover:bg-brand-50"
+                role="option"
+                aria-selected={index === keyboard.activeIndex}
+                // Only the arrow-key highlight needs a ref — it's the one the list scrolls to.
+                ref={index === keyboard.activeIndex ? keyboard.activeItemRef : undefined}
+                className={`cursor-pointer px-3 py-2 text-sm hover:bg-brand-50 ${index === keyboard.activeIndex ? "bg-brand-50" : ""}`}
+                // Keeps the mouse and the keyboard pointing at the same row, so moving the mouse
+                // over the list and then pressing Enter takes what's actually highlighted.
+                onMouseEnter={() => keyboard.setActiveIndex(index)}
                 // Without this, the input's onBlur (fired by the mousedown itself, before
                 // the click) can close the dropdown a beat before onClick runs, so the pick
                 // never lands — preventDefault here keeps focus on the input the whole time.
                 onMouseDown={(e) => e.preventDefault()}
-                onClick={() => {
-                  onChange({ id: s.id, name: s.name });
-                  onFreeTextChange?.(s.name);
-                  setQuery(s.name);
-                  setOpen(false);
-                }}
+                onClick={() => pickSuggestion(s)}
               >
                 {s.name} {s.type && <span className="text-xs text-gray-400">({typeLabel(s.type)})</span>}
               </li>

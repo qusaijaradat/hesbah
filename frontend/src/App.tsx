@@ -3,6 +3,7 @@ import { AuthProvider } from "./auth/AuthContext";
 import { ProtectedRoute } from "./auth/ProtectedRoute";
 import { Layout } from "./components/Layout";
 import { GlobalLoadingBar } from "./components/GlobalLoadingBar";
+import { useEnterAdvancesFocus } from "./lib/formNavigation";
 import { LoginPage } from "./pages/LoginPage";
 import { ChangePasswordPage } from "./pages/ChangePasswordPage";
 import { DashboardPage } from "./pages/DashboardPage";
@@ -36,6 +37,10 @@ function Protected({ children, permission }: { children: React.ReactNode; permis
 }
 
 export default function App() {
+  // App-wide "Enter ينقل للحقل اللي بعده" — one document-level listener covering every field on
+  // every page, present and future. See lib/formNavigation.ts.
+  useEnterAdvancesFocus();
+
   return (
     <BrowserRouter>
       {/* Above AuthProvider/Routes so it's visible on every screen (including /login) — see

@@ -192,7 +192,9 @@ function ItemEditModal({ item, onClose, onSaved }: {
             <label className="label">اسم الصنف</label>
             <input ref={inputRef} className="input" value={name} placeholder="مثال: بندورة"
               onChange={(e) => setName(e.target.value)} autoFocus
-              onKeyDown={(e) => e.key === "Enter" && handleSave()} />
+              // preventDefault claims the keystroke so the app-wide "Enter moves to the next
+              // field" handler leaves it alone — here Enter means save-and-keep-typing.
+              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleSave(); } }} />
           </div>
           {justAdded && <div className="text-sm text-brand-700">✅ تمت الإضافة — اكتب الصنف التالي أو اضغط "تم"</div>}
           {error && <div className="text-sm text-red-600 bg-red-50 rounded-md p-2">{error}</div>}

@@ -1046,7 +1046,7 @@ public class ExportService : IExportService
                             textCol.Item().AlignCenter().Text($"هاتف: {company.Phone}").FontSize(9);
                     });
                     col.Item().PaddingTop(6).LineHorizontal(1).LineColor(Colors.Grey.Darken1);
-                    col.Item().PaddingTop(6).AlignCenter().Text("كشف السواق").Bold().FontSize(14);
+                    col.Item().PaddingTop(6).AlignCenter().Text("كشف السائقين").Bold().FontSize(14);
                     if (dateFrom is not null || dateTo is not null)
                     {
                         var from = dateFrom is not null ? dateFrom.Value.ToString("yyyy-MM-dd") : "البداية";
@@ -1542,7 +1542,7 @@ public class ExportService : IExportService
                 {
                     col.Spacing(16);
                     DebtsOverviewSection(col.Item(), "الباعة", data.Farmers, "عليه للسوق", "له من السوق");
-                    DebtsOverviewSection(col.Item(), "السواق", data.Drivers, "عليه للسوق", "له من السوق");
+                    DebtsOverviewSection(col.Item(), "السائقين", data.Drivers, "عليه للسوق", "له من السوق");
                     DebtsOverviewSection(col.Item(), "المشترين", data.Merchants, "عليه دين للسوق", "له رصيد زائد (دفع أكتر)");
                 });
 

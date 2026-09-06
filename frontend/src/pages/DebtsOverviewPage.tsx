@@ -94,7 +94,7 @@ export function DebtsOverviewPage() {
           emptyText={search ? "لا يوجد باعة مطابقين للبحث" : "لا يوجد باعة عليهم أو لهم رصيد حاليًا"}
         />
         <DebtSection
-          title="السواق"
+          title="السائقين"
           rows={filteredDrivers}
           linkFor={(id) => `/partners/${id}/farmer-account`}
           detailLinkFor={(id) => `/partners/${id}/farmer-invoice-detail`}

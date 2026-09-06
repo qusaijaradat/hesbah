@@ -99,7 +99,7 @@ export function PartnersPage() {
   return (
     <div>
       <div className="flex items-center justify-between flex-wrap gap-3 mb-6">
-        <h1 className="text-2xl font-bold">الباعة والسواق والمشترين</h1>
+        <h1 className="text-2xl font-bold">الباعة السائقين والمشترين</h1>
         {canCreate && (
           <button className="btn-primary" onClick={() => setEditing("new")}>+ إضافة شخص</button>
         )}

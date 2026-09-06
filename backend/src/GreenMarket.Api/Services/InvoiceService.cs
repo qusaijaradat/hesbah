@@ -79,7 +79,7 @@ public class InvoiceService : IInvoiceService
         var totals = InvoiceCalculator.Calculate(
             request.Items.Select(i => new InvoiceCalculator.LineInput(i.ItemName, i.Quantity, i.Unit, i.PricePerUnit, i.WoodPrice)));
 
-        var commissionRate = await _settings.GetDecimalAsync(Setting.Keys.DefaultCommissionRate, 0.07m);
+        var commissionRate = await _settings.GetDecimalAsync(Setting.Keys.DefaultCommissionRate, 0.10m);
         var commissionResult = CommissionCalculator.Calculate(totals.TotalValue, commissionRate);
         // Automatic "سعر الصندوق" fee (explicit request, separate from/additive to the manual
         // per-line WoodPrice) — locked in NOW so a later change to the settings value never
@@ -260,7 +260,7 @@ public class InvoiceService : IInvoiceService
         var totals = InvoiceCalculator.Calculate(
             request.Items.Select(i => new InvoiceCalculator.LineInput(i.ItemName, i.Quantity, i.Unit, i.PricePerUnit, i.WoodPrice)));
 
-        var commissionRate = await _settings.GetDecimalAsync(Setting.Keys.DefaultCommissionRate, 0.07m);
+        var commissionRate = await _settings.GetDecimalAsync(Setting.Keys.DefaultCommissionRate, 0.10m);
         var commissionResult = CommissionCalculator.Calculate(totals.TotalValue, commissionRate);
         // Same re-lock-on-edit behavior as CommissionRateApplied below — an edit re-reads the
         // CURRENT settings value, same tradeoff already accepted for the commission rate.

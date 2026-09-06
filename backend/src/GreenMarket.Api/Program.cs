@@ -3,6 +3,7 @@ using System.Text.Json.Serialization;
 using GreenMarket.Api.Auth;
 using GreenMarket.Api.Common;
 using GreenMarket.Api.Services;
+using GreenMarket.Domain.Entities;
 using GreenMarket.Domain.Enums;
 using GreenMarket.Infrastructure.Persistence;
 using GreenMarket.Infrastructure.Persistence.Seed;
@@ -450,6 +451,28 @@ using (var scope = app.Services.CreateScope())
     }
 
     await DbSeeder.SeedAsync(db);
+
+    // One-time correction: the actual market commission is 10%, but this system originally
+    // seeded (and every invoice before this fix locked in) 7% — DbSeeder's own seed is guarded
+    // by an existence check, so it never touches a database that already has this row. Only
+    // flips it when it's still sitting at exactly the old wrong default; an admin who has since
+    // deliberately set some OTHER rate via the Settings screen is left untouched. Does not
+    // retroactively change CommissionRateApplied on invoices already issued at 7% — only the
+    // rate new invoices will use from now on.
+    try
+    {
+        var commissionSetting = await db.Settings.SingleOrDefaultAsync(s => s.Key == Setting.Keys.DefaultCommissionRate);
+        if (commissionSetting is not null && commissionSetting.Value == "0.07")
+        {
+            commissionSetting.Value = "0.10";
+            commissionSetting.UpdatedAt = DateTimeOffset.UtcNow;
+            await db.SaveChangesAsync();
+        }
+    }
+    catch (Exception ex)
+    {
+        app.Logger.LogError(ex, "Failed to correct the default commission rate from 7% to 10% — check/update it manually from الإعدادات if it's still wrong.");
+    }
 }
 
 // ---------- Middleware pipeline ----------

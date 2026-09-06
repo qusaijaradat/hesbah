@@ -230,25 +230,15 @@ export function InvoiceDetailPage() {
           </div>
         )}
 
-        {/* Note: no commission line above (next to grandTotal/previousBalance) — requirement doc
-            §5, the market's commission never appears on the merchant-facing invoice. This panel
-            is for internal staff reference only (same convention as كشف حساب البائع already
-            showing commission per line) — it's never printed on the merchant's own PDF/message,
-            only on the separate "نسخة البائع" print/WhatsApp send below. */}
-        {invoice.farmerId && (
-          <div className="border-t pt-3 mt-3 text-sm bg-amber-50 rounded-md p-3">
-            <div className="font-semibold text-amber-800 mb-1">العمولة (البائع) — لمعلومات الموظف فقط</div>
-            <div className="flex flex-wrap gap-x-6 gap-y-1 text-gray-700">
-              <div>إجمالي المبيعات: <span className="font-medium">{formatCurrency(invoice.totalValue)}</span></div>
-              <div>العمولة ({(invoice.commissionRateApplied * 100).toLocaleString("en-US")}%): <span className="font-medium text-red-700">- {formatCurrency(invoice.commission)}</span></div>
-              {/* يُضاف كامل المبلغ للبائع (لا تُخصم منه العمولة) — نفس ما يحصل عليه السائق أيضًا. */}
-              {invoice.woodTotal > 0 && (
-                <div>+ سعر الخشب: <span className="font-medium text-green-700">{formatCurrency(invoice.woodTotal)}</span></div>
-              )}
-              <div>الصافي المستحق للبائع: <span className="font-semibold">{formatCurrency(invoice.netDueToFarmer)}</span></div>
-            </div>
-          </div>
-        )}
+        {/* Explicit request: the invoice-details screen itself must never show the commission —
+            not even in this "staff only" form. Commission only ever appears on (a) the "نسخة
+            البائع" print/WhatsApp send (handlePrintFarmerCopy / handleSendWhatsApp below, both
+            unaffected by this) and (b) the daily-closing/reports screens. Previously this panel
+            showed a commission breakdown right here whenever a farmer was attached; removed
+            entirely rather than just hiding the commission line, since showing "الصافي المستحق
+            للبائع" alone still implies/backs into the same commission figure it was computed
+            from. Staff can still see the farmer's own net-due total on their account page
+            (كشف حساب البائع) or by printing/sending the نسخة البائع itself. */}
 
         {error && <div className="text-sm text-red-600 bg-red-50 rounded-md p-3 mt-4">{error}</div>}
         {notice && <div className="text-sm text-blue-700 bg-blue-50 rounded-md p-3 mt-4">{notice}</div>}

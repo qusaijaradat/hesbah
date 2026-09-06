@@ -7,7 +7,7 @@ namespace GreenMarket.Infrastructure.Persistence.Seed;
 
 /// <summary>
 /// Idempotent first-run seeding: roles, permissions, role-permission grants, the
-/// default admin account, and default settings (requirement doc §5's 7% commission
+/// default admin account, and default settings (requirement doc §5's 10% commission
 /// rate). Safe to call on every startup — every insert is guarded by an existence check.
 /// Mirrors database/seed.sql; that file exists purely so the schema can be validated
 /// without a .NET toolchain, this is the version the app actually runs.
@@ -162,7 +162,7 @@ public static class DbSeeder
     {
         var defaults = new[]
         {
-            new Setting { Key = Setting.Keys.DefaultCommissionRate, Value = "0.07", Description = "Default market commission rate applied to new invoices (requirement doc §5)." },
+            new Setting { Key = Setting.Keys.DefaultCommissionRate, Value = "0.10", Description = "Default market commission rate applied to new invoices (requirement doc §5)." },
             new Setting { Key = Setting.Keys.MarketName, Value = "Green Market", Description = "Displayed on invoices and reports." },
             new Setting { Key = Setting.Keys.WhatsAppBusinessNumber, Value = "", Description = "WhatsApp Business number used to send invoices (requirement doc §9)." },
             new Setting { Key = Setting.Keys.RegistrationNumber, Value = "", Description = "Company/commercial registration number shown on the printed invoice header." },

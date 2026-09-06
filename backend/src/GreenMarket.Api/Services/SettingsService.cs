@@ -62,7 +62,7 @@ public class SettingsService : ISettingsService
         {
             case Setting.Keys.DefaultCommissionRate:
                 if (!decimal.TryParse(value, NumberStyles.Any, CultureInfo.InvariantCulture, out var rate) || rate < 0 || rate > 1)
-                    throw new ValidationAppException("نسبة العمولة يجب أن تكون رقمًا عشريًا بين 0 و1 (مثال: 0.07 لنسبة 7%).");
+                    throw new ValidationAppException("نسبة العمولة يجب أن تكون رقمًا عشريًا بين 0 و1 (مثال: 0.10 لنسبة 10%).");
                 break;
             case Setting.Keys.BoxPrice:
             case Setting.Keys.DriverBoxFee:

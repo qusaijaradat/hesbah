@@ -5,7 +5,7 @@ import { apiErrorMessage } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 
 const KEY_LABELS: Record<string, string> = {
-  "commission.default_rate": "نسبة العمولة الافتراضية (مثال: 0.07 = 7%)",
+  "commission.default_rate": "نسبة العمولة الافتراضية (مثال: 0.10 = 10%)",
   "market.name": "اسم السوق/الحسبة",
   "whatsapp.business_number": "رقم WhatsApp Business لإرسال الفواتير",
   "market.registration_number": "الرقم/السجل التجاري (يظهر بترويسة الفاتورة المطبوعة)",

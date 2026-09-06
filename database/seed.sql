@@ -59,7 +59,7 @@ VALUES ('System Administrator', 'admin', 'PLACEHOLDER_SET_BY_APP_SEEDER', 'PLACE
         (SELECT id FROM roles WHERE name = 'Admin'), TRUE);
 
 INSERT INTO settings (key, value, description) VALUES
-    ('commission.default_rate', '0.07', 'Default market commission rate applied to new invoices (requirement doc §5).'),
+    ('commission.default_rate', '0.1', 'Default market commission rate applied to new invoices (requirement doc §5).'),
     ('market.name', 'Green Market', 'Displayed on invoices and reports.'),
     ('whatsapp.business_number', '', 'WhatsApp Business number used to send invoices (requirement doc §9).'),
     ('market.registration_number', '', 'Company/commercial registration number shown on the printed invoice header.'),

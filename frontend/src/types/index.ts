@@ -191,7 +191,7 @@ export interface InvoiceDto {
    * invoices minus every payment they've made, all-time (never negative — see backend
    * InvoiceService.ComputePreviousBalanceAsync). Add to grandTotal for the actual amount due now. */
   previousBalance: number;
-  /** This invoice's own commission rate (e.g. 0.07 for 7%), copied from Settings at creation time. */
+  /** This invoice's own commission rate (e.g. 0.10 for 7%), copied from Settings at creation time. */
   commissionRateApplied: number;
   /** commissionRateApplied × totalValue (never totalValue+woodTotal/transportFee — same base as
    * the linked FarmerTransaction.Commission). Only ever shown on farmer-facing surfaces (the

@@ -462,7 +462,7 @@ using (var scope = app.Services.CreateScope())
     try
     {
         var commissionSetting = await db.Settings.SingleOrDefaultAsync(s => s.Key == Setting.Keys.DefaultCommissionRate);
-        if (commissionSetting is not null && commissionSetting.Value == "0.07")
+        if (commissionSetting is not null && commissionSetting.Value == "0.10")
         {
             commissionSetting.Value = "0.10";
             commissionSetting.UpdatedAt = DateTimeOffset.UtcNow;

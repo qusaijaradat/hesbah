@@ -50,7 +50,7 @@ public class SettingsService : ISettingsService
 
     /// <summary>
     /// Previously any string saved here was accepted as-is — a typo in the commission rate (e.g.
-    /// "1.5" instead of "0.07", or non-numeric text) would sit fine until the very next invoice
+    /// "1.5" instead of "0.10", or non-numeric text) would sit fine until the very next invoice
     /// tried to read it, at which point CommissionCalculator/InvoiceService would throw on every
     /// single new/edited invoice market-wide until someone noticed and fixed it manually. Every
     /// known numeric setting is now checked for a well-formed value in its expected range right

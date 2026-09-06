@@ -118,9 +118,18 @@ public static class PermissionKeys
 {
     public const string InvoicesCreate = "invoices.create";
     public const string InvoicesEdit = "invoices.edit";
-    /// <summary>Invoices are never hard-deleted (requirement doc §2 calls the action "cancel"
-    /// specifically) — this IS the "delete" permission for invoices, just named for what it does.</summary>
+    /// <summary>Voids an invoice while LEAVING it on the books — it stays visible in the list as
+    /// "ملغاة", keeps its number, and its ledger effect is undone by an offsetting Adjustment row
+    /// (requirement doc §2 calls the action "cancel" specifically). Distinct from InvoicesDelete
+    /// below, which takes the row off every screen entirely.</summary>
     public const string InvoicesCancel = "invoices.cancel";
+    /// <summary>Removes an invoice from every list/report/account outright (still a SOFT delete at
+    /// the DB level — see AuditableEntity.IsDeleted — so the row survives for audit, it just stops
+    /// being visible/countable anywhere). Deliberately its own key rather than folded into
+    /// InvoicesCancel: cancelling leaves an explained, auditable "ملغاة" trail on screen, while
+    /// deleting is for rows entered by mistake that shouldn't be on screen at all — a role can
+    /// legitimately be allowed one without the other.</summary>
+    public const string InvoicesDelete = "invoices.delete";
     public const string InvoicesView = "invoices.view";
 
     public const string PartnersView = "partners.view";
@@ -202,7 +211,7 @@ public static class PermissionKeys
 
     public static readonly string[] All =
     {
-        InvoicesCreate, InvoicesEdit, InvoicesCancel, InvoicesView,
+        InvoicesCreate, InvoicesEdit, InvoicesCancel, InvoicesDelete, InvoicesView,
         PartnersView, PartnersCreate, PartnersEdit, PartnersDelete,
         ItemsView, ItemsCreate, ItemsEdit, ItemsDelete,
         PaymentsView, PaymentsCreate, PaymentsEdit, PaymentsDelete,

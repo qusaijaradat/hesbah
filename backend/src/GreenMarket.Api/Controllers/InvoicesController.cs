@@ -56,6 +56,17 @@ public class InvoicesController : ControllerBase
     public async Task<ActionResult<InvoiceDto>> Cancel(int id, CancelInvoiceRequest request) =>
         Ok(await _invoiceService.CancelAsync(id, request, CurrentUserId.Require(User)));
 
+    /// <summary>Invoices list "حذف" button (single row, and the bulk "حذف المحدد" which just calls
+    /// this once per selected id). Separate action AND separate permission from Cancel above —
+    /// see InvoiceService.DeleteAsync for exactly what it does and why it's a soft delete.</summary>
+    [HttpDelete("{id:int}")]
+    [RequirePermission(PermissionKeys.InvoicesDelete)]
+    public async Task<IActionResult> Delete(int id)
+    {
+        await _invoiceService.DeleteAsync(id);
+        return NoContent();
+    }
+
     [HttpGet("{id:int}/pdf")]
     [RequirePermission(PermissionKeys.InvoicesView)]
     public async Task<IActionResult> Pdf(int id, [FromQuery] bool thermal = false)

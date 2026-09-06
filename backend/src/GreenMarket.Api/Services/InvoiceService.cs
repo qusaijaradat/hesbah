@@ -16,6 +16,9 @@ public interface IInvoiceService
     Task<PagedResult<InvoiceListItemDto>> ListAsync(InvoiceFilterRequest filter);
     Task<IReadOnlyList<InvoiceDto>> GetManyAsync(IReadOnlyList<int> ids);
     Task<InvoiceDto> CancelAsync(int id, CancelInvoiceRequest request, int cancelledByUserId);
+
+    /// <summary>See the implementation's own doc comment — soft-delete, not a DB row removal.</summary>
+    Task DeleteAsync(int id);
     Task<FarmerStatementDto> GetFarmerStatementAsync(int farmerId, DateTimeOffset? dateFrom, DateTimeOffset? dateTo);
     Task<FarmerGoodsDto> GetFarmerGoodsAsync(int farmerId, DateTimeOffset? dateFrom, DateTimeOffset? dateTo);
 
@@ -635,6 +638,50 @@ public class InvoiceService : IInvoiceService
         await _db.SaveChangesAsync();
         var previousBalance = await ComputePreviousBalanceAsync(invoice.MerchantId, invoice.Id);
         return ToDto(invoice, previousBalance);
+    }
+
+    /// <summary>
+    /// "حذف" from the invoices list — takes the invoice off every screen at once (the list, the
+    /// merchant's account, the farmer's/driver's ledger, statements, reports), for a row entered
+    /// by mistake that shouldn't be sitting there as a visible "ملغاة" line at all. Deliberately
+    /// NOT the same action as <see cref="CancelAsync"/>, which keeps the invoice on the books with
+    /// an offsetting Adjustment and a stated reason.
+    ///
+    /// Never an actual row removal: the invoice is flagged <c>IsDeleted</c>, which the global query
+    /// filter (see AppDbContext) then hides from every query in the app, so the row — with its
+    /// items and its audit history — survives for reconciliation. Its FarmerTransaction rows ARE
+    /// removed outright, though: they carry no soft-delete flag of their own and are read straight
+    /// off the farmer/driver ledger without ever joining Invoices, so leaving them would keep a
+    /// deleted invoice's Sale/TransportFee amounts in those accounts forever. Same removal
+    /// PaymentService.DeleteAsync already does for a payment's own ledger row. On an
+    /// already-cancelled invoice this also clears the Adjustment rows cancelling it added (they're
+    /// keyed to the same InvoiceId), which is right — the pair nets to zero anyway.
+    ///
+    /// Linked payments are unlinked, not deleted, for exactly the reason CancelAsync spells out:
+    /// that was real money received/paid, so it stays as a general credit against the partner's
+    /// balance, with a note saying where it came from. Everything below lands in ONE
+    /// SaveChangesAsync (hence one DB transaction), so a failure can't half-apply the delete.
+    /// </summary>
+    public async Task DeleteAsync(int id)
+    {
+        var invoice = await _db.Invoices.SingleOrDefaultAsync(i => i.Id == id)
+            ?? throw new NotFoundAppException("Invoice", id);
+
+        var ledgerRows = await _db.FarmerTransactions.Where(t => t.InvoiceId == invoice.Id).ToListAsync();
+        _db.FarmerTransactions.RemoveRange(ledgerRows);
+
+        var linkedPayments = await _db.Payments.Where(p => p.InvoiceId == invoice.Id).ToListAsync();
+        foreach (var linkedPayment in linkedPayments)
+        {
+            linkedPayment.InvoiceId = null;
+            var deletionNote = $"كانت مرتبطة بالفاتورة رقم {invoice.InvoiceNumber} — حُذفت الفاتورة، والدفعة باقية كرصيد عام";
+            linkedPayment.Notes = string.IsNullOrWhiteSpace(linkedPayment.Notes)
+                ? deletionNote
+                : $"{linkedPayment.Notes} ({deletionNote})";
+        }
+
+        invoice.IsDeleted = true;
+        await _db.SaveChangesAsync();
     }
 
     /// <summary>

@@ -434,6 +434,11 @@ public class ExportService : IExportService
                     col.Item().PaddingTop(6).Text("نسخة البائع").Bold().FontSize(13);
                     col.Item().PaddingTop(2).Text($"التاريخ: {invoice.Date:yyyy-MM-dd}").FontSize(11);
                     col.Item().Text($"البائع: {invoice.FarmerName}").FontSize(11);
+                    // Shown on the farmer's own copy — unlike the merchant copy above, which
+                    // deliberately hides who supplied/delivered the goods. Omitted entirely when
+                    // the invoice has no driver attached, rather than printing an empty line.
+                    if (!string.IsNullOrWhiteSpace(invoice.DriverName))
+                        col.Item().Text($"السائق: {invoice.DriverName}").FontSize(11);
                 });
 
                 page.Content().ContentFromRightToLeft().PaddingVertical(10).Table(table =>

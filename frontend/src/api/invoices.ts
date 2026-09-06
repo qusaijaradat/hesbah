@@ -43,6 +43,13 @@ export async function cancelInvoice(id: number, reason: string) {
   return data;
 }
 
+/** Invoices list "حذف" — NOT the same as cancelInvoice above: cancelling keeps the invoice on
+ * screen as "ملغاة" with a stated reason, deleting removes it from every list/report/account
+ * outright (soft delete server-side — see backend InvoiceService.DeleteAsync). */
+export async function deleteInvoice(id: number) {
+  await apiClient.delete(`/invoices/${id}`);
+}
+
 export async function downloadInvoicePdf(id: number, thermal: boolean) {
   const { data } = await apiClient.get(`/invoices/${id}/pdf`, { params: { thermal }, responseType: "blob" });
   return data as Blob;

@@ -1,12 +1,15 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { downloadInvoicePdf, downloadInvoicesExcel, getInvoice, listInvoices, triggerBlobDownload } from "../api/invoices";
+import { deleteInvoice, downloadInvoicePdf, downloadInvoicesExcel, getInvoice, listInvoices, triggerBlobDownload } from "../api/invoices";
 import { getFarmerAccount } from "../api/partners";
 import { listSettings } from "../api/settings";
 import type { InvoiceFilter, InvoiceListItemDto } from "../types";
 import { buildStatementMessage, buildWhatsAppLink, formatCurrency, formatDate, formatQuantity, formatWeight } from "../lib/format";
 import { shareFile } from "../lib/share";
+import { apiErrorMessage } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
+import { useSelection } from "../lib/useSelection";
+import { runBulkDelete, summarizeBulkDelete } from "../lib/bulkDelete";
 
 const STATUS_LABELS: Record<string, string> = { Active: "فعّالة", Cancelled: "ملغاة" };
 
@@ -41,6 +44,14 @@ export function InvoicesPage() {
   const [sendingKey, setSendingKey] = useState<string | null>(null);
   // Informational (not an error) — e.g. "your browser can't share files, downloaded it instead".
   const [notice, setNotice] = useState<string | null>(null);
+  // "حذف / تحديد الكل" — same shared selection + bulk-delete plumbing every other deletable table
+  // uses (lib/useSelection + lib/bulkDelete), so the toolbar, header checkbox and failure summary
+  // all behave identically to the Payments/Partners/Items pages.
+  const canDelete = hasPermission("invoices.delete");
+  const selection = useSelection();
+  const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [bulkError, setBulkError] = useState<string | null>(null);
+  const rows = result?.items ?? [];
 
   useEffect(() => {
     listSettings().then((settings) => {
@@ -55,12 +66,44 @@ export function InvoicesPage() {
     setLoading(true);
     setResult(await listInvoices(filter));
     setLoading(false);
+    // Rows about to be replaced — a selection made before a filter/page change would otherwise
+    // keep pointing at invoices that are no longer on screen, and "حذف المحدد" counts only what
+    // it can still see, so the count and the actual deletion would disagree.
+    selection.clear();
   }
 
   useEffect(() => {
     refresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filter]);
+
+  // Deleting is NOT cancelling: the invoice disappears from the list/reports/accounts entirely
+  // instead of staying visible as "ملغاة" (the cancel action still lives on the detail page).
+  // The confirm text spells that out so neither one gets picked by mistake.
+  async function handleDelete(inv: InvoiceListItemDto) {
+    if (!window.confirm(`حذف الفاتورة ${inv.invoiceNumber} (${inv.merchantName})؟\nرح تختفي من القوائم والتقارير والحسابات. لا يمكن التراجع عن هذا.`)) return;
+    setBulkError(null);
+    try {
+      await deleteInvoice(inv.id);
+      await refresh();
+    } catch (err) {
+      setBulkError(apiErrorMessage(err, "فشل الحذف"));
+    }
+  }
+
+  async function handleBulkDelete() {
+    const selectedInvoices = rows.filter((inv) => selection.selected.has(inv.id));
+    if (selectedInvoices.length === 0) return;
+    if (!window.confirm(`حذف ${selectedInvoices.length} فاتورة محددة؟\nرح تختفي من القوائم والتقارير والحسابات. لا يمكن التراجع عن هذا.`)) return;
+    setBulkDeleting(true);
+    setBulkError(null);
+    // One request per invoice (same as every other bulk delete here) — a partial failure reports
+    // exactly which invoices survived instead of silently rolling the whole batch back.
+    const outcome = await runBulkDelete(selectedInvoices, (inv) => inv.id, (inv) => inv.invoiceNumber, deleteInvoice);
+    setBulkDeleting(false);
+    await refresh();
+    if (outcome.failedCount > 0) setBulkError(summarizeBulkDelete(outcome));
+  }
 
   async function handleExport() {
     const blob = await downloadInvoicesExcel(filter);
@@ -180,10 +223,32 @@ export function InvoicesPage() {
         </div>
       </div>
 
+      {bulkError && <div className="text-sm text-red-600 bg-red-50 rounded-md p-3 mb-4 whitespace-pre-line">{bulkError}</div>}
+
+      {canDelete && selection.selected.size > 0 && (
+        <div className="flex items-center gap-3 mb-4">
+          <span className="text-sm text-gray-600">محدد: <span className="font-semibold">{selection.selected.size}</span></span>
+          <button className="btn-danger text-sm" disabled={bulkDeleting} onClick={handleBulkDelete}>
+            {bulkDeleting ? "جاري الحذف..." : `حذف المحدد (${selection.selected.size})`}
+          </button>
+        </div>
+      )}
+
       <div className="card overflow-x-auto">
         <table className="table-base">
           <thead>
             <tr>
+              {canDelete && (
+                <th className="w-8">
+                  {/* "تحديد الكل" covers the rows CURRENTLY on screen (this page of this filter),
+                      never the whole unfiltered table — see lib/useSelection. */}
+                  <input
+                    type="checkbox"
+                    checked={rows.length > 0 && rows.every((inv) => selection.selected.has(inv.id))}
+                    onChange={() => selection.toggleAll(rows.map((inv) => inv.id))}
+                  />
+                </th>
+              )}
               <th>رقم الفاتورة</th>
               <th>التاريخ</th>
               <th>المشتري</th>
@@ -198,12 +263,17 @@ export function InvoicesPage() {
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={10} className="text-center text-gray-400 py-6">جاري التحميل...</td></tr>
-            ) : !result || result.items.length === 0 ? (
-              <tr><td colSpan={10} className="text-center text-gray-400 py-6">لا توجد فواتير</td></tr>
+              <tr><td colSpan={canDelete ? 11 : 10} className="text-center text-gray-400 py-6">جاري التحميل...</td></tr>
+            ) : rows.length === 0 ? (
+              <tr><td colSpan={canDelete ? 11 : 10} className="text-center text-gray-400 py-6">لا توجد فواتير</td></tr>
             ) : (
-              result.items.map((inv) => (
+              rows.map((inv) => (
                 <tr key={inv.id}>
+                  {canDelete && (
+                    <td>
+                      <input type="checkbox" checked={selection.selected.has(inv.id)} onChange={() => selection.toggleOne(inv.id)} />
+                    </td>
+                  )}
                   <td className="font-mono text-sm">{inv.invoiceNumber}</td>
                   <td>{formatDate(inv.date)}</td>
                   <td>{inv.merchantName}</td>
@@ -268,6 +338,9 @@ export function InvoicesPage() {
                       >
                         📎 ملف
                       </button>
+                      {canDelete && (
+                        <button className="text-red-500 text-sm hover:underline" onClick={() => handleDelete(inv)}>حذف</button>
+                      )}
                     </div>
                   </td>
                 </tr>

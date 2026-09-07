@@ -653,3 +653,18 @@ export interface DashboardSummaryDto {
   topMerchantDebts: PartnerDebtRow[];
   topSellerDues: PartnerDebtRow[];
 }
+
+/** What a top-of-page alert is about — see backend AlertKind. The backend returns the fact;
+ * the wording and the link live in AlertsBanner.tsx alongside every other user-facing string. */
+export type AlertKind = "OverdueChecks" | "ChecksDueToday" | "UnpricedInvoices";
+export type AlertSeverity = "Info" | "Warning" | "Critical";
+
+export interface AlertDto {
+  kind: AlertKind;
+  severity: AlertSeverity;
+  count: number;
+  /** 0 where a sum is meaningless — an unpriced invoice has no reliable total yet. */
+  amount: number;
+  /** A capped sample of who is involved, so the banner can say who without copying the page. */
+  names: string[];
+}

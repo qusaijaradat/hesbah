@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { Link, NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
-import { ChecksDueTodayBanner } from "./ChecksDueTodayBanner";
+import { AlertsBanner } from "./AlertsBanner";
 
 const NAV_ITEMS = [
   { to: "/", label: "لوحة التحكم", permission: null },
@@ -112,10 +112,11 @@ export function Layout({ children }: { children: ReactNode }) {
           <div className="text-sm font-bold">🥬 الحسبة</div>
         </header>
 
-        {/* Above <main>, so it sits at the very top of whatever page is open. Gated on
-            payments.view because the checks it reads need that permission anyway — a role without
-            it would just get a 403 and no banner. */}
-        {hasPermission("payments.view") && <ChecksDueTodayBanner />}
+        {/* Above <main>, so it sits at the very top of whatever page is open. No permission
+            check here: the endpoint gates each alert kind on the caller's own permissions and
+            returns an empty list when they can see none, so the banner renders nothing on its
+            own rather than needing the layout to guess which permissions its contents need. */}
+        <AlertsBanner />
 
         <main className="flex-1 p-4 sm:p-6 bg-gray-50 min-w-0">{children}</main>
       </div>

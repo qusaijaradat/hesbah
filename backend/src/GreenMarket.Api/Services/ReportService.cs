@@ -500,9 +500,6 @@ public class ReportService : IReportService
             dayStart, invoiceCount, totalSalesValue, totalCommission, totalExpenses,
             totalCommission - totalExpenses, paymentsFromMerchants, paymentsToFarmers);
     }
-    /// <summary>Matches the الشيكات page's own "قريبًا" window, so both call the same checks urgent.</summary>
-    private const int DueSoonDays = 7;
-
     /// <summary>How many names "أعلى المدينين" shows before sending you to قيمة الديون.</summary>
     private const int TopDebtorRows = 5;
 
@@ -574,19 +571,16 @@ public class ReportService : IReportService
             .OrderByDescending(r => r.Remaining)
             .ToList();
 
-        // Checks still قيد التحصيل. CheckDueDate is written as UTC midnight of the due day
-        // everywhere it is recorded, so these day boundaries are UTC too — the same thing
-        // ChecksDueTodayBanner.tsx had to pin down, for the same reason.
-        var todayUtc = new DateTimeOffset(DateTime.UtcNow.Date, TimeSpan.Zero);
+        // Checks still قيد التحصيل, bucketed by the shared rule so this screen, the alerts banner
+        // and the الشيكات page all call the same checks overdue — see CheckUrgency.
+        var todayUtc = CheckUrgency.TodayUtc();
         var pendingChecks = await _db.Payments
             .Where(p => p.CheckDueDate != null && p.CheckStatus == CheckClearanceStatus.Pending)
             .Select(p => new { p.Amount, DueDate = p.CheckDueDate!.Value })
             .ToListAsync();
-        var dueToday = pendingChecks.Where(c => c.DueDate >= todayUtc && c.DueDate < todayUtc.AddDays(1)).ToList();
-        var overdue = pendingChecks.Where(c => c.DueDate < todayUtc).ToList();
-        var dueSoon = pendingChecks
-            .Where(c => c.DueDate >= todayUtc.AddDays(1) && c.DueDate < todayUtc.AddDays(DueSoonDays + 1))
-            .ToList();
+        var overdue = pendingChecks.Where(c => CheckUrgency.IsOverdue(c.DueDate, todayUtc)).ToList();
+        var dueToday = pendingChecks.Where(c => CheckUrgency.IsDueToday(c.DueDate, todayUtc)).ToList();
+        var dueSoon = pendingChecks.Where(c => CheckUrgency.IsDueSoon(c.DueDate, todayUtc)).ToList();
 
         // Outstanding invoice work — the same two states the invoices list filters by, so a number
         // here and the filtered list it links to can never disagree.

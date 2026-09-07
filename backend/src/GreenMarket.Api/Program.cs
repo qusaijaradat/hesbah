@@ -51,6 +51,7 @@ builder.Services.AddScoped<ISettingsService, SettingsService>();
 builder.Services.AddScoped<ICompanyLogoService, CompanyLogoService>();
 builder.Services.AddScoped<IAuditLogService, AuditLogService>();
 builder.Services.AddScoped<IBackupService, BackupService>();
+builder.Services.AddScoped<IAlertService, AlertService>();
 builder.Services.AddScoped<IRoleService, RoleService>();
 builder.Services.AddSingleton<IExportService, ExportService>();
 

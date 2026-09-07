@@ -5,6 +5,7 @@ import { getDashboardSummary, merchantItemsBreakdown, printBuyerStatementPdf } f
 import { formatCurrency, formatQuantity } from "../lib/format";
 import { useAuth } from "../auth/AuthContext";
 import type { DashboardSummaryDto, MerchantItemBreakdownRow, PartnerDebtRow } from "../types";
+import { PartnerLink } from "../components/RecordLinks";
 
 export function DashboardPage() {
   const { hasPermission } = useAuth();
@@ -194,7 +195,7 @@ export function DashboardPage() {
                     <Fragment key={group.merchantId}>
                       {group.items.map((item, idx) => (
                         <tr key={idx}>
-                          <td className="font-medium">{group.merchantName}</td>
+                          <td className="font-medium"><PartnerLink partnerId={group.merchantId} name={group.merchantName} side="merchant" /></td>
                           <td>{item.itemName}</td>
                           <td>{item.unit === "Box" ? formatQuantity(item.totalQuantity, "Box") : "—"}</td>
                           <td>{item.unit === "Kg" ? formatQuantity(item.totalQuantity, "Kg") : "—"}</td>

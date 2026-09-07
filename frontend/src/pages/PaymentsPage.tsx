@@ -18,6 +18,7 @@ import { usePagination } from "../lib/usePagination";
 import { TablePagination } from "../components/TablePagination";
 import { CHECK_METHOD, PAYMENT_METHOD_OPTIONS, PaymentLineFields, emptyLine, lineTotal, paymentRequestsFromLine, validatePaymentLine } from "../components/PaymentLineFields";
 import type { PaymentLine } from "../components/PaymentLineFields";
+import { InvoiceLink, PartnerLink } from "../components/RecordLinks";
 
 export function PaymentsPage() {
   const { hasPermission } = useAuth();
@@ -156,10 +157,23 @@ function PaymentsTab({ canCreate, canEdit, canDelete }: { canCreate: boolean; ca
                   </td>
                 )}
                 <td>{formatDate(p.date)}</td>
-                <td>{p.partnerName}</td>
+                <td>
+                  {/* FromMerchant settles a buyer's account; ToFarmer/ToDriver settle a
+                      seller's or driver's — so the direction already says which of the two
+                      account pages this name belongs to. */}
+                  <PartnerLink
+                    partnerId={p.partnerId} name={p.partnerName}
+                    side={p.direction === "FromMerchant" ? "merchant" : "seller"}
+                  />
+                </td>
                 <td>{PAYMENT_DIRECTION_LABELS[p.direction]}</td>
                 <td className="font-medium">{formatCurrency(p.amount)}</td>
-                <td className="text-gray-500 text-sm">{p.invoiceNumber ?? "—"}</td>
+                <td className="text-sm">
+                  {/* The invoice this payment settles — the number was already on screen, it
+                      just wasn't clickable, so "which invoice was this?" meant going to the
+                      invoices list and finding it by hand. */}
+                  <InvoiceLink invoiceId={p.invoiceId} invoiceNumber={p.invoiceNumber} />
+                </td>
                 <td>
                   {p.method || "—"}
                   {p.checkDueDate && (

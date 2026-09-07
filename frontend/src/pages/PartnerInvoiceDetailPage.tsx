@@ -8,6 +8,7 @@ import { triggerBlobDownload } from "../api/invoices";
 import { apiErrorMessage } from "../api/client";
 import { formatCurrency, formatDate, formatQuantity } from "../lib/format";
 import type { PartnerInvoiceDetailDto, PartnerInvoiceItemLineDto } from "../types";
+import { InvoiceLink } from "../components/RecordLinks";
 
 /// <summary>
 /// "قيمة الديون" drill-down — a standalone page (opened in a new tab from the debts overview, per
@@ -106,7 +107,7 @@ function InvoiceDetailView({ title, fetcher, printer }: {
                     <tr key={idx}>
                       <td className="whitespace-nowrap">{formatDate(g.date)}</td>
                       <td>
-                        <Link to={`/invoices/${g.invoiceId}`} className="text-brand-700 hover:underline font-mono text-sm">{g.invoiceNumber}</Link>
+                        <InvoiceLink invoiceId={g.invoiceId} invoiceNumber={g.invoiceNumber} className="font-mono text-sm" />
                       </td>
                       <td>{line.itemName}</td>
                       <td>{line.unit === "Box" ? formatQuantity(line.quantity, "Box") : "—"}</td>

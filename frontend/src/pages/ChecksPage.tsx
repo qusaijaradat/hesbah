@@ -8,6 +8,7 @@ import { useAuth } from "../auth/AuthContext";
 import { usePagination } from "../lib/usePagination";
 import { TablePagination } from "../components/TablePagination";
 import type { CheckClearanceStatus, PaymentDto } from "../types";
+import { InvoiceLink, PartnerLink } from "../components/RecordLinks";
 
 /** Pending checks due within this many days (but not yet overdue) get the amber "قريبًا" highlight
  * — distinct from the red "فات الاستحقاق" highlight for ones already overdue. Gives an early warning
@@ -216,11 +217,19 @@ export function ChecksPage() {
                     {isOverdue && <div className="text-xs">⚠️ فات الاستحقاق</div>}
                     {isDueSoon && <div className="text-xs">⏳ مستحق قريبًا</div>}
                   </td>
-                  <td className="font-medium">{c.partnerName}</td>
+                  <td className="font-medium">
+                    <PartnerLink
+                      partnerId={c.partnerId} name={c.partnerName}
+                      side={c.direction === "FromMerchant" ? "merchant" : "seller"}
+                    />
+                  </td>
                   <td className="text-sm text-gray-500">{PAYMENT_DIRECTION_LABELS[c.direction]}</td>
                   <td className="font-medium">{formatCurrency(c.amount)}</td>
                   <td className="text-gray-500">{c.checkNumber || "—"}</td>
-                  <td className="text-gray-500 text-sm">{c.invoiceNumber ?? "—"}</td>
+                  <td className="text-sm">
+                    {/* A check is a payment — its invoice column behaves identically. */}
+                    <InvoiceLink invoiceId={c.invoiceId} invoiceNumber={c.invoiceNumber} />
+                  </td>
                   <td>
                     <span className={`text-xs rounded-full px-2 py-1 ${STATUS_BADGE_CLASS[c.checkStatus ?? "Pending"]}`}>
                       {STATUS_LABELS[c.checkStatus ?? "Pending"]}

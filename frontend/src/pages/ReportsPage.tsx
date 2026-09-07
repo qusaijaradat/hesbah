@@ -6,6 +6,7 @@ import type { AgingReportRow, DriverReportRow, FarmerReportRow, MarketReportRow,
 import { formatCurrency, formatDate, formatWeight } from "../lib/format";
 import { triggerBlobDownload } from "../api/invoices";
 import { useAuth } from "../auth/AuthContext";
+import { PartnerLink } from "../components/RecordLinks";
 
 type Tab = "farmers" | "merchants" | "drivers" | "market" | "aging";
 
@@ -118,7 +119,7 @@ function FarmersTable({ rows }: { rows: FarmerReportRow[] }) {
             <tr><td colSpan={11} className="text-center text-gray-400 py-6">لا توجد بيانات</td></tr>
           ) : pager.pageRows.map((r) => (
             <tr key={r.farmerId}>
-              <td className="font-medium">{r.farmerName}</td>
+              <td className="font-medium"><PartnerLink partnerId={r.farmerId} name={r.farmerName} side="seller" /></td>
               <td>{r.invoiceCount}</td>
               <td>{formatWeight(r.totalWeightKg)}</td>
               <td>{r.totalBoxes.toLocaleString("en-US", { maximumFractionDigits: 3 })}</td>
@@ -158,7 +159,7 @@ function MerchantsTable({ rows }: { rows: MerchantReportRow[] }) {
             <tr><td colSpan={12} className="text-center text-gray-400 py-6">لا توجد بيانات</td></tr>
           ) : pager.pageRows.map((r) => (
             <tr key={r.merchantId}>
-              <td className="font-medium">{r.merchantName}</td>
+              <td className="font-medium"><PartnerLink partnerId={r.merchantId} name={r.merchantName} side="merchant" /></td>
               <td>{r.invoiceCount}</td>
               <td>{formatWeight(r.totalWeightKg)}</td>
               <td>{r.totalBoxes.toLocaleString("en-US", { maximumFractionDigits: 3 })}</td>
@@ -198,7 +199,7 @@ function DriversTable({ rows }: { rows: DriverReportRow[] }) {
             <tr><td colSpan={7} className="text-center text-gray-400 py-6">لا توجد بيانات</td></tr>
           ) : pager.pageRows.map((r) => (
             <tr key={r.driverId}>
-              <td className="font-medium">{r.driverName}</td>
+              <td className="font-medium"><PartnerLink partnerId={r.driverId} name={r.driverName} side="seller" /></td>
               <td>{r.invoiceCount}</td>
               <td>{formatCurrency(r.totalTransportFee)}</td>
               <td>{formatCurrency(r.totalPaid)}</td>
@@ -230,7 +231,7 @@ function AgingTable({ rows }: { rows: AgingReportRow[] }) {
             <tr><td colSpan={6} className="text-center text-gray-400 py-6">لا توجد أرصدة متأخرة</td></tr>
           ) : pager.pageRows.map((r) => (
             <tr key={r.merchantId}>
-              <td className="font-medium">{r.merchantName}</td>
+              <td className="font-medium"><PartnerLink partnerId={r.merchantId} name={r.merchantName} side="merchant" /></td>
               <td>{formatCurrency(r.current)}</td>
               <td>{formatCurrency(r.days30To59)}</td>
               <td className={r.days60To89 > 0 ? "text-amber-600" : ""}>{formatCurrency(r.days60To89)}</td>

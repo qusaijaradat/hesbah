@@ -10,6 +10,7 @@ import { usePagination } from "../lib/usePagination";
 import { TablePagination } from "../components/TablePagination";
 import { buildStatementMessage, buildWhatsAppLink, formatCurrency, formatDate, formatQuantity, formatWeight, todayLocalDateString } from "../lib/format";
 import type { DriverItemBreakdownRow, FarmerItemBreakdownRow, InvoiceFilter, InvoiceListItemDto, MerchantItemBreakdownRow, PartnerType, UnitOfMeasure } from "../types";
+import { InvoiceLink, PartnerLink } from "../components/RecordLinks";
 
 function startOfDay(d: Date) {
   const x = new Date(d);
@@ -395,11 +396,15 @@ function SectionTable({ section }: { section: RoleSection }) {
   // never just what is on screen.
   const pager = usePagination(section.result);
 
-  /** This row's counterparty on THIS section's side — the only person shown. */
-  function partyOf(inv: InvoiceListItemDto): string {
-    if (role === "Merchant") return inv.merchantName;
-    if (role === "Farmer") return inv.farmerName ?? "—";
-    return inv.driverName ?? "—";
+  /**
+   * This row's counterparty on THIS section's side — the only person shown, linked to that
+   * side's own كشف حساب. A driver goes to the same account page a seller does: they share one
+   * ledger, while a buyer's account is the separate one.
+   */
+  function partyOf(inv: InvoiceListItemDto) {
+    if (role === "Merchant") return <PartnerLink partnerId={inv.merchantId} name={inv.merchantName} side="merchant" />;
+    if (role === "Farmer") return <PartnerLink partnerId={inv.farmerId} name={inv.farmerName} side="seller" />;
+    return <PartnerLink partnerId={inv.driverId} name={inv.driverName} side="seller" />;
   }
 
   function remainingOf(inv: InvoiceListItemDto): number | null | undefined {
@@ -461,7 +466,9 @@ function SectionTable({ section }: { section: RoleSection }) {
               return (
                 <tr key={inv.id}>
                   <td><input type="checkbox" checked={section.selected.has(inv.id)} onChange={() => section.toggleOne(inv.id)} /></td>
-                  <td className="font-mono text-sm">{inv.invoiceNumber}</td>
+                  <td className="font-mono text-sm">
+                    <InvoiceLink invoiceId={inv.id} invoiceNumber={inv.invoiceNumber} />
+                  </td>
                   <td>{formatDate(inv.date)}</td>
                   <td>{partyOf(inv)}</td>
                   <td className="text-xs">{inv.itemsSummary || "—"}</td>
@@ -1111,7 +1118,7 @@ export function BulkPrintPage() {
             <tbody>
               {traderGroups.map((g) => (
                 <tr key={g.key}>
-                  <td>{g.merchantName}</td>
+                  <td><PartnerLink partnerId={g.merchantId} name={g.merchantName} side="merchant" /></td>
                   <td className="text-sm text-gray-500">{g.day}</td>
                   <td>{g.invoiceIds.length}</td>
                   <td className="font-semibold">{formatCurrency(g.total)}</td>
@@ -1150,7 +1157,7 @@ export function BulkPrintPage() {
             <tbody>
               {farmerGroups.map((g) => (
                 <tr key={g.farmerId}>
-                  <td>{g.farmerName}</td>
+                  <td><PartnerLink partnerId={g.farmerId} name={g.farmerName} side="seller" /></td>
                   <td>{g.invoiceIds.length}</td>
                   <td className="font-semibold">{formatCurrency(g.total)}</td>
                   <td>
@@ -1190,7 +1197,7 @@ export function BulkPrintPage() {
             <tbody>
               {driverGroups.map((g) => (
                 <tr key={g.key}>
-                  <td className="font-medium">{g.driverName}</td>
+                  <td className="font-medium"><PartnerLink partnerId={g.driverId} name={g.driverName} side="seller" /></td>
                   <td>{g.invoiceIds.length}</td>
                   <td className="font-semibold">{formatCurrency(g.totalDriverDue)}</td>
                   <td>

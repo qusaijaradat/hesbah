@@ -11,6 +11,7 @@ import { useAuth } from "../auth/AuthContext";
 import { useSelection } from "../lib/useSelection";
 import { TablePagination } from "../components/TablePagination";
 import { runBulkDelete, summarizeBulkDelete } from "../lib/bulkDelete";
+import { InvoiceLink, PartnerLink } from "../components/RecordLinks";
 
 const STATUS_LABELS: Record<string, string> = { Active: "فعّالة", Cancelled: "ملغاة" };
 
@@ -322,11 +323,15 @@ export function InvoicesPage() {
                       <input type="checkbox" checked={selection.selected.has(inv.id)} onChange={() => selection.toggleOne(inv.id)} />
                     </td>
                   )}
-                  <td className="font-mono text-sm">{inv.invoiceNumber}</td>
+                  <td className="font-mono text-sm">
+                    <InvoiceLink invoiceId={inv.id} invoiceNumber={inv.invoiceNumber} />
+                  </td>
                   <td>{formatDate(inv.date)}</td>
-                  <td>{inv.merchantName}</td>
-                  <td>{inv.farmerName ?? "—"}</td>
-                  <td>{inv.driverName ?? "—"}</td>
+                  <td><PartnerLink partnerId={inv.merchantId} name={inv.merchantName} side="merchant" /></td>
+                  {/* A driver's balance lives on the same account page a seller's does — they
+                      share one ledger (see the backend FarmerTransaction). */}
+                  <td><PartnerLink partnerId={inv.farmerId} name={inv.farmerName} side="seller" /></td>
+                  <td><PartnerLink partnerId={inv.driverId} name={inv.driverName} side="seller" /></td>
                   <td className="text-gray-600 max-w-[16rem]">{inv.itemsSummary || "—"}</td>
                   <td>
                     {/* Not everything is sold by weight — a box-only invoice has totalWeightKg

@@ -2,6 +2,7 @@ import { formatQuantity } from "../lib/format";
 import { usePagination } from "../lib/usePagination";
 import { TablePagination } from "./TablePagination";
 import type { GoodsStockRow } from "../types";
+import { PartnerLink } from "./RecordLinks";
 
 /**
  * "البضاعة المتوفرة حاليًا" across ALL farmers — one row per (farmer, item, unit): الوارد/المباع/
@@ -43,7 +44,12 @@ export function GoodsGlobalStockCard({
           ) : (
             pager.pageRows.map((r, idx) => (
               <tr key={idx}>
-                <td className="font-medium">{r.farmerName ?? "—"}</td>
+                {/* farmerId is populated only on this global "كل الباعة" view (see
+                    GoodsStockRow) — exactly the view where "whose stock is this?" is worth
+                    one click. */}
+                <td className="font-medium">
+                  <PartnerLink partnerId={r.farmerId} name={r.farmerName} side="seller" />
+                </td>
                 <td>{r.itemName}</td>
                 <td>{r.unit === "Kg" ? "كيلو" : "صندوق"}</td>
                 <td>{formatQuantity(r.totalReceived, r.unit)}</td>

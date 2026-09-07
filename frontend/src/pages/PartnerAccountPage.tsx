@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+import { usePagination } from "../lib/usePagination";
+import { TablePagination } from "../components/TablePagination";
 import { Link, useParams } from "react-router-dom";
 import {
   createBoxReturn, deleteBoxReturn, getFarmerAccount, getMerchantAccount,
@@ -305,6 +307,8 @@ function BoxBalanceSection({ partnerId, account, onChanged }: { partnerId: numbe
 // Shared by both the farmer/driver and merchant account pages; a merchant statement simply never
 // populates saleValue/commission, so that part of "التفاصيل" is silently skipped for those rows.
 function StatementTable({ statement }: { statement: StatementLineDto[] }) {
+  // A running account statement only ever grows — page it like every other table.
+  const pager = usePagination(statement);
   return (
     <div className="card overflow-x-auto">
       <table className="table-base">
@@ -321,7 +325,7 @@ function StatementTable({ statement }: { statement: StatementLineDto[] }) {
           {statement.length === 0 ? (
             <tr><td colSpan={5} className="text-center text-gray-400 py-6">لا توجد حركات</td></tr>
           ) : (
-            statement.map((line, idx) => (
+            pager.pageRows.map((line, idx) => (
               <tr key={idx}>
                 <td className="whitespace-nowrap">{formatDate(line.date)}</td>
                 <td>
@@ -343,6 +347,10 @@ function StatementTable({ statement }: { statement: StatementLineDto[] }) {
           )}
         </tbody>
       </table>
+      <TablePagination
+        page={pager.page} pageSize={pager.pageSize} totalCount={pager.totalCount}
+        itemLabel="حركة" onPageChange={pager.setPage} onPageSizeChange={pager.setPageSize}
+      />
     </div>
   );
 }

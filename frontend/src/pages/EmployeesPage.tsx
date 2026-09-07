@@ -4,6 +4,8 @@ import type { EmployeeDto } from "../types";
 import { apiErrorMessage } from "../api/client";
 import { formatCurrency } from "../lib/format";
 import { useAuth } from "../auth/AuthContext";
+import { usePagination } from "../lib/usePagination";
+import { TablePagination } from "../components/TablePagination";
 import { useSelection } from "../lib/useSelection";
 import { runBulkDelete, summarizeBulkDelete } from "../lib/bulkDelete";
 
@@ -18,6 +20,7 @@ export function EmployeesPage() {
   const [error, setError] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const selection = useSelection();
+  const pager = usePagination(employees);
   const [bulkDeleting, setBulkDeleting] = useState(false);
 
   async function refresh() {
@@ -85,8 +88,8 @@ export function EmployeesPage() {
                 <th className="w-8">
                   <input
                     type="checkbox"
-                    checked={employees.length > 0 && employees.every((e) => selection.selected.has(e.id))}
-                    onChange={() => selection.toggleAll(employees.map((e) => e.id))}
+                    checked={pager.pageRows.length > 0 && pager.pageRows.every((e) => selection.selected.has(e.id))}
+                    onChange={() => selection.toggleAll(pager.pageRows.map((e) => e.id))}
                   />
                 </th>
               )}
@@ -104,7 +107,7 @@ export function EmployeesPage() {
             ) : employees.length === 0 ? (
               <tr><td colSpan={canDelete ? 7 : 6} className="text-center text-gray-400 py-6">لا يوجد موظفون بعد</td></tr>
             ) : (
-              employees.map((e) => (
+              pager.pageRows.map((e) => (
                 <tr key={e.id}>
                   {canDelete && (
                     <td>
@@ -135,6 +138,10 @@ export function EmployeesPage() {
             )}
           </tbody>
         </table>
+        <TablePagination
+          page={pager.page} pageSize={pager.pageSize} totalCount={pager.totalCount}
+          itemLabel="موظف" onPageChange={pager.setPage} onPageSizeChange={pager.setPageSize}
+        />
       </div>
 
       {editing && (

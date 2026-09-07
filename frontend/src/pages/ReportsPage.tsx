@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+import { usePagination } from "../lib/usePagination";
+import { TablePagination } from "../components/TablePagination";
 import { agingReport, driverReport, exportReport, farmerReport, marketReport, merchantReport, type ReportFilter } from "../api/reports";
 import type { AgingReportRow, DriverReportRow, FarmerReportRow, MarketReportRow, MerchantReportRow } from "../types";
 import { formatCurrency, formatDate, formatWeight } from "../lib/format";
@@ -100,6 +102,7 @@ export function ReportsPage() {
 }
 
 function FarmersTable({ rows }: { rows: FarmerReportRow[] }) {
+  const pager = usePagination(rows);
   return (
     <div className="card overflow-x-auto">
       <table className="table-base">
@@ -113,7 +116,7 @@ function FarmersTable({ rows }: { rows: FarmerReportRow[] }) {
         <tbody>
           {rows.length === 0 ? (
             <tr><td colSpan={11} className="text-center text-gray-400 py-6">لا توجد بيانات</td></tr>
-          ) : rows.map((r) => (
+          ) : pager.pageRows.map((r) => (
             <tr key={r.farmerId}>
               <td className="font-medium">{r.farmerName}</td>
               <td>{r.invoiceCount}</td>
@@ -130,11 +133,16 @@ function FarmersTable({ rows }: { rows: FarmerReportRow[] }) {
           ))}
         </tbody>
       </table>
+      <TablePagination
+        page={pager.page} pageSize={pager.pageSize} totalCount={pager.totalCount}
+        itemLabel="بائع" onPageChange={pager.setPage} onPageSizeChange={pager.setPageSize}
+      />
     </div>
   );
 }
 
 function MerchantsTable({ rows }: { rows: MerchantReportRow[] }) {
+  const pager = usePagination(rows);
   return (
     <div className="card overflow-x-auto">
       <table className="table-base">
@@ -148,7 +156,7 @@ function MerchantsTable({ rows }: { rows: MerchantReportRow[] }) {
         <tbody>
           {rows.length === 0 ? (
             <tr><td colSpan={12} className="text-center text-gray-400 py-6">لا توجد بيانات</td></tr>
-          ) : rows.map((r) => (
+          ) : pager.pageRows.map((r) => (
             <tr key={r.merchantId}>
               <td className="font-medium">{r.merchantName}</td>
               <td>{r.invoiceCount}</td>
@@ -166,11 +174,16 @@ function MerchantsTable({ rows }: { rows: MerchantReportRow[] }) {
           ))}
         </tbody>
       </table>
+      <TablePagination
+        page={pager.page} pageSize={pager.pageSize} totalCount={pager.totalCount}
+        itemLabel="مشتري" onPageChange={pager.setPage} onPageSizeChange={pager.setPageSize}
+      />
     </div>
   );
 }
 
 function DriversTable({ rows }: { rows: DriverReportRow[] }) {
+  const pager = usePagination(rows);
   return (
     <div className="card overflow-x-auto">
       <table className="table-base">
@@ -183,7 +196,7 @@ function DriversTable({ rows }: { rows: DriverReportRow[] }) {
         <tbody>
           {rows.length === 0 ? (
             <tr><td colSpan={7} className="text-center text-gray-400 py-6">لا توجد بيانات</td></tr>
-          ) : rows.map((r) => (
+          ) : pager.pageRows.map((r) => (
             <tr key={r.driverId}>
               <td className="font-medium">{r.driverName}</td>
               <td>{r.invoiceCount}</td>
@@ -196,11 +209,16 @@ function DriversTable({ rows }: { rows: DriverReportRow[] }) {
           ))}
         </tbody>
       </table>
+      <TablePagination
+        page={pager.page} pageSize={pager.pageSize} totalCount={pager.totalCount}
+        itemLabel="سائق" onPageChange={pager.setPage} onPageSizeChange={pager.setPageSize}
+      />
     </div>
   );
 }
 
 function AgingTable({ rows }: { rows: AgingReportRow[] }) {
+  const pager = usePagination(rows);
   return (
     <div className="card overflow-x-auto">
       <table className="table-base">
@@ -210,7 +228,7 @@ function AgingTable({ rows }: { rows: AgingReportRow[] }) {
         <tbody>
           {rows.length === 0 ? (
             <tr><td colSpan={6} className="text-center text-gray-400 py-6">لا توجد أرصدة متأخرة</td></tr>
-          ) : rows.map((r) => (
+          ) : pager.pageRows.map((r) => (
             <tr key={r.merchantId}>
               <td className="font-medium">{r.merchantName}</td>
               <td>{formatCurrency(r.current)}</td>
@@ -222,11 +240,16 @@ function AgingTable({ rows }: { rows: AgingReportRow[] }) {
           ))}
         </tbody>
       </table>
+      <TablePagination
+        page={pager.page} pageSize={pager.pageSize} totalCount={pager.totalCount}
+        itemLabel="فاتورة" onPageChange={pager.setPage} onPageSizeChange={pager.setPageSize}
+      />
     </div>
   );
 }
 
 function MarketTable({ rows }: { rows: MarketReportRow[] }) {
+  const pager = usePagination(rows);
   return (
     <div className="card overflow-x-auto">
       <table className="table-base">
@@ -234,7 +257,7 @@ function MarketTable({ rows }: { rows: MarketReportRow[] }) {
         <tbody>
           {rows.length === 0 ? (
             <tr><td colSpan={5} className="text-center text-gray-400 py-6">لا توجد بيانات</td></tr>
-          ) : rows.map((r) => (
+          ) : pager.pageRows.map((r) => (
             <tr key={r.period}>
               <td className="font-medium">{r.period}</td>
               <td>{formatCurrency(r.totalSalesValue)}</td>
@@ -245,6 +268,10 @@ function MarketTable({ rows }: { rows: MarketReportRow[] }) {
           ))}
         </tbody>
       </table>
+      <TablePagination
+        page={pager.page} pageSize={pager.pageSize} totalCount={pager.totalCount}
+        itemLabel="يوم" onPageChange={pager.setPage} onPageSizeChange={pager.setPageSize}
+      />
     </div>
   );
 }

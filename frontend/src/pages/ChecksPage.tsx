@@ -5,6 +5,8 @@ import { triggerBlobDownload } from "../api/invoices";
 import { apiErrorMessage } from "../api/client";
 import { formatCurrency, formatDate, todayLocalDateString, PAYMENT_DIRECTION_LABELS } from "../lib/format";
 import { useAuth } from "../auth/AuthContext";
+import { usePagination } from "../lib/usePagination";
+import { TablePagination } from "../components/TablePagination";
 import type { CheckClearanceStatus, PaymentDto } from "../types";
 
 /** Pending checks due within this many days (but not yet overdue) get the amber "قريبًا" highlight
@@ -66,7 +68,7 @@ export function ChecksPage() {
     setLoading(true);
     setError(null);
     try {
-      const result = await listChecks({ status: statusFilter || undefined, pageSize: 200 });
+      const result = await listChecks({ status: statusFilter || undefined, pageSize: 1000 });
       setChecks(result.items);
     } catch (err) {
       setError(apiErrorMessage(err, "فشل تحميل الشيكات"));
@@ -127,6 +129,8 @@ export function ChecksPage() {
   const visibleChecks = showAllMonths
     ? checks
     : checks.filter((c) => c.checkDueDate && c.checkDueDate.slice(0, 7) === monthFilter);
+  // One page of the (already month-filtered) list at a time — see lib/usePagination.
+  const pager = usePagination(visibleChecks);
   const pendingTotal = visibleChecks
     .filter((c) => c.checkStatus === "Pending")
     .reduce((sum, c) => sum + c.amount, 0);
@@ -199,7 +203,7 @@ export function ChecksPage() {
               <tr><td colSpan={canEdit ? 9 : 8} className="text-center text-gray-400 py-6">
                 {showAllMonths ? "لا توجد شيكات" : "لا توجد شيكات مستحقة هذا الشهر"}
               </td></tr>
-            ) : visibleChecks.map((c) => {
+            ) : pager.pageRows.map((c) => {
               const isOverdue = c.checkStatus === "Pending" && !!c.checkDueDate && c.checkDueDate.slice(0, 10) < today;
               const daysUntilDue = c.checkDueDate
                 ? Math.round((new Date(c.checkDueDate.slice(0, 10)).getTime() - new Date(today).getTime()) / 86400000)
@@ -247,6 +251,10 @@ export function ChecksPage() {
             })}
           </tbody>
         </table>
+        <TablePagination
+          page={pager.page} pageSize={pager.pageSize} totalCount={pager.totalCount}
+          itemLabel="شيك" onPageChange={pager.setPage} onPageSizeChange={pager.setPageSize}
+        />
       </div>
     </div>
   );

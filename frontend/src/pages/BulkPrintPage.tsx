@@ -6,6 +6,8 @@ import { driverItemsBreakdown, farmerItemsBreakdown, merchantItemsBreakdown, pri
 import type { ReportFilter } from "../api/reports";
 import { listSettings } from "../api/settings";
 import { PartnerAutocomplete } from "../components/PartnerAutocomplete";
+import { usePagination } from "../lib/usePagination";
+import { TablePagination } from "../components/TablePagination";
 import { buildStatementMessage, buildWhatsAppLink, formatCurrency, formatDate, formatQuantity, formatWeight, todayLocalDateString } from "../lib/format";
 import type { DriverItemBreakdownRow, FarmerItemBreakdownRow, InvoiceFilter, InvoiceListItemDto, MerchantItemBreakdownRow, PartnerType, UnitOfMeasure } from "../types";
 
@@ -388,6 +390,10 @@ function SectionFilters({ section }: { section: RoleSection }) {
  */
 function SectionTable({ section }: { section: RoleSection }) {
   const { role } = section;
+  // A day of invoices is fetched whole (pageSize 500) for the print run — the TABLE still shows
+  // one page at a time. Selection and printing keep working across pages: they read section.result,
+  // never just what is on screen.
+  const pager = usePagination(section.result);
 
   /** This row's counterparty on THIS section's side — the only person shown. */
   function partyOf(inv: InvoiceListItemDto): string {
@@ -450,7 +456,7 @@ function SectionTable({ section }: { section: RoleSection }) {
           ) : section.result.length === 0 ? (
             <tr><td colSpan={columnCount} className="text-center text-gray-400 py-6">لا توجد فواتير مطابقة</td></tr>
           ) : (
-            section.result.map((inv) => {
+            pager.pageRows.map((inv) => {
               const remaining = remainingOf(inv);
               return (
                 <tr key={inv.id}>
@@ -481,6 +487,10 @@ function SectionTable({ section }: { section: RoleSection }) {
           )}
         </tbody>
       </table>
+      <TablePagination
+        page={pager.page} pageSize={pager.pageSize} totalCount={pager.totalCount}
+        itemLabel="فاتورة" onPageChange={pager.setPage} onPageSizeChange={pager.setPageSize}
+      />
     </div>
   );
 }
@@ -519,7 +529,7 @@ function SectionPrintBar({ section }: { section: RoleSection }) {
         {section.printing
           ? "جاري التجهيز..."
           : section.role === "Merchant"
-          ? "🖨️ طباعة فواتير مشتري (فاتورة مجمّعة لكل مشتري/يوم)"
+          ? "🖨️ طباعة فواتير مشتري (فاتورة مجمّعة لكل مشتري/يوم — 4 بالصفحة)"
           : `🖨️ طباعة فواتير ${ROLE_LABEL[section.role]} (فاتورة ${ROLE_LABEL[section.role]} — 4 بالصفحة)`}
       </button>
     </div>

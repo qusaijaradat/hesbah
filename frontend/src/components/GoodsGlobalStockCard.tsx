@@ -1,4 +1,6 @@
 import { formatQuantity } from "../lib/format";
+import { usePagination } from "../lib/usePagination";
+import { TablePagination } from "./TablePagination";
 import type { GoodsStockRow } from "../types";
 
 /**
@@ -22,6 +24,7 @@ export function GoodsGlobalStockCard({
   loading: boolean;
   error: string | null;
 }) {
+  const pager = usePagination(rows);
   return (
     <div className="card overflow-x-auto mt-4 mb-4">
       <div className="px-4 pt-4 pb-1 text-sm font-semibold text-gray-700">البضاعة المتوفرة حاليًا — كل الباعة</div>
@@ -38,7 +41,7 @@ export function GoodsGlobalStockCard({
             // empty table here means "nothing left in stock", not "nothing was ever recorded".
             <tr><td colSpan={7} className="text-center text-gray-400 py-6">لا توجد بضاعة متوفرة حاليًا</td></tr>
           ) : (
-            rows.map((r, idx) => (
+            pager.pageRows.map((r, idx) => (
               <tr key={idx}>
                 <td className="font-medium">{r.farmerName ?? "—"}</td>
                 <td>{r.itemName}</td>
@@ -52,6 +55,10 @@ export function GoodsGlobalStockCard({
           )}
         </tbody>
       </table>
+      <TablePagination
+        page={pager.page} pageSize={pager.pageSize} totalCount={pager.totalCount}
+        itemLabel="سطر" onPageChange={pager.setPage} onPageSizeChange={pager.setPageSize}
+      />
     </div>
   );
 }

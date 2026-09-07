@@ -3,6 +3,8 @@ import { createItem, deleteItem, listItems, updateItem } from "../api/items";
 import type { ItemDto } from "../types";
 import { apiErrorMessage } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
+import { usePagination } from "../lib/usePagination";
+import { TablePagination } from "../components/TablePagination";
 import { useSelection } from "../lib/useSelection";
 import { runBulkDelete, summarizeBulkDelete } from "../lib/bulkDelete";
 
@@ -22,11 +24,12 @@ export function ItemsPage() {
   const [editing, setEditing] = useState<ItemDto | "new" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const selection = useSelection();
+  const pager = usePagination(items);
   const [bulkDeleting, setBulkDeleting] = useState(false);
 
   async function refresh() {
     setLoading(true);
-    const result = await listItems({ search: search || undefined, pageSize: 200 });
+    const result = await listItems({ search: search || undefined, pageSize: 1000 });
     setItems(result.items);
     setLoading(false);
   }
@@ -96,8 +99,8 @@ export function ItemsPage() {
                 <th className="w-8">
                   <input
                     type="checkbox"
-                    checked={items.length > 0 && items.every((i) => selection.selected.has(i.id))}
-                    onChange={() => selection.toggleAll(items.map((i) => i.id))}
+                    checked={pager.pageRows.length > 0 && pager.pageRows.every((i) => selection.selected.has(i.id))}
+                    onChange={() => selection.toggleAll(pager.pageRows.map((i) => i.id))}
                   />
                 </th>
               )}
@@ -111,7 +114,7 @@ export function ItemsPage() {
             ) : items.length === 0 ? (
               <tr><td colSpan={canDelete ? 3 : 2} className="text-center text-gray-400 py-6">لا يوجد أصناف بعد</td></tr>
             ) : (
-              items.map((item) => (
+              pager.pageRows.map((item) => (
                 <tr key={item.id}>
                   {canDelete && (
                     <td>
@@ -132,6 +135,10 @@ export function ItemsPage() {
             )}
           </tbody>
         </table>
+        <TablePagination
+          page={pager.page} pageSize={pager.pageSize} totalCount={pager.totalCount}
+          itemLabel="صنف" onPageChange={pager.setPage} onPageSizeChange={pager.setPageSize}
+        />
       </div>
 
       {editing && (

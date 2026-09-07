@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+import { usePagination } from "../lib/usePagination";
+import { TablePagination } from "../components/TablePagination";
 import { Link } from "react-router-dom";
 import { getDebtsOverview, printDebtsOverviewPdf } from "../api/partners";
 import { triggerBlobDownload } from "../api/invoices";
@@ -131,6 +133,7 @@ function DebtSection({
   owedToThemLabel: string;
   emptyText: string;
 }) {
+  const pager = usePagination(rows);
   const total = rows.reduce((sum, r) => sum + r.remaining, 0);
 
   return (
@@ -150,7 +153,7 @@ function DebtSection({
             {rows.length === 0 ? (
               <tr><td colSpan={4} className="text-center text-gray-400 py-6">{emptyText}</td></tr>
             ) : (
-              rows.map((r) => (
+              pager.pageRows.map((r) => (
                 <tr key={r.partnerId}>
                   <td className="font-medium">
                     <Link to={linkFor(r.partnerId)} className="hover:underline">{r.name}</Link>
@@ -179,6 +182,10 @@ function DebtSection({
             </tfoot>
           )}
         </table>
+        <TablePagination
+          page={pager.page} pageSize={pager.pageSize} totalCount={pager.totalCount}
+          itemLabel="شخص" onPageChange={pager.setPage} onPageSizeChange={pager.setPageSize}
+        />
       </div>
     </div>
   );

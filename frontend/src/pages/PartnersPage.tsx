@@ -6,6 +6,8 @@ import type { PartnerDto, PartnerType } from "../types";
 import { apiErrorMessage } from "../api/client";
 import { formatCurrency } from "../lib/format";
 import { useAuth } from "../auth/AuthContext";
+import { usePagination } from "../lib/usePagination";
+import { TablePagination } from "../components/TablePagination";
 import { CREDIT_LIMIT_UI_ENABLED } from "../lib/featureFlags";
 import { useSelection } from "../lib/useSelection";
 import { runBulkDelete, summarizeBulkDelete } from "../lib/bulkDelete";
@@ -24,11 +26,12 @@ export function PartnersPage() {
   const [error, setError] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const selection = useSelection();
+  const pager = usePagination(partners);
   const [bulkDeleting, setBulkDeleting] = useState(false);
 
   async function refresh() {
     setLoading(true);
-    const result = await listPartners({ search: search || undefined, pageSize: 100 });
+    const result = await listPartners({ search: search || undefined, pageSize: 1000 });
     setPartners(result.items);
     setLoading(false);
   }
@@ -131,8 +134,8 @@ export function PartnersPage() {
                 <th className="w-8">
                   <input
                     type="checkbox"
-                    checked={partners.length > 0 && partners.every((p) => selection.selected.has(p.id))}
-                    onChange={() => selection.toggleAll(partners.map((p) => p.id))}
+                    checked={pager.pageRows.length > 0 && pager.pageRows.every((p) => selection.selected.has(p.id))}
+                    onChange={() => selection.toggleAll(pager.pageRows.map((p) => p.id))}
                   />
                 </th>
               )}
@@ -152,7 +155,7 @@ export function PartnersPage() {
             ) : partners.length === 0 ? (
               <tr><td colSpan={(CREDIT_LIMIT_UI_ENABLED ? 8 : 7) + (canDelete ? 1 : 0)} className="text-center text-gray-400 py-6">لا يوجد نتائج</td></tr>
             ) : (
-              partners.map((p) => (
+              pager.pageRows.map((p) => (
                 <tr key={p.id}>
                   {canDelete && (
                     <td>
@@ -193,6 +196,10 @@ export function PartnersPage() {
             )}
           </tbody>
         </table>
+        <TablePagination
+          page={pager.page} pageSize={pager.pageSize} totalCount={pager.totalCount}
+          itemLabel="شخص" onPageChange={pager.setPage} onPageSizeChange={pager.setPageSize}
+        />
       </div>
 
       {editing && (

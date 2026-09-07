@@ -14,6 +14,8 @@ import { apiErrorMessage } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { useSelection } from "../lib/useSelection";
 import { runBulkDelete, summarizeBulkDelete } from "../lib/bulkDelete";
+import { usePagination } from "../lib/usePagination";
+import { TablePagination } from "../components/TablePagination";
 import { CHECK_METHOD, PAYMENT_METHOD_OPTIONS, PaymentLineFields, emptyLine, lineTotal, paymentRequestsFromLine, validatePaymentLine } from "../components/PaymentLineFields";
 import type { PaymentLine } from "../components/PaymentLineFields";
 
@@ -56,8 +58,12 @@ function PaymentsTab({ canCreate, canEdit, canDelete }: { canCreate: boolean; ca
   const selection = useSelection();
   const [bulkDeleting, setBulkDeleting] = useState(false);
 
+  // Paged in the browser: the fetch pulls a generous slice and the table shows one page of it, so
+  // a busy day's payments stay readable instead of scrolling forever (see lib/usePagination).
+  const pager = usePagination(payments);
+
   async function refresh() {
-    const result = await listPayments({ pageSize: 50 });
+    const result = await listPayments({ pageSize: 500 });
     setPayments(result.items);
   }
 
@@ -131,8 +137,8 @@ function PaymentsTab({ canCreate, canEdit, canDelete }: { canCreate: boolean; ca
                 <th className="w-8">
                   <input
                     type="checkbox"
-                    checked={payments.length > 0 && payments.every((p) => selection.selected.has(p.id))}
-                    onChange={() => selection.toggleAll(payments.map((p) => p.id))}
+                    checked={pager.pageRows.length > 0 && pager.pageRows.every((p) => selection.selected.has(p.id))}
+                    onChange={() => selection.toggleAll(pager.pageRows.map((p) => p.id))}
                   />
                 </th>
               )}
@@ -142,7 +148,7 @@ function PaymentsTab({ canCreate, canEdit, canDelete }: { canCreate: boolean; ca
           <tbody>
             {payments.length === 0 ? (
               <tr><td colSpan={(showActionsColumn ? 8 : 7) + (canDelete ? 1 : 0)} className="text-center text-gray-400 py-6">لا توجد دفعات</td></tr>
-            ) : payments.map((p) => (
+            ) : pager.pageRows.map((p) => (
               <tr key={p.id}>
                 {canDelete && (
                   <td>
@@ -171,6 +177,10 @@ function PaymentsTab({ canCreate, canEdit, canDelete }: { canCreate: boolean; ca
             ))}
           </tbody>
         </table>
+        <TablePagination
+          page={pager.page} pageSize={pager.pageSize} totalCount={pager.totalCount}
+          itemLabel="دفعة" onPageChange={pager.setPage} onPageSizeChange={pager.setPageSize}
+        />
       </div>
 
       {showForm && <PaymentFormModal onClose={() => setShowForm(false)} onSaved={refresh} />}
@@ -569,8 +579,11 @@ function ExpensesTab({ canCreate, canEdit, canDelete }: { canCreate: boolean; ca
   const selection = useSelection();
   const [bulkDeleting, setBulkDeleting] = useState(false);
 
+  // Same browser-side paging as the payments tab above.
+  const pager = usePagination(expenses);
+
   async function refresh() {
-    const result = await listExpenses({ pageSize: 50 });
+    const result = await listExpenses({ pageSize: 500 });
     setExpenses(result.items);
   }
 
@@ -641,8 +654,8 @@ function ExpensesTab({ canCreate, canEdit, canDelete }: { canCreate: boolean; ca
                 <th className="w-8">
                   <input
                     type="checkbox"
-                    checked={expenses.length > 0 && expenses.every((e) => selection.selected.has(e.id))}
-                    onChange={() => selection.toggleAll(expenses.map((e) => e.id))}
+                    checked={pager.pageRows.length > 0 && pager.pageRows.every((e) => selection.selected.has(e.id))}
+                    onChange={() => selection.toggleAll(pager.pageRows.map((e) => e.id))}
                   />
                 </th>
               )}
@@ -652,7 +665,7 @@ function ExpensesTab({ canCreate, canEdit, canDelete }: { canCreate: boolean; ca
           <tbody>
             {expenses.length === 0 ? (
               <tr><td colSpan={(showActionsColumn ? 6 : 5) + (canDelete ? 1 : 0)} className="text-center text-gray-400 py-6">لا توجد مصاريف</td></tr>
-            ) : expenses.map((e) => (
+            ) : pager.pageRows.map((e) => (
               <tr key={e.id}>
                 {canDelete && (
                   <td>
@@ -674,6 +687,10 @@ function ExpensesTab({ canCreate, canEdit, canDelete }: { canCreate: boolean; ca
             ))}
           </tbody>
         </table>
+        <TablePagination
+          page={pager.page} pageSize={pager.pageSize} totalCount={pager.totalCount}
+          itemLabel="مصروف" onPageChange={pager.setPage} onPageSizeChange={pager.setPageSize}
+        />
       </div>
       {showForm && <ExpenseFormModal onClose={() => setShowForm(false)} onSaved={refresh} />}
       {editing && <ExpenseEditModal expense={editing} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); refresh(); }} />}

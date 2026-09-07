@@ -300,15 +300,12 @@ public class ExportService : IExportService
                     table.ColumnsDefinition(columns =>
                     {
                         columns.RelativeColumn(4);
-                        if (thermalWidth)
-                        {
-                            columns.RelativeColumn(2);
-                        }
-                        else
-                        {
-                            columns.RelativeColumn(2);
-                            columns.RelativeColumn(2);
-                        }
+                        // العدد + الوزن as two columns on EVERY width now, including the 80mm
+                        // thermal roll (explicit request: both figures always shown, with a dash
+                        // in whichever one this line isn't priced by). س.الخشب stays A4-only —
+                        // a sixth column genuinely doesn't fit on 80mm.
+                        columns.RelativeColumn(2);
+                        columns.RelativeColumn(2);
                         columns.RelativeColumn(2);
                         if (!thermalWidth)
                         {
@@ -320,15 +317,8 @@ public class ExportService : IExportService
                     table.Header(header =>
                     {
                         header.Cell().Element(HeaderCell).AlignRight().Text("الصنف");
-                        if (thermalWidth)
-                        {
-                            header.Cell().Element(HeaderCell).AlignRight().Text("الكمية");
-                        }
-                        else
-                        {
-                            header.Cell().Element(HeaderCell).AlignRight().Text("العدد");
-                            header.Cell().Element(HeaderCell).AlignRight().Text("الوزن");
-                        }
+                        header.Cell().Element(HeaderCell).AlignRight().Text("العدد");
+                        header.Cell().Element(HeaderCell).AlignRight().Text("الوزن");
                         header.Cell().Element(HeaderCell).AlignRight().Text("السعر");
                         if (!thermalWidth)
                         {
@@ -342,15 +332,8 @@ public class ExportService : IExportService
                         var item = invoice.Items[i];
                         var shaded = i % 2 == 1;
                         table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(item.ItemName);
-                        if (thermalWidth)
-                        {
-                            table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text($"{item.Quantity:0.###} {ArabicUnitLabel(item.Unit)}");
-                        }
-                        else
-                        {
-                            table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(item.Unit == UnitOfMeasure.Box ? item.Quantity.ToString("0.###") : "—");
-                            table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(WeightCell(item.Unit, item.Quantity));
-                        }
+                        table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(BoxCountCell(item.Unit, item.Quantity));
+                        table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(thermalWidth ? WeightCellCompact(item.Unit, item.Quantity) : WeightCell(item.Unit, item.Quantity));
                         // PricePerUnit == 0 means "not priced yet, will be priced later" (see
                         // InvoiceNewPage/InvoiceEditPage's now-optional price field) — flagged
                         // instead of printing a misleading "₪0.00" that reads as a free item.
@@ -535,6 +518,25 @@ public class ExportService : IExportService
     /// </summary>
     public byte[] GenerateInvoicesBulkPdf(IReadOnlyList<InvoiceDto> invoices, CompanyInfo company, InvoicePrintRole role)
     {
+        return QuadrantGridPdf(invoices.Count, (container, index) =>
+            InvoiceCard(container, invoices[index], company, role));
+    }
+
+    /// <summary>
+    /// The 2×2 quadrant sheet every bulk invoice print uses: `count` cards laid out four to a
+    /// physical A4 page, in the order given, so the sheet can be cut into four afterwards.
+    ///
+    /// All four quadrant slots are always reserved, even on a page with fewer than four cards
+    /// (the last page, or a small selection) — an empty slot is left blank rather than letting the
+    /// used quadrants stretch to fill the sheet, so every printed invoice is the same size and the
+    /// cut lines land in the same place on every page.
+    ///
+    /// Shared by GenerateInvoicesBulkPdf and GenerateMergedInvoicesPdf so the merchant section's
+    /// merged invoices come out on the same four-up sheet as the seller's and driver's, instead of
+    /// burning a whole page each (explicit request: "بدي 4 فواتير يكونوا بالصفحة").
+    /// </summary>
+    private static byte[] QuadrantGridPdf(int count, Action<IContainer, int> renderCard)
+    {
         const int perPage = 4;
         const int perRow = 2;
         const float margin = 15f;
@@ -547,48 +549,43 @@ public class ExportService : IExportService
 
         var contentHeight = a4HeightPt - (margin * 2);
         var rowHeight = (contentHeight - rowSpacing) / (perPage / perRow);
-
-        var pages = invoices
-            .Select((invoice, index) => (invoice, index))
-            .GroupBy(x => x.index / perPage)
-            .Select(g => g.Select(x => x.invoice).ToList())
-            .ToList();
+        var pageCount = Math.Max(1, (int)Math.Ceiling(count / (double)perPage));
 
         var document = Document.Create(container =>
         {
-            foreach (var pageInvoices in pages)
+            for (var pageIndex = 0; pageIndex < pageCount; pageIndex++)
             {
+                var firstOnPage = pageIndex * perPage;
                 container.Page(page =>
                 {
                     page.Size(a4WidthPt, a4HeightPt);
                     page.Margin(margin);
                     page.DefaultTextStyle(x => x.FontSize(8).FontFamily(PdfFontFamily));
 
-                    // RightToLeft here so the FIRST invoice of each row-group lands in the
-                    // rightmost quadrant and the SECOND in the leftmost — matching how an Arabic
-                    // reader scans the sheet (right quadrant first, then left, top row before
-                    // bottom row) — instead of QuestPDF's plain left-to-right insertion order.
-                    // InvoiceCard below explicitly resets back to LeftToRight so this doesn't
-                    // also flip the item-name/quantity/price/total column order *inside* each
-                    // card, which stays identical to the single-invoice PDF's layout.
+                    // RightToLeft here so the FIRST card of each row lands in the rightmost
+                    // quadrant and the SECOND in the leftmost — matching how an Arabic reader
+                    // scans the sheet (right quadrant first, then left, top row before bottom row)
+                    // — instead of QuestPDF's plain left-to-right insertion order. The card
+                    // renderer resets back to LeftToRight itself so this doesn't also flip the
+                    // column order *inside* each card.
                     page.Content().ContentFromRightToLeft().Column(col =>
                     {
                         col.Spacing(rowSpacing);
-                        // Always exactly perPage/perRow rows, each reserving a full quadrant's
-                        // height — NOT just enough rows for however many invoices landed on this
-                        // page — so 1–3 invoices still divide the sheet into 4 equal quarters
-                        // instead of bunching up at the top with the rest of the page left blank.
                         for (var slotStart = 0; slotStart < perPage; slotStart += perRow)
                         {
+                            var rowStart = slotStart;
                             col.Item().MinHeight(rowHeight).Row(row =>
                             {
                                 row.Spacing(columnSpacing);
                                 for (var i = 0; i < perRow; i++)
                                 {
-                                    var index = slotStart + i;
+                                    var index = firstOnPage + rowStart + i;
                                     var cell = row.RelativeItem();
-                                    if (index < pageInvoices.Count)
-                                        cell.Element(c => InvoiceCard(c, pageInvoices[index], company, role));
+                                    if (index < count)
+                                    {
+                                        var cardIndex = index;
+                                        cell.Element(c => renderCard(c, cardIndex));
+                                    }
                                     // else: blank quadrant — the cell above still reserves its
                                     // share of the row's width so the grid stays evenly divided.
                                 }
@@ -601,114 +598,23 @@ public class ExportService : IExportService
 
         return document.GeneratePdf();
     }
-
     /// <summary>
     /// Bulk-print page's merchant-section print button (explicit request): several invoices for
     /// the SAME merchant on the SAME calendar day print as ONE combined invoice, regardless of
-    /// which farmer/driver supplied each one — same layout as GenerateInvoicePdf, just fed a
-    /// MergedInvoiceGroupDto's already-summed totals/concatenated items instead of a single
-    /// InvoiceDto (see InvoicesController.PrintMerchantMergedPdf for how groups are built), one
-    /// page-set per group. A merchant with only one invoice on a given day still gets exactly this
-    /// same treatment — a "group" of one invoice renders identically to that invoice's own
-    /// single-invoice PDF, just without the quadrant-grid layout GenerateInvoicesBulkPdf uses.
+    /// which farmer/driver supplied each one — fed a MergedInvoiceGroupDto's already-summed
+    /// totals and concatenated items instead of a single InvoiceDto (see
+    /// InvoicesController.PrintMerchantMergedPdf for how groups are built).
+    ///
+    /// Each merged group is one quarter-page card on the SAME four-up sheet the seller and
+    /// driver sections print (explicit request: "بدي 4 فواتير يكونوا بالصفحة") — it used to take
+    /// a whole A4 page per group, so printing a day for ten buyers meant ten sheets. A merchant
+    /// with only one invoice that day is simply a group of one, and prints as one card like
+    /// any other.
     /// </summary>
     public byte[] GenerateMergedInvoicesPdf(IReadOnlyList<MergedInvoiceGroupDto> groups, CompanyInfo company)
     {
-        var document = Document.Create(container =>
-        {
-            foreach (var group in groups)
-            {
-                container.Page(page =>
-                {
-                    page.Size(PageSizes.A4);
-                    page.Margin(30);
-                    page.DefaultTextStyle(x => x.FontSize(11).FontFamily(PdfFontFamily));
-
-                    page.Header().ContentFromRightToLeft().Column(col =>
-                    {
-                        CompanyHeaderBlock(col, company, 64f, textCol =>
-                        {
-                            textCol.Item().AlignCenter().Text(company.Name).Bold().FontSize(18);
-                            if (!string.IsNullOrWhiteSpace(company.Address))
-                                textCol.Item().AlignCenter().Text(company.Address).FontSize(9).FontColor(Colors.Grey.Darken1);
-                            if (!string.IsNullOrWhiteSpace(company.RegistrationNumber))
-                                textCol.Item().AlignCenter().Text($"رقم السجل: {company.RegistrationNumber}").FontSize(9);
-                            if (!string.IsNullOrWhiteSpace(company.Phone))
-                                textCol.Item().AlignCenter().Text($"هاتف: {company.Phone}").FontSize(9);
-                        });
-                        col.Item().PaddingTop(6).LineHorizontal(1).LineColor(Colors.Grey.Darken1);
-                        col.Item().PaddingTop(6).Text("فاتورة مشتري").Bold().FontSize(13);
-                        col.Item().PaddingTop(2).Text($"التاريخ: {group.Date:yyyy-MM-dd}").FontSize(11);
-                        col.Item().Text($"المطلوب من: {group.MerchantName}").FontSize(11);
-                        // البائع/السائق deliberately not shown — same reasoning as GenerateInvoicePdf,
-                        // and doubly so here since a merged group can legitimately span several
-                        // different farmers/drivers in one combined invoice.
-                    });
-
-                    page.Content().ContentFromRightToLeft().PaddingVertical(10).Table(table =>
-                    {
-                        table.ColumnsDefinition(columns =>
-                        {
-                            columns.RelativeColumn(4);
-                            columns.RelativeColumn(2);
-                            columns.RelativeColumn(2);
-                            columns.RelativeColumn(2);
-                            columns.RelativeColumn(2);
-                            columns.RelativeColumn(2);
-                        });
-
-                        table.Header(header =>
-                        {
-                            header.Cell().Element(HeaderCell).AlignRight().Text("الصنف");
-                            header.Cell().Element(HeaderCell).AlignRight().Text("العدد");
-                            header.Cell().Element(HeaderCell).AlignRight().Text("الوزن");
-                            header.Cell().Element(HeaderCell).AlignRight().Text("السعر");
-                            header.Cell().Element(HeaderCell).AlignRight().Text("س.الخشب");
-                            header.Cell().Element(HeaderCell).AlignRight().Text("مجموع كلي");
-                        });
-
-                        for (var i = 0; i < group.Items.Count; i++)
-                        {
-                            var item = group.Items[i];
-                            var shaded = i % 2 == 1;
-                            var unpriced = item.PricePerUnit == 0;
-                            table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(item.ItemName);
-                            table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(item.Unit == UnitOfMeasure.Box ? item.Quantity.ToString("0.###") : "—");
-                            table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(WeightCell(item.Unit, item.Quantity));
-                            table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(unpriced ? "غير مسعّر" : item.PricePerUnit.ToString("0.##"));
-                            table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(item.WoodPrice > 0 ? item.WoodPrice.ToString("0.##") : "—");
-                            table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(unpriced ? "غير مسعّر" : item.LineTotal.ToString("0.##"));
-                        }
-                    });
-
-                    var totalBoxes = group.Items.Where(i => i.Unit == UnitOfMeasure.Box).Sum(i => i.Quantity);
-
-                    page.Footer().ContentFromRightToLeft().Column(col =>
-                    {
-                        col.Item().LineHorizontal(1).LineColor(Colors.Grey.Darken1);
-                        if (group.TotalWeightKg > 0)
-                            col.Item().AlignRight().Text($"إجمالي الوزن: {group.TotalWeightKg:0.###} كغم");
-                        if (totalBoxes > 0)
-                            col.Item().AlignRight().Text($"إجمالي الصناديق: {totalBoxes:0.###}");
-                        if (group.WoodTotal > 0)
-                            col.Item().AlignRight().Text($"إجمالي الخشب: ₪ {group.WoodTotal:0.##}").FontSize(10);
-                        if (group.BoxFeeTotal > 0)
-                            col.Item().AlignRight().Text($"رسم الصناديق: ₪ {group.BoxFeeTotal:0.##}").FontSize(10);
-                        if (group.TransportFee > 0)
-                            col.Item().AlignRight().Text($"أجرة النقل: ₪ {group.TransportFee:0.##}").FontSize(10);
-                        col.Item().PaddingTop(4).AlignRight().Text($"الإجمالي: ₪ {group.GrandTotal:0.##}").Bold().FontSize(13);
-                        if (group.PreviousBalance > 0)
-                        {
-                            col.Item().AlignRight().Text($"الرصيد السابق: ₪ {group.PreviousBalance:0.##}").FontSize(11);
-                            col.Item().PaddingTop(2).AlignRight()
-                                .Text($"الإجمالي المستحق: ₪ {(group.GrandTotal + group.PreviousBalance):0.##}").Bold().FontSize(14);
-                        }
-                    });
-                });
-            }
-        });
-
-        return document.GeneratePdf();
+        return QuadrantGridPdf(groups.Count, (container, index) =>
+            MergedInvoiceCard(container, groups[index], company));
     }
 
     /// <summary>
@@ -1383,51 +1289,17 @@ public class ExportService : IExportService
             col.Item().Text(title).Bold().FontSize(9);
             col.Item().Text($"التاريخ: {invoice.Date:yyyy-MM-dd}").FontSize(8);
             col.Item().Text($"{partyLabel}: {(string.IsNullOrWhiteSpace(partyName) ? "—" : partyName)}").FontSize(8);
-            // The OTHER two parties are deliberately never shown — same reasoning as
-            // GenerateInvoicePdf: each copy names only its own counterparty.
+            // The seller's copy — and ONLY the seller's — also names the driver who hauled the
+            // load (explicit request: "بس فاتورة البائع تطلع فيها اسم السائق، الباقي" as is),
+            // matching what the full-page "نسخة البائع" already shows. The buyer's copy still
+            // hides both البائع and السائق, and the driver's copy still names only himself.
+            if (role == InvoicePrintRole.Farmer && !string.IsNullOrWhiteSpace(invoice.DriverName))
+                col.Item().Text($"السائق: {invoice.DriverName}").FontSize(8);
             col.Item().PaddingTop(4).LineHorizontal(0.5f).LineColor(Colors.Grey.Lighten1);
 
             var isDriverCopy = role == InvoicePrintRole.Driver;
 
-            col.Item().PaddingTop(4).Table(table =>
-            {
-                table.ColumnsDefinition(columns =>
-                {
-                    columns.RelativeColumn(4);
-                    columns.RelativeColumn(2);
-                    // A driver hauls the goods, he doesn't sell them — there IS no per-item price
-                    // on his side (see DriverItemBreakdownRow), so his card lists cargo only and
-                    // drops the price/total columns entirely instead of printing empty ones.
-                    if (!isDriverCopy)
-                    {
-                        columns.RelativeColumn(2);
-                        columns.RelativeColumn(2);
-                    }
-                });
-
-                table.Header(header =>
-                {
-                    header.Cell().Element(MiniHeaderCell).AlignRight().Text("الصنف");
-                    header.Cell().Element(MiniHeaderCell).AlignRight().Text("الكمية");
-                    if (!isDriverCopy)
-                    {
-                        header.Cell().Element(MiniHeaderCell).AlignRight().Text("السعر");
-                        header.Cell().Element(MiniHeaderCell).AlignRight().Text("الإجمالي");
-                    }
-                });
-
-                for (var i = 0; i < invoice.Items.Count; i++)
-                {
-                    var item = invoice.Items[i];
-                    var shaded = i % 2 == 1;
-                    var unpriced = item.PricePerUnit == 0;
-                    table.Cell().Element(c => MiniDataCell(c, shaded)).AlignRight().Text(item.ItemName);
-                    table.Cell().Element(c => MiniDataCell(c, shaded)).AlignRight().Text($"{item.Quantity:0.###} {ArabicUnitLabel(item.Unit)}");
-                    if (isDriverCopy) continue;
-                    table.Cell().Element(c => MiniDataCell(c, shaded)).AlignRight().Text(unpriced ? "غير مسعّر" : item.PricePerUnit.ToString("0.##"));
-                    table.Cell().Element(c => MiniDataCell(c, shaded)).AlignRight().Text(unpriced ? "غير مسعّر" : item.LineTotal.ToString("0.##"));
-                }
-            });
+            CardItemsTable(col, invoice.Items, isDriverCopy);
 
             col.Item().PaddingTop(4).LineHorizontal(0.5f).LineColor(Colors.Grey.Lighten1);
 
@@ -1467,28 +1339,130 @@ public class ExportService : IExportService
                 }
 
                 default:
-                    // Card is a quarter-page — a per-line wood/transport breakdown doesn't fit, so
-                    // this shows GrandTotal directly (product + wood + transport) rather than the
-                    // sub-total breakdown the full single-invoice PDF shows, plus a compact "منها
-                    // سعر الخشب" line so the wood/crate charge stays visible instead of
-                    // disappearing silently into GrandTotal. الرصيد السابق mirrors the
-                    // single-invoice PDF's own treatment exactly (same InvoiceDto.PreviousBalance,
-                    // same "add it on top of GrandTotal" behavior).
-                    if (invoice.WoodTotal > 0)
-                        col.Item().AlignRight().Text($"منها سعر الخشب: ₪ {invoice.WoodTotal:0.##}").FontSize(7);
-                    if (invoice.BoxFeeTotal > 0)
-                        col.Item().AlignRight().Text($"منها رسم الصناديق: ₪ {invoice.BoxFeeTotal:0.##}").FontSize(7);
-                    col.Item().PaddingTop(2).AlignRight().Text($"الإجمالي: ₪ {invoice.GrandTotal:0.##}").Bold().FontSize(10);
-                    if (invoice.PreviousBalance > 0)
-                    {
-                        col.Item().AlignRight().Text($"الرصيد السابق: ₪ {invoice.PreviousBalance:0.##}").FontSize(7);
-                        col.Item().PaddingTop(1).AlignRight().Text($"الإجمالي المستحق: ₪ {(invoice.GrandTotal + invoice.PreviousBalance):0.##}").Bold().FontSize(10);
-                    }
+                    CardMerchantTotals(col, invoice.WoodTotal, invoice.BoxFeeTotal, invoice.GrandTotal, invoice.PreviousBalance);
                     break;
             }
         });
     }
 
+
+    /// <summary>
+    /// The item table inside a quarter-page card: الصنف / العدد / الوزن / س.الخشب, plus السعر and
+    /// الإجمالي on every copy except the driver's (he has no per-item price at all — see
+    /// DriverItemBreakdownRow). Shared by InvoiceCard and MergedInvoiceCard so a single invoice
+    /// and a merged same-day group print their lines identically.
+    /// </summary>
+    private static void CardItemsTable(ColumnDescriptor column, IReadOnlyList<InvoiceItemDto> items, bool isDriverCopy)
+    {
+        column.Item().PaddingTop(4).Table(table =>
+        {
+            table.ColumnsDefinition(columns =>
+            {
+                columns.RelativeColumn(4);
+                // العدد and الوزن are ALWAYS two separate columns, never one merged "الكمية"
+                // (explicit request) — a box-priced line shows its count and a "—" for weight,
+                // a kilo-priced line the reverse. Same shape the full A4 invoice and the
+                // on-screen invoice already use, so a line reads the same everywhere.
+                columns.RelativeColumn(2);
+                columns.RelativeColumn(2);
+                // "س.الخشب" per line on every copy (explicit request) — the wood/crate charge
+                // is money on all three sides (the buyer pays it, and the seller AND driver are
+                // each paid it in full), so every copy shows which line it came from instead of
+                // only a lump total in the footer. Same column the full A4 invoice already has.
+                columns.RelativeColumn(2);
+                // A driver hauls the goods, he doesn't sell them — there IS no per-item price
+                // on his side (see DriverItemBreakdownRow), so his card lists cargo only and
+                // drops the price/total columns entirely instead of printing empty ones.
+                if (!isDriverCopy)
+                {
+                    columns.RelativeColumn(2);
+                    columns.RelativeColumn(2);
+                }
+            });
+
+            table.Header(header =>
+            {
+                header.Cell().Element(MiniHeaderCell).AlignRight().Text("الصنف");
+                header.Cell().Element(MiniHeaderCell).AlignRight().Text("العدد");
+                header.Cell().Element(MiniHeaderCell).AlignRight().Text("الوزن");
+                header.Cell().Element(MiniHeaderCell).AlignRight().Text("س.الخشب");
+                if (!isDriverCopy)
+                {
+                    header.Cell().Element(MiniHeaderCell).AlignRight().Text("السعر");
+                    header.Cell().Element(MiniHeaderCell).AlignRight().Text("الإجمالي");
+                }
+            });
+
+            for (var i = 0; i < items.Count; i++)
+            {
+                var item = items[i];
+                var shaded = i % 2 == 1;
+                var unpriced = item.PricePerUnit == 0;
+                table.Cell().Element(c => MiniDataCell(c, shaded)).AlignRight().Text(item.ItemName);
+                table.Cell().Element(c => MiniDataCell(c, shaded)).AlignRight().Text(BoxCountCell(item.Unit, item.Quantity));
+                table.Cell().Element(c => MiniDataCell(c, shaded)).AlignRight().Text(WeightCell(item.Unit, item.Quantity));
+                table.Cell().Element(c => MiniDataCell(c, shaded)).AlignRight().Text(item.WoodPrice > 0 ? item.WoodPrice.ToString("0.##") : "—");
+                if (isDriverCopy) continue;
+                table.Cell().Element(c => MiniDataCell(c, shaded)).AlignRight().Text(unpriced ? "غير مسعّر" : item.PricePerUnit.ToString("0.##"));
+                table.Cell().Element(c => MiniDataCell(c, shaded)).AlignRight().Text(unpriced ? "غير مسعّر" : item.LineTotal.ToString("0.##"));
+            }
+        });
+    }
+
+    /// <summary>
+    /// The buyer-facing totals block of a quarter-page card. Shared by InvoiceCard's Merchant
+    /// branch and MergedInvoiceCard, which owe the buyer the same figures computed the same way.
+    /// A quarter page has no room for a per-line wood/transport breakdown, so this shows
+    /// GrandTotal directly plus compact "منها" lines that keep the wood/box charges visible
+    /// instead of letting them disappear silently into the total.
+    /// </summary>
+    private static void CardMerchantTotals(ColumnDescriptor column, decimal woodTotal, decimal boxFeeTotal, decimal grandTotal, decimal previousBalance)
+    {
+        if (woodTotal > 0)
+            column.Item().AlignRight().Text($"منها سعر الخشب: ₪ {woodTotal:0.##}").FontSize(7);
+        if (boxFeeTotal > 0)
+            column.Item().AlignRight().Text($"منها رسم الصناديق: ₪ {boxFeeTotal:0.##}").FontSize(7);
+        column.Item().PaddingTop(2).AlignRight().Text($"الإجمالي: ₪ {grandTotal:0.##}").Bold().FontSize(10);
+        if (previousBalance > 0)
+        {
+            column.Item().AlignRight().Text($"الرصيد السابق: ₪ {previousBalance:0.##}").FontSize(7);
+            column.Item().PaddingTop(1).AlignRight().Text($"الإجمالي المستحق: ₪ {(grandTotal + previousBalance):0.##}").Bold().FontSize(10);
+        }
+    }
+
+    /// <summary>
+    /// One merged same-day group as a quarter-page "فاتورة مشتري" card — the same chrome, item
+    /// table and totals as a single-invoice merchant card (see InvoiceCard), just fed the group's
+    /// already-summed figures. البائع/السائق stay unnamed here for the same reason as everywhere
+    /// else on a buyer's copy, and doubly so on a merged group, which can legitimately span
+    /// several different sellers and drivers at once.
+    /// </summary>
+    private void MergedInvoiceCard(IContainer container, MergedInvoiceGroupDto group, CompanyInfo company)
+    {
+        container.ContentFromRightToLeft()
+            .Border(1).BorderColor(Colors.Grey.Lighten1).Padding(8).Column(col =>
+        {
+            CompanyHeaderBlock(col, company, 28f, textCol =>
+            {
+                textCol.Item().AlignCenter().Text(company.Name).Bold().FontSize(10);
+                if (!string.IsNullOrWhiteSpace(company.Address))
+                    textCol.Item().AlignCenter().Text(company.Address).FontSize(7).FontColor(Colors.Grey.Darken1);
+                if (!string.IsNullOrWhiteSpace(company.RegistrationNumber))
+                    textCol.Item().AlignCenter().Text($"رقم السجل: {company.RegistrationNumber}").FontSize(7);
+                if (!string.IsNullOrWhiteSpace(company.Phone))
+                    textCol.Item().AlignCenter().Text($"هاتف: {company.Phone}").FontSize(7);
+            });
+            col.Item().Text("فاتورة مشتري").Bold().FontSize(9);
+            col.Item().Text($"التاريخ: {group.Date:yyyy-MM-dd}").FontSize(8);
+            col.Item().Text($"المطلوب من: {group.MerchantName}").FontSize(8);
+            col.Item().PaddingTop(4).LineHorizontal(0.5f).LineColor(Colors.Grey.Lighten1);
+
+            CardItemsTable(col, group.Items, isDriverCopy: false);
+
+            col.Item().PaddingTop(4).LineHorizontal(0.5f).LineColor(Colors.Grey.Lighten1);
+            CardMerchantTotals(col, group.WoodTotal, group.BoxFeeTotal, group.GrandTotal, group.PreviousBalance);
+        });
+    }
     /// <summary>
     /// Settings → "الشعار": if the market has uploaded a logo, renders it centered on its own
     /// line FIRST, with the given text lines (name / registration number / phone, etc.) stacked
@@ -1553,6 +1527,26 @@ public class ExportService : IExportService
     /// priced by the kilo — a box-priced line has its count in its own column instead.</summary>
     private static string WeightCell(UnitOfMeasure unit, decimal quantity) =>
         unit == UnitOfMeasure.Kg ? WeightText(quantity) : "—";
+
+    /// <summary>
+    /// The mirror of <see cref="WeightCell"/>: the "العدد" column, filled only on a box-priced
+    /// line. Every invoice shows BOTH columns on every row (explicit request) — a line is always
+    /// one or the other, so exactly one of the pair carries a number and the other a dash. Keeping
+    /// them as two fixed columns rather than one merged "الكمية" is what lets a whole invoice be
+    /// scanned down a single column for either figure.
+    /// </summary>
+    private static string BoxCountCell(UnitOfMeasure unit, decimal quantity) =>
+        unit == UnitOfMeasure.Box ? quantity.ToString("0.###") : "—";
+
+    /// <summary>
+    /// WeightCell without the "كغم" suffix, for the 80mm thermal roll only. Splitting الكمية into
+    /// العدد + الوزن costs that width a whole column, and at 80mm "120 كغم" then wraps onto two
+    /// lines and makes every row twice as tall — the "الوزن" header already says what the number
+    /// is, so the suffix is the part that goes. A4 and the quarter-page cards have the room and
+    /// keep it.
+    /// </summary>
+    private static string WeightCellCompact(UnitOfMeasure unit, decimal quantity) =>
+        unit == UnitOfMeasure.Kg && quantity > 0 ? quantity.ToString("0.###") : "—";
 
     /// <summary>
     /// A goods-stock number (وارد/مباع/متوفر), where the unit lives in its own column so the value
@@ -1865,7 +1859,10 @@ public class ExportService : IExportService
                         columns.RelativeColumn(2); // التاريخ
                         columns.RelativeColumn(2); // رقم الفاتورة
                         columns.RelativeColumn(3); // الصنف
-                        columns.RelativeColumn(2); // الكمية
+                        // العدد + الوزن, never one merged "الكمية" — same split the on-screen
+                        // version of this very breakdown already uses, so the print matches it.
+                        columns.RelativeColumn(2); // العدد
+                        columns.RelativeColumn(2); // الوزن
                         columns.RelativeColumn(2); // السعر
                         columns.RelativeColumn(2); // إجمالي السطر
                     });
@@ -1875,7 +1872,8 @@ public class ExportService : IExportService
                         header.Cell().Element(HeaderCell).AlignRight().Text("التاريخ");
                         header.Cell().Element(HeaderCell).AlignRight().Text("رقم الفاتورة");
                         header.Cell().Element(HeaderCell).AlignRight().Text("الصنف");
-                        header.Cell().Element(HeaderCell).AlignRight().Text("الكمية");
+                        header.Cell().Element(HeaderCell).AlignRight().Text("العدد");
+                        header.Cell().Element(HeaderCell).AlignRight().Text("الوزن");
                         header.Cell().Element(HeaderCell).AlignRight().Text("السعر");
                         header.Cell().Element(HeaderCell).AlignRight().Text("إجمالي السطر");
                     });
@@ -1888,7 +1886,8 @@ public class ExportService : IExportService
                         table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text($"{line.Date:yyyy-MM-dd}");
                         table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(line.InvoiceNumber);
                         table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(line.ItemName);
-                        table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text($"{line.Quantity:0.###} {ArabicUnitLabel(line.Unit)}");
+                        table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(BoxCountCell(line.Unit, line.Quantity));
+                        table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(WeightCell(line.Unit, line.Quantity));
                         table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(unpriced ? "غير مسعّر" : line.PricePerUnit.ToString("0.##"));
                         table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(unpriced ? "غير مسعّر" : $"₪ {line.LineTotal:0.##}");
                     }

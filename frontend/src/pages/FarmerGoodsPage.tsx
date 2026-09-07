@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+import { usePagination } from "../lib/usePagination";
+import { TablePagination } from "../components/TablePagination";
 import { getFarmerGoods, triggerBlobDownload } from "../api/invoices";
 import { createGoodsEntry, deleteGoodsEntry, getFarmerGoodsStock, getGoodsGlobalStock, printFarmerGoodsStockPdf, updateGoodsEntry } from "../api/goods";
 import { apiErrorMessage } from "../api/client";
@@ -69,6 +71,9 @@ export function FarmerGoodsPage() {
   const [editingEntry, setEditingEntry] = useState<GoodsEntryDto | null>(null);
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const entriesSelection = useSelection();
+  // Both halves of this page grow every day — the stock summary and the raw intake log.
+  const stockPager = usePagination(stockData?.stock ?? []);
+  const entriesPager = usePagination(stockData?.entries ?? []);
   const [bulkDeletingEntries, setBulkDeletingEntries] = useState(false);
 
   // Sales-history report (unchanged from before).
@@ -321,7 +326,7 @@ export function FarmerGoodsPage() {
                 ) : !stockData || stockData.stock.length === 0 ? (
                   <tr><td colSpan={6} className="text-center text-gray-400 py-6">لا توجد بضاعة مسجلة لهذا البائع بعد</td></tr>
                 ) : (
-                  stockData.stock.map((r, idx) => (
+                  stockPager.pageRows.map((r, idx) => (
                     <tr key={idx}>
                       <td className="font-medium">{r.itemName}</td>
                       <td>{r.unit === "Kg" ? "كيلو" : "صندوق"}</td>
@@ -334,6 +339,10 @@ export function FarmerGoodsPage() {
                 )}
               </tbody>
             </table>
+            <TablePagination
+              page={stockPager.page} pageSize={stockPager.pageSize} totalCount={stockPager.totalCount}
+              itemLabel="سطر" onPageChange={stockPager.setPage} onPageSizeChange={stockPager.setPageSize}
+            />
           </div>
 
           <div className="card overflow-x-auto mb-4">
@@ -357,7 +366,7 @@ export function FarmerGoodsPage() {
                       <input
                         type="checkbox"
                         checked={!!stockData && stockData.entries.length > 0 && stockData.entries.every((e) => entriesSelection.selected.has(e.id))}
-                        onChange={() => entriesSelection.toggleAll(stockData ? stockData.entries.map((e) => e.id) : [])}
+                        onChange={() => entriesSelection.toggleAll(entriesPager.pageRows.map((e) => e.id))}
                       />
                     </th>
                   )}
@@ -369,7 +378,7 @@ export function FarmerGoodsPage() {
                 {!stockData || stockData.entries.length === 0 ? (
                   <tr><td colSpan={(canEdit || canDelete ? 6 : 5) + (canDelete ? 1 : 0)} className="text-center text-gray-400 py-6">لا توجد إضافات مسجلة بعد</td></tr>
                 ) : (
-                  stockData.entries.map((e) => (
+                  entriesPager.pageRows.map((e) => (
                     <tr key={e.id}>
                       {canDelete && (
                         <td>
@@ -396,6 +405,10 @@ export function FarmerGoodsPage() {
                 )}
               </tbody>
             </table>
+            <TablePagination
+              page={entriesPager.page} pageSize={entriesPager.pageSize} totalCount={entriesPager.totalCount}
+              itemLabel="إدخال" onPageChange={entriesPager.setPage} onPageSizeChange={entriesPager.setPageSize}
+            />
           </div>
 
           <div className="card p-4 mb-4 space-y-3">

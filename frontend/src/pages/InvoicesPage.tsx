@@ -9,6 +9,7 @@ import { shareFile } from "../lib/share";
 import { apiErrorMessage } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { useSelection } from "../lib/useSelection";
+import { TablePagination } from "../components/TablePagination";
 import { runBulkDelete, summarizeBulkDelete } from "../lib/bulkDelete";
 
 const STATUS_LABELS: Record<string, string> = { Active: "فعّالة", Cancelled: "ملغاة" };
@@ -348,17 +349,20 @@ export function InvoicesPage() {
             )}
           </tbody>
         </table>
-      </div>
 
-      {result && result.totalCount > (filter.pageSize ?? 25) && (
-        <div className="flex justify-center gap-2 mt-4">
-          <button className="btn-secondary" disabled={(filter.page ?? 1) <= 1}
-            onClick={() => setFilter((f) => ({ ...f, page: (f.page ?? 1) - 1 }))}>السابق</button>
-          <span className="text-sm text-gray-500 self-center">صفحة {filter.page ?? 1}</span>
-          <button className="btn-secondary" disabled={(filter.page ?? 1) * (filter.pageSize ?? 25) >= result.totalCount}
-            onClick={() => setFilter((f) => ({ ...f, page: (f.page ?? 1) + 1 }))}>التالي</button>
-        </div>
-      )}
+        {/* Paged by the BACKEND (page/pageSize go into the filter), so a year of invoices is never
+            fetched just to show 25 — the shared bar just drives the server's own paging here. */}
+        {result && (
+          <TablePagination
+            page={filter.page ?? 1}
+            pageSize={filter.pageSize ?? 25}
+            totalCount={result.totalCount}
+            itemLabel="فاتورة"
+            onPageChange={(page) => setFilter((f) => ({ ...f, page }))}
+            onPageSizeChange={(pageSize) => setFilter((f) => ({ ...f, pageSize, page: 1 }))}
+          />
+        )}
+      </div>
     </div>
   );
 }

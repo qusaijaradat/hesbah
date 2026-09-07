@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useState } from "react";
+import { TablePagination } from "../components/TablePagination";
 import { listAuditLogEntityNames, listAuditLogs, type AuditLogFilter } from "../api/auditLogs";
 import type { AuditLogDto } from "../types";
 import { formatDateTime } from "../lib/format";
@@ -35,7 +36,6 @@ export function AuditLogPage() {
   const [entityNames, setEntityNames] = useState<string[]>([]);
   const [filter, setFilter] = useState<AuditLogFilter>({ page: 1, pageSize: 30 });
   const [totalCount, setTotalCount] = useState(0);
-  const [totalPages, setTotalPages] = useState(1);
   const [loading, setLoading] = useState(false);
   const [expanded, setExpanded] = useState<number | null>(null);
 
@@ -48,7 +48,6 @@ export function AuditLogPage() {
     const result = await listAuditLogs(filter);
     setLogs(result.items);
     setTotalCount(result.totalCount);
-    setTotalPages(result.totalPages);
     setLoading(false);
   }
 
@@ -133,15 +132,14 @@ export function AuditLogPage() {
             ))}
           </tbody>
         </table>
+        {/* Paged by the BACKEND — the shared bar just drives the server's own page/pageSize. */}
+        <TablePagination
+          page={filter.page ?? 1} pageSize={filter.pageSize ?? 30} totalCount={totalCount}
+          itemLabel="سجل"
+          onPageChange={(page) => setFilter((f) => ({ ...f, page }))}
+          onPageSizeChange={(pageSize) => setFilter((f) => ({ ...f, pageSize, page: 1 }))}
+        />
       </div>
-
-      {totalPages > 1 && (
-        <div className="flex items-center justify-center gap-3 mt-4">
-          <button className="btn-secondary" disabled={(filter.page ?? 1) <= 1} onClick={() => setFilter((f) => ({ ...f, page: (f.page ?? 1) - 1 }))}>السابق</button>
-          <span className="text-sm text-gray-500">صفحة {filter.page ?? 1} من {totalPages}</span>
-          <button className="btn-secondary" disabled={(filter.page ?? 1) >= totalPages} onClick={() => setFilter((f) => ({ ...f, page: (f.page ?? 1) + 1 }))}>التالي</button>
-        </div>
-      )}
     </div>
   );
 }

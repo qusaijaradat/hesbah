@@ -420,7 +420,7 @@ public class ExportService : IExportService
                             textCol.Item().AlignCenter().Text($"هاتف: {company.Phone}").FontSize(9);
                     });
                     col.Item().PaddingTop(6).LineHorizontal(1).LineColor(Colors.Grey.Darken1);
-                    col.Item().PaddingTop(6).Text("نسخة البائع").Bold().FontSize(13);
+                    col.Item().PaddingTop(6).Text("فاتورة بائع").Bold().FontSize(13);
                     col.Item().PaddingTop(2).Text($"التاريخ: {invoice.Date:yyyy-MM-dd}").FontSize(11);
                     col.Item().Text($"البائع: {invoice.FarmerName}").FontSize(11);
                     // Shown on the farmer's own copy — unlike the merchant copy above, which
@@ -1280,6 +1280,7 @@ public class ExportService : IExportService
                 if (!string.IsNullOrWhiteSpace(company.Phone))
                     textCol.Item().AlignCenter().Text($"هاتف: {company.Phone}").FontSize(7);
             });
+            col.Item().PaddingTop(3).LineHorizontal(0.5f).LineColor(Colors.Grey.Darken1);
             // Title and counterparty are the role's own — a بائع copy is addressed to the بائع,
             // never "المطلوب من {merchant}". A missing name can't normally happen (the Farmer and
             // Driver sections only ever select invoices that HAVE one — see InvoiceFilterRequest's
@@ -1290,7 +1291,7 @@ public class ExportService : IExportService
                 InvoicePrintRole.Driver => ("فاتورة سائق", "السائق", invoice.DriverName),
                 _ => ("فاتورة مشتري", "المطلوب من", invoice.MerchantName),
             };
-            col.Item().Text(title).Bold().FontSize(9);
+            col.Item().PaddingTop(3).Text(title).Bold().FontSize(9);
             col.Item().Text($"التاريخ: {invoice.Date:yyyy-MM-dd}").FontSize(8);
             col.Item().Text($"{partyLabel}: {(string.IsNullOrWhiteSpace(partyName) ? "—" : partyName)}").FontSize(8);
             // The seller's copy — and ONLY the seller's — also names the driver who hauled the
@@ -1460,7 +1461,8 @@ public class ExportService : IExportService
                 if (!string.IsNullOrWhiteSpace(company.Phone))
                     textCol.Item().AlignCenter().Text($"هاتف: {company.Phone}").FontSize(7);
             });
-            col.Item().Text("فاتورة مشتري").Bold().FontSize(9);
+            col.Item().PaddingTop(3).LineHorizontal(0.5f).LineColor(Colors.Grey.Darken1);
+            col.Item().PaddingTop(3).Text("فاتورة مشتري").Bold().FontSize(9);
             col.Item().Text($"التاريخ: {group.Date:yyyy-MM-dd}").FontSize(8);
             col.Item().Text($"المطلوب من: {group.MerchantName}").FontSize(8);
             col.Item().PaddingTop(4).LineHorizontal(0.5f).LineColor(Colors.Grey.Lighten1);

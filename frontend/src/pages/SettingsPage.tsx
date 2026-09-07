@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from "react";
+import { downloadBackup } from "../api/backup";
+import { triggerBlobDownload } from "../api/invoices";
 import { deleteLogo, getLogo, listSettings, updateSetting, uploadLogo } from "../api/settings";
 import type { SettingDto } from "../types";
 import { apiErrorMessage } from "../api/client";
@@ -117,9 +119,50 @@ export function SettingsPage() {
     }
   }
 
+  const [backupBusy, setBackupBusy] = useState(false);
+  const [backupMessage, setBackupMessage] = useState<string | null>(null);
+  const [backupError, setBackupError] = useState<string | null>(null);
+
+  async function handleBackup() {
+    setBackupBusy(true);
+    setBackupMessage(null);
+    setBackupError(null);
+    try {
+      const blob = await downloadBackup();
+      // The server names the file by date; this repeats it so the download folder stays sorted
+      // even on browsers that ignore Content-Disposition for a blob.
+      const stamp = new Date().toISOString().slice(0, 16).replace("T", "-").replace(":", "");
+      triggerBlobDownload(blob, `hesbah-backup-${stamp}.zip`);
+      setBackupMessage("تم تنزيل النسخة الاحتياطية — احفظها بمكان برّا السيرفر.");
+    } catch (err) {
+      setBackupError(apiErrorMessage(err, "فشل تنزيل النسخة الاحتياطية"));
+    } finally {
+      setBackupBusy(false);
+    }
+  }
+
   return (
     <div className="max-w-xl">
       <h1 className="text-2xl font-bold mb-6">الإعدادات</h1>
+
+      {hasPermission("backup.download") && (
+        <div className="card p-4 mb-4">
+          <h2 className="font-semibold mb-1">نسخة احتياطية</h2>
+          <p className="text-sm text-gray-500 mb-3">
+            بينزّل كل بيانات النظام بملف مضغوط (ZIP) فيه ملف Excel/CSV لكل جدول — الفواتير، الدفعات،
+            الحسابات، الأشخاص، سجل التعديلات، كل شي. احفظه بمكان برّا السيرفر (فلاشة أو إيميل).
+          </p>
+          <button className="btn-primary" disabled={backupBusy} onClick={handleBackup}>
+            {backupBusy ? "جاري التجهيز..." : "⬇️ تنزيل نسخة احتياطية"}
+          </button>
+          {backupMessage && <div className="text-sm text-brand-700 mt-2">{backupMessage}</div>}
+          {backupError && <div className="text-sm text-red-600 bg-red-50 rounded-md p-2 mt-2">{backupError}</div>}
+          <p className="text-xs text-gray-400 mt-3">
+            ملاحظة: هاي نسخة من <span className="font-semibold">البيانات</span> — بتنقرأ بالإكسل وبيقدر
+            فني يرجّعها. مش بديل عن نسخة قاعدة بيانات كاملة (pg_dump) مجدولة على السيرفر.
+          </p>
+        </div>
+      )}
       {message && <div className="text-sm bg-brand-50 text-brand-800 rounded-md p-3 mb-4">{message}</div>}
 
       <div className="card p-4 mb-4">

@@ -1,0 +1,214 @@
+using GreenMarket.Api.Common;
+using GreenMarket.Api.DTOs;
+using GreenMarket.Domain.Entities;
+using GreenMarket.Domain.Enums;
+using GreenMarket.Domain.Services;
+using GreenMarket.Infrastructure.Persistence;
+using Microsoft.EntityFrameworkCore;
+
+namespace GreenMarket.Api.Services;
+
+/// <summary>
+/// "مرتجع بضاعة" — goods a buyer sent back off one invoice. See the GoodsReturn entity for why
+/// this exists as its own document rather than as an edit to the invoice.
+/// </summary>
+public interface IGoodsReturnService
+{
+    Task<IReadOnlyList<GoodsReturnDto>> ListForInvoiceAsync(int invoiceId);
+    Task<GoodsReturnDto> CreateAsync(int invoiceId, CreateGoodsReturnRequest request, int recordedByUserId);
+    Task DeleteAsync(int id);
+}
+
+public class GoodsReturnService : IGoodsReturnService
+{
+    private readonly AppDbContext _db;
+
+    public GoodsReturnService(AppDbContext db) => _db = db;
+
+    public async Task<IReadOnlyList<GoodsReturnDto>> ListForInvoiceAsync(int invoiceId)
+    {
+        var returns = await _db.GoodsReturns
+            .Where(r => r.InvoiceId == invoiceId)
+            .Include(r => r.Items)
+            .Include(r => r.Invoice)
+            .OrderBy(r => r.Date).ThenBy(r => r.Id)
+            .ToListAsync();
+
+        return returns.Select(ToDto).ToList();
+    }
+
+    /// <summary>
+    /// Records a return and moves both sides of the money in one transaction:
+    ///
+    ///  • The buyer's side is the invoice's stored <see cref="Invoice.GrandTotal"/>, recomputed
+    ///    through <see cref="InvoiceCharge"/> with the new returns total subtracted — so every
+    ///    balance, statement and report picks it up automatically, since they all read that one
+    ///    column now.
+    ///  • The seller's side is an offsetting Adjustment on their ledger for the returned value
+    ///    MINUS the commission that was charged on it, using the rate locked in on the invoice.
+    ///    Netting the commission out is the whole point: the market only earned commission on the
+    ///    goods that actually sold, so a return has to give back the seller's share and drop the
+    ///    market's own take by the rest.
+    ///
+    /// Guard rails: a line must actually appear on the invoice, and the quantity coming back can
+    /// never exceed what was sold minus what has already been returned — otherwise a buyer could
+    /// be credited twice for the same crate, quietly turning an invoice negative.
+    /// </summary>
+    public async Task<GoodsReturnDto> CreateAsync(int invoiceId, CreateGoodsReturnRequest request, int recordedByUserId)
+    {
+        if (request.Items is null || request.Items.Count == 0)
+            throw new ValidationAppException("يجب تحديد صنف واحد على الأقل للمرتجع.");
+
+        var invoice = await _db.Invoices
+            .Include(i => i.Items)
+            .Include(i => i.Returns).ThenInclude(r => r.Items)
+            .SingleOrDefaultAsync(i => i.Id == invoiceId)
+            ?? throw new NotFoundAppException("Invoice", invoiceId);
+
+        if (invoice.Status != InvoiceStatus.Active)
+            throw new ValidationAppException("لا يمكن تسجيل مرتجع على فاتورة ملغاة.");
+
+        // How much of each (item, unit) is still returnable: sold minus everything already back.
+        // Matched on the same trimmed/case-insensitive name key the rest of the app groups item
+        // names by — invoice item names are free text, not a foreign key into the catalog.
+        static string Key(string name, UnitOfMeasure unit) => $"{name.Trim().ToLowerInvariant()}|{unit}";
+
+        var soldByKey = invoice.Items
+            .GroupBy(it => Key(it.ItemName, it.Unit))
+            .ToDictionary(g => g.Key, g => (Quantity: g.Sum(it => it.Quantity), Price: g.First().PricePerUnit, Display: g.First().ItemName.Trim(), g.First().Unit));
+
+        var alreadyReturnedByKey = invoice.Returns
+            .SelectMany(r => r.Items)
+            .GroupBy(ri => Key(ri.ItemName, ri.Unit))
+            .ToDictionary(g => g.Key, g => g.Sum(ri => ri.Quantity));
+
+        var lines = new List<GoodsReturnItem>();
+        foreach (var input in request.Items)
+        {
+            if (input.Quantity <= 0) continue; // a blank row on the form, not an error
+
+            var key = Key(input.ItemName, input.Unit);
+            if (!soldByKey.TryGetValue(key, out var sold))
+                throw new ValidationAppException($"الصنف \"{input.ItemName}\" غير موجود على هذه الفاتورة بنفس الوحدة.");
+
+            var remaining = sold.Quantity - alreadyReturnedByKey.GetValueOrDefault(key);
+            if (input.Quantity > remaining)
+                throw new ValidationAppException(
+                    $"الكمية المرتجعة من \"{sold.Display}\" ({input.Quantity:0.###}) أكبر من المتبقي القابل للإرجاع ({remaining:0.###}).");
+
+            lines.Add(new GoodsReturnItem
+            {
+                ItemName = sold.Display,
+                Unit = sold.Unit,
+                Quantity = input.Quantity,
+                // Credited back at the price it was SOLD at, never a price the caller supplies.
+                PricePerUnit = sold.Price,
+                LineTotal = input.Quantity * sold.Price
+            });
+        }
+
+        if (lines.Count == 0)
+            throw new ValidationAppException("يجب إدخال كمية أكبر من صفر لصنف واحد على الأقل.");
+
+        var goodsReturn = new GoodsReturn
+        {
+            InvoiceId = invoice.Id,
+            Date = request.Date,
+            Reason = request.Reason,
+            TotalValue = lines.Sum(l => l.LineTotal),
+            CommissionRateApplied = invoice.CommissionRateApplied,
+            RecordedByUserId = recordedByUserId,
+            Items = lines
+        };
+
+        // The return row, the invoice's recomputed charge and the seller's offsetting ledger entry
+        // all land together — a half-applied return would credit the buyer without debiting the
+        // seller, or vice versa.
+        await using var transaction = await _db.Database.BeginTransactionAsync();
+
+        _db.GoodsReturns.Add(goodsReturn);
+        await _db.SaveChangesAsync(); // need goodsReturn.Id for the ledger note below
+
+        RecomputeGrandTotal(invoice, invoice.Returns.Sum(r => r.TotalValue) + goodsReturn.TotalValue);
+
+        // Seller side. No farmer attached means there is no ledger to adjust — the buyer is still
+        // credited, the market simply absorbs it.
+        if (invoice.FarmerId is not null)
+        {
+            var commissionOnReturn = CommissionCalculator.Calculate(goodsReturn.TotalValue, invoice.CommissionRateApplied).Commission;
+            _db.FarmerTransactions.Add(new FarmerTransaction
+            {
+                FarmerId = invoice.FarmerId.Value,
+                Type = FarmerTransactionType.Adjustment,
+                InvoiceId = invoice.Id,
+                Date = goodsReturn.Date,
+                Amount = -(goodsReturn.TotalValue - commissionOnReturn),
+                Notes = $"مرتجع بضاعة على الفاتورة {invoice.InvoiceNumber}" +
+                        (string.IsNullOrWhiteSpace(goodsReturn.Reason) ? "" : $" — {goodsReturn.Reason}")
+            });
+        }
+
+        await _db.SaveChangesAsync();
+        await transaction.CommitAsync();
+
+        goodsReturn.Invoice = invoice;
+        return ToDto(goodsReturn);
+    }
+
+    /// <summary>
+    /// Undoes a return that was recorded by mistake: the invoice's charge goes back up, and the
+    /// seller's offsetting Adjustment is removed so their ledger returns to what it was. A hard
+    /// delete rather than a soft one — an erroneous return is a data-entry slip, not a business
+    /// event worth keeping (the audit log still records that it existed and was removed).
+    /// </summary>
+    public async Task DeleteAsync(int id)
+    {
+        var goodsReturn = await _db.GoodsReturns
+            .Include(r => r.Items)
+            .SingleOrDefaultAsync(r => r.Id == id)
+            ?? throw new NotFoundAppException("GoodsReturn", id);
+
+        var invoice = await _db.Invoices
+            .Include(i => i.Items)
+            .Include(i => i.Returns)
+            .SingleAsync(i => i.Id == goodsReturn.InvoiceId);
+
+        await using var transaction = await _db.Database.BeginTransactionAsync();
+
+        // Matched on the note this service writes, and scoped to this invoice — the only
+        // Adjustment rows carrying it are the ones raised for its returns.
+        var ledgerNote = $"مرتجع بضاعة على الفاتورة {invoice.InvoiceNumber}";
+        var adjustment = await _db.FarmerTransactions
+            .Where(t => t.InvoiceId == invoice.Id
+                && t.Type == FarmerTransactionType.Adjustment
+                && t.Date == goodsReturn.Date
+                && t.Notes != null && t.Notes.StartsWith(ledgerNote))
+            .OrderByDescending(t => t.Id)
+            .FirstOrDefaultAsync();
+        if (adjustment is not null) _db.FarmerTransactions.Remove(adjustment);
+
+        _db.GoodsReturns.Remove(goodsReturn);
+        RecomputeGrandTotal(invoice, invoice.Returns.Where(r => r.Id != goodsReturn.Id).Sum(r => r.TotalValue));
+
+        await _db.SaveChangesAsync();
+        await transaction.CommitAsync();
+    }
+
+    /// <summary>
+    /// Re-derives the invoice's stored charge from its own lines plus the given returns total. The
+    /// wood and box figures are recomputed here the same way ToDto does, so this can never fall out
+    /// of step with what the invoice displays.
+    /// </summary>
+    private static void RecomputeGrandTotal(Invoice invoice, decimal returnsTotal)
+    {
+        var woodTotal = invoice.Items.Sum(it => it.WoodPrice);
+        var boxFeeTotal = invoice.Items.Where(it => it.Unit == UnitOfMeasure.Box).Sum(it => it.Quantity) * invoice.BoxPriceApplied;
+        invoice.GrandTotal = InvoiceCharge.ForMerchant(
+            invoice.TotalValue, invoice.TransportFee, woodTotal, boxFeeTotal, invoice.Discount, returnsTotal);
+    }
+
+    private static GoodsReturnDto ToDto(GoodsReturn r) => new(
+        r.Id, r.InvoiceId, r.Invoice?.InvoiceNumber ?? string.Empty, r.Date, r.Reason,
+        r.TotalValue, r.CommissionRateApplied,
+        r.Items.Select(i => new GoodsReturnItemDto(i.ItemName, i.Quantity, i.Unit, i.PricePerUnit, i.LineTotal)).ToList());
+}

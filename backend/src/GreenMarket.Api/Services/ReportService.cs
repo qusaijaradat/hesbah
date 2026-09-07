@@ -26,6 +26,9 @@ public interface IReportService
     Task<IReadOnlyList<MarketReportRow>> MarketReportAsync(ReportFilterRequest filter);
     Task<DailyClosingDto> DailyClosingAsync(DateTimeOffset date);
     Task<IReadOnlyList<AgingReportRow>> AgingReportAsync(ReportFilterRequest filter);
+
+    /// <summary>See DashboardSummaryDto — the whole home screen in one round trip.</summary>
+    Task<DashboardSummaryDto> DashboardSummaryAsync();
 }
 
 public class ReportService : IReportService
@@ -152,7 +155,7 @@ public class ReportService : IReportService
         var allTimePurchases = await _db.Invoices.Where(i => i.Status == InvoiceStatus.Active)
             .Where(i => filter.PartnerId == null || i.MerchantId == filter.PartnerId)
             .GroupBy(i => i.MerchantId)
-            .Select(g => new { MerchantId = g.Key, Total = g.Sum(i => i.TotalValue) })
+            .Select(g => new { MerchantId = g.Key, Total = g.Sum(i => i.GrandTotal) })
             .ToDictionaryAsync(x => x.MerchantId, x => x.Total);
 
         // Only cleared checks count (see PaymentRules) — an uncleared check hasn't paid anything
@@ -496,5 +499,121 @@ public class ReportService : IReportService
         return new DailyClosingDto(
             dayStart, invoiceCount, totalSalesValue, totalCommission, totalExpenses,
             totalCommission - totalExpenses, paymentsFromMerchants, paymentsToFarmers);
+    }
+    /// <summary>Matches the الشيكات page's own "قريبًا" window, so both call the same checks urgent.</summary>
+    private const int DueSoonDays = 7;
+
+    /// <summary>How many names "أعلى المدينين" shows before sending you to قيمة الديون.</summary>
+    private const int TopDebtorRows = 5;
+
+    /// <summary>
+    /// One pass for the home screen. Deliberately assembled here rather than by having the
+    /// dashboard call five existing endpoints: those each re-derive balances their own way, and
+    /// the whole point of this screen is that its numbers agree with the pages it links to.
+    ///
+    /// Two different clocks on purpose — the "today" figures are today's activity, while every
+    /// balance and count below is the CURRENT position, all-time. A debt from last month is still
+    /// a debt this morning, and date-scoping it would quietly hide most of what is owed.
+    ///
+    /// Every figure goes through the same two rules as the rest of the app: an invoice charges
+    /// Invoice.GrandTotal (see InvoiceCharge), and a check counts only once cleared (PaymentRules).
+    /// </summary>
+    public async Task<DashboardSummaryDto> DashboardSummaryAsync()
+    {
+        // "Today" in the market's own local day, not UTC — a shift starting at 6am and a closing
+        // done at 8pm both belong to the date on the wall calendar.
+        var dayStart = new DateTimeOffset(DateTimeOffset.Now.Date, DateTimeOffset.Now.Offset);
+        var dayEnd = dayStart.AddDays(1);
+
+        var todayInvoices = await _db.Invoices
+            .Where(i => i.Status == InvoiceStatus.Active && i.Date >= dayStart && i.Date < dayEnd)
+            .Select(i => new { i.TotalValue, i.CommissionRateApplied })
+            .ToListAsync();
+        var todaySalesValue = todayInvoices.Sum(i => i.TotalValue);
+        // Commission per invoice at ITS own locked-in rate, never today's settings rate over the
+        // day's total — a rate change mid-day would otherwise silently restate the morning.
+        var todayCommission = todayInvoices.Sum(i => CommissionCalculator.Calculate(i.TotalValue, i.CommissionRateApplied).Commission);
+
+        var todayPayments = await _db.Payments
+            .Where(PaymentRules.CountsTowardBalanceExpression)
+            .Where(p => p.Date >= dayStart && p.Date < dayEnd)
+            .Select(p => new { p.Direction, p.Amount })
+            .ToListAsync();
+        var todayCashIn = todayPayments.Where(p => p.Direction == PaymentDirection.FromMerchant).Sum(p => p.Amount);
+        var todayCashOut = todayPayments.Where(p => p.Direction != PaymentDirection.FromMerchant).Sum(p => p.Amount);
+
+        // Current position, all-time — same formulas as PartnerService's own account pages.
+        var purchasesByMerchant = await _db.Invoices.Where(i => i.Status == InvoiceStatus.Active)
+            .GroupBy(i => i.MerchantId)
+            .Select(g => new { MerchantId = g.Key, Total = g.Sum(i => i.GrandTotal) })
+            .ToDictionaryAsync(x => x.MerchantId, x => x.Total);
+        var paidByMerchant = await _db.Payments
+            .Where(PaymentRules.CountsTowardBalanceExpression)
+            .Where(p => p.Direction == PaymentDirection.FromMerchant)
+            .GroupBy(p => p.PartnerId)
+            .Select(g => new { PartnerId = g.Key, Total = g.Sum(p => p.Amount) })
+            .ToDictionaryAsync(x => x.PartnerId, x => x.Total);
+        var sellerBalances = await _db.FarmerTransactions
+            .GroupBy(t => t.FarmerId)
+            .Select(g => new { FarmerId = g.Key, Total = g.Sum(t => t.Amount) })
+            .ToDictionaryAsync(x => x.FarmerId, x => x.Total);
+        var partners = await _db.Partners.Select(p => new { p.Id, p.Name, p.Type, p.OpeningBalance }).ToListAsync();
+
+        var merchantDebts = partners
+            .Where(p => p.Type == PartnerType.Merchant || p.Type == PartnerType.Both)
+            .Select(p => new PartnerDebtRow(p.Id, p.Name,
+                (p.OpeningBalance ?? 0) + purchasesByMerchant.GetValueOrDefault(p.Id) - paidByMerchant.GetValueOrDefault(p.Id)))
+            .Where(r => r.Remaining > 0)
+            .OrderByDescending(r => r.Remaining)
+            .ToList();
+
+        var sellerDues = partners
+            .Where(p => p.Type == PartnerType.Farmer || p.Type == PartnerType.Driver || p.Type == PartnerType.Both)
+            .Select(p => new PartnerDebtRow(p.Id, p.Name, (p.OpeningBalance ?? 0) + sellerBalances.GetValueOrDefault(p.Id)))
+            .Where(r => r.Remaining > 0)
+            .OrderByDescending(r => r.Remaining)
+            .ToList();
+
+        // Checks still قيد التحصيل. CheckDueDate is written as UTC midnight of the due day
+        // everywhere it is recorded, so these day boundaries are UTC too — the same thing
+        // ChecksDueTodayBanner.tsx had to pin down, for the same reason.
+        var todayUtc = new DateTimeOffset(DateTime.UtcNow.Date, TimeSpan.Zero);
+        var pendingChecks = await _db.Payments
+            .Where(p => p.CheckDueDate != null && p.CheckStatus == CheckClearanceStatus.Pending)
+            .Select(p => new { p.Amount, DueDate = p.CheckDueDate!.Value })
+            .ToListAsync();
+        var dueToday = pendingChecks.Where(c => c.DueDate >= todayUtc && c.DueDate < todayUtc.AddDays(1)).ToList();
+        var overdue = pendingChecks.Where(c => c.DueDate < todayUtc).ToList();
+        var dueSoon = pendingChecks
+            .Where(c => c.DueDate >= todayUtc.AddDays(1) && c.DueDate < todayUtc.AddDays(DueSoonDays + 1))
+            .ToList();
+
+        // Outstanding invoice work — the same two states the invoices list filters by, so a number
+        // here and the filtered list it links to can never disagree.
+        var unpaidRemaining = await _db.Invoices
+            .Where(i => i.Status == InvoiceStatus.Active)
+            .Select(i => new
+            {
+                i.GrandTotal,
+                Paid = i.Payments
+                    .Where(pm => pm.CheckStatus == null || pm.CheckStatus == CheckClearanceStatus.Cleared)
+                    .Sum(pm => (decimal?)pm.Amount) ?? 0
+            })
+            .Where(x => x.Paid < x.GrandTotal)
+            .Select(x => x.GrandTotal - x.Paid)
+            .ToListAsync();
+        var unpricedCount = await _db.Invoices
+            .CountAsync(i => i.Status == InvoiceStatus.Active && i.Items.Any(it => it.PricePerUnit == 0));
+
+        return new DashboardSummaryDto(
+            todayInvoices.Count, todaySalesValue, todayCommission, todayCashIn, todayCashOut,
+            merchantDebts.Sum(r => r.Remaining), sellerDues.Sum(r => r.Remaining),
+            dueToday.Count, dueToday.Sum(c => c.Amount),
+            overdue.Count, overdue.Sum(c => c.Amount),
+            dueSoon.Count, dueSoon.Sum(c => c.Amount),
+            unpaidRemaining.Count, unpaidRemaining.Sum(),
+            unpricedCount,
+            merchantDebts.Take(TopDebtorRows).ToList(),
+            sellerDues.Take(TopDebtorRows).ToList());
     }
 }

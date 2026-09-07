@@ -1,5 +1,5 @@
 import { apiClient } from "./client";
-import type { FarmerReportRow, MerchantReportRow, DriverReportRow, MerchantItemBreakdownRow, FarmerItemBreakdownRow, DriverItemBreakdownRow, MarketReportRow, AgingReportRow, DailyClosingDto, GoodsStockRow } from "../types";
+import type { DashboardSummaryDto, FarmerReportRow, MerchantReportRow, DriverReportRow, MerchantItemBreakdownRow, FarmerItemBreakdownRow, DriverItemBreakdownRow, MarketReportRow, AgingReportRow, DailyClosingDto, GoodsStockRow } from "../types";
 
 export interface ReportFilter {
   dateFrom?: string;
@@ -93,5 +93,11 @@ export async function exportDailyClosingPdf(date: string) {
  * scoped to whichever date the Daily Closing page has selected — always the live running total. */
 export async function getGoodsGlobalStockForReports() {
   const { data } = await apiClient.get<GoodsStockRow[]>("/reports/goods/stock");
+  return data;
+}
+
+/** The dashboard's whole payload in one request — see backend DashboardSummaryDto. */
+export async function getDashboardSummary() {
+  const { data } = await apiClient.get<DashboardSummaryDto>("/reports/dashboard");
   return data;
 }

@@ -1,6 +1,6 @@
 import { apiClient } from "./client";
 import { serializeQueryParams } from "./queryParams";
-import type { FarmerGoodsDto, InvoiceDto, InvoiceFilter, InvoiceItemInput, InvoiceListItemDto, PagedResult } from "../types";
+import type { FarmerGoodsDto, GoodsReturnDto, InvoiceDto, InvoiceFilter, InvoiceItemInput, InvoiceListItemDto, PagedResult, UnitOfMeasure } from "../types";
 
 // The filter now carries array fields (the "استثناء أسماء" exclusion lists), which axios would
 // otherwise send in a bracket form ASP.NET Core doesn't bind — see serializeQueryParams.
@@ -25,6 +25,8 @@ export async function createInvoice(payload: {
   farmerId?: number; farmerName?: string;
   driverId?: number; driverName?: string;
   transportFee?: number;
+  /** "خصم" — comes off the buyer's total only. */
+  discount?: number;
   items: InvoiceItemInput[];
   /** Optional "المبلغ المدفوع" — records a linked FromMerchant payment right when the invoice is
    * created (see backend CreateInvoiceRequest.PaidAmount). Omit/0 = nothing paid yet. */
@@ -40,6 +42,8 @@ export async function updateInvoice(id: number, payload: {
   farmerId?: number; farmerName?: string;
   driverId?: number; driverName?: string;
   transportFee?: number;
+  /** "خصم" — comes off the buyer's total only. */
+  discount?: number;
   items: InvoiceItemInput[];
 }) {
   const { data } = await apiClient.put<InvoiceDto>(`/invoices/${id}`, payload);
@@ -163,4 +167,24 @@ export function triggerBlobDownload(blob: Blob, fileName: string) {
   link.click();
   document.body.removeChild(link);
   URL.revokeObjectURL(url);
+}
+
+/** "مرتجع بضاعة" on one invoice — recording one reduces what the buyer owes and, net of the
+ * commission charged on it, what the seller is due (see backend GoodsReturnService). */
+export async function listInvoiceReturns(invoiceId: number) {
+  const { data } = await apiClient.get<GoodsReturnDto[]>(`/invoices/${invoiceId}/returns`);
+  return data;
+}
+
+export async function createInvoiceReturn(invoiceId: number, payload: {
+  date: string;
+  reason?: string;
+  items: { itemName: string; unit: UnitOfMeasure; quantity: number }[];
+}) {
+  const { data } = await apiClient.post<GoodsReturnDto>(`/invoices/${invoiceId}/returns`, payload);
+  return data;
+}
+
+export async function deleteInvoiceReturn(returnId: number) {
+  await apiClient.delete(`/invoices/returns/${returnId}`);
 }

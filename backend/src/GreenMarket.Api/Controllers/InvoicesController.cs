@@ -20,14 +20,16 @@ public class InvoicesController : ControllerBase
     private readonly ISettingsService _settingsService;
     private readonly ICompanyLogoService _logoService;
     private readonly IPartnerService _partnerService;
+    private readonly IGoodsReturnService _goodsReturnService;
 
-    public InvoicesController(IInvoiceService invoiceService, IExportService exportService, ISettingsService settingsService, ICompanyLogoService logoService, IPartnerService partnerService)
+    public InvoicesController(IInvoiceService invoiceService, IExportService exportService, ISettingsService settingsService, ICompanyLogoService logoService, IPartnerService partnerService, IGoodsReturnService goodsReturnService)
     {
         _invoiceService = invoiceService;
         _exportService = exportService;
         _settingsService = settingsService;
         _logoService = logoService;
         _partnerService = partnerService;
+        _goodsReturnService = goodsReturnService;
     }
 
     [HttpGet]
@@ -64,6 +66,25 @@ public class InvoicesController : ControllerBase
     public async Task<IActionResult> Delete(int id)
     {
         await _invoiceService.DeleteAsync(id);
+        return NoContent();
+    }
+
+    /// <summary>"مرتجع بضاعة" on one invoice — see GoodsReturnService for what recording one does
+    /// to the buyer's charge and the seller's ledger.</summary>
+    [HttpGet("{id:int}/returns")]
+    [RequirePermission(PermissionKeys.InvoicesView)]
+    public async Task<ActionResult> ListReturns(int id) => Ok(await _goodsReturnService.ListForInvoiceAsync(id));
+
+    [HttpPost("{id:int}/returns")]
+    [RequirePermission(PermissionKeys.InvoicesReturns)]
+    public async Task<ActionResult<GoodsReturnDto>> CreateReturn(int id, CreateGoodsReturnRequest request) =>
+        Ok(await _goodsReturnService.CreateAsync(id, request, CurrentUserId.Require(User)));
+
+    [HttpDelete("returns/{returnId:int}")]
+    [RequirePermission(PermissionKeys.InvoicesReturns)]
+    public async Task<IActionResult> DeleteReturn(int returnId)
+    {
+        await _goodsReturnService.DeleteAsync(returnId);
         return NoContent();
     }
 

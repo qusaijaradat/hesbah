@@ -20,10 +20,12 @@ public class PaymentConfiguration : IEntityTypeConfiguration<Payment>
             .OnDelete(DeleteBehavior.Restrict);
 
         // Optional link to the specific invoice this payment settles (roadmap: "link a payment
-        // to a specific invoice"). No navigation collection on Invoice — this is a one-way
-        // reference, looked up from the payment side only.
+        // to a specific invoice"). The inverse is Invoice.Payments — named explicitly, because
+        // an unnamed .WithMany() here plus a collection on the other side makes EF believe
+        // there are TWO relationships over the same field and quietly map the second to a
+        // shadow "InvoiceId1" column that does not exist in the database.
         builder.HasOne(x => x.Invoice)
-            .WithMany()
+            .WithMany(i => i.Payments)
             .HasForeignKey(x => x.InvoiceId)
             .OnDelete(DeleteBehavior.Restrict);
 

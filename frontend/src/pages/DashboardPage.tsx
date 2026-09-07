@@ -1,23 +1,17 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { StatCard } from "../components/StatCard";
-import { listInvoices } from "../api/invoices";
-import { marketReport, merchantItemsBreakdown, printBuyerStatementPdf } from "../api/reports";
+import { Link } from "react-router-dom";
+import { getDashboardSummary, merchantItemsBreakdown, printBuyerStatementPdf } from "../api/reports";
 import { formatCurrency, formatQuantity } from "../lib/format";
 import { useAuth } from "../auth/AuthContext";
-import type { MerchantItemBreakdownRow } from "../types";
-
-function startOfToday(): string {
-  const d = new Date();
-  d.setHours(0, 0, 0, 0);
-  return d.toISOString();
-}
+import type { DashboardSummaryDto, MerchantItemBreakdownRow, PartnerDebtRow } from "../types";
 
 export function DashboardPage() {
   const { hasPermission } = useAuth();
   const [loading, setLoading] = useState(true);
-  const [todayCount, setTodayCount] = useState(0);
-  const [todayValue, setTodayValue] = useState(0);
-  const [todayCommission, setTodayCommission] = useState(0);
+  // The whole screen in one payload — see backend DashboardSummaryDto. Assembled server-side
+  // rather than by calling five endpoints, so these numbers agree with the pages they link to.
+  const [summary, setSummary] = useState<DashboardSummaryDto | null>(null);
 
   // Buyer statement for an arbitrary chosen period — separate from the "today" stats above.
   // Deliberately period-scoped ONLY (no المدفوع/المتبقي columns): those two figures would always be
@@ -36,27 +30,17 @@ export function DashboardPage() {
   const buyerPeriodChosen = Boolean(buyerDateFrom || buyerDateTo);
 
   useEffect(() => {
-    if (!hasPermission("invoices.view")) {
+    // The summary is a report endpoint; a role without reports.view simply gets the page
+    // without it rather than an error banner.
+    if (!hasPermission("reports.view")) {
       setLoading(false);
       return;
     }
-    (async () => {
-      const dateFrom = startOfToday();
-      // Note: no "مستحقات الباعة والسواق" or "مستحقات المشترين" cards here on purpose —
-      // both were removed per explicit request. The farmers/drivers one was near-always
-      // zero/irrelevant since most invoices never have one attached; the merchants one
-      // was an all-time (not daily) outstanding-balance total that read as confusing on
-      // a dashboard otherwise full of "today" figures. Per-merchant balances are still
-      // available on each merchant's own "كشف حساب" (account) page.
-      const [invoicesToday, market] = await Promise.all([
-        listInvoices({ dateFrom, pageSize: 1 }),
-        marketReport({ dateFrom, grouping: "daily" }),
-      ]);
-      setTodayCount(invoicesToday.totalCount);
-      setTodayCommission(market.reduce((sum, r) => sum + r.totalCommission, 0));
-      setTodayValue(market.reduce((sum, r) => sum + r.totalSalesValue, 0));
-      setLoading(false);
-    })();
+    getDashboardSummary()
+      .then(setSummary)
+      // A dashboard that fails must not block the rest of the app — the cards simply don't render.
+      .catch(() => setSummary(null))
+      .finally(() => setLoading(false));
   }, [hasPermission]);
 
   useEffect(() => {
@@ -113,11 +97,59 @@ export function DashboardPage() {
   return (
     <div>
       <h1 className="text-2xl font-bold mb-6">لوحة التحكم</h1>
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
-        <StatCard label="فواتير اليوم" value={String(todayCount)} />
-        <StatCard label="مبيعات اليوم" value={formatCurrency(todayValue)} />
-        <StatCard label="عمولة الحسبة اليوم" value={formatCurrency(todayCommission)} tone="positive" />
-      </div>
+      {summary && (
+        <>
+          <h2 className="font-semibold text-gray-700 mb-2">اليوم</h2>
+          <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
+            <StatCard label="فواتير اليوم" value={String(summary.todayInvoiceCount)} />
+            <StatCard label="مبيعات اليوم" value={formatCurrency(summary.todaySalesValue)} />
+            <StatCard label="عمولة الحسبة اليوم" value={formatCurrency(summary.todayCommission)} tone="positive" />
+            {/* Cash actually in and out today — an uncleared check is neither (see PaymentRules),
+                which is what makes these safe to read as a drawer count. */}
+            <StatCard label="مقبوض اليوم" value={formatCurrency(summary.todayCashIn)} tone="positive" hint="نقد فعلي — الشيك ما بينحسب إلا لما ينصرف" />
+            <StatCard label="مدفوع اليوم" value={formatCurrency(summary.todayCashOut)} tone="negative" hint="للباعة والسواق" />
+          </div>
+
+          <h2 className="font-semibold text-gray-700 mb-2">الوضع الحالي</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+            {/* All-time, not today — a debt from last month is still a debt this morning. */}
+            <Link to="/debts" className="block">
+              <StatCard label="ديون على المشترين" value={formatCurrency(summary.merchantsOwe)} tone="negative" hint="اضغط لتفاصيل قيمة الديون" />
+            </Link>
+            <Link to="/debts" className="block">
+              <StatCard label="مستحقات للباعة والسواق" value={formatCurrency(summary.owedToSellers)} hint="اضغط لتفاصيل قيمة الديون" />
+            </Link>
+            {/* Deep-links into the invoices list with the matching filter already applied, so the
+                number and the list behind it can never tell different stories. */}
+            <Link to="/invoices?paymentStatus=Unpaid" className="block">
+              <StatCard label="فواتير غير مسدّدة" value={String(summary.unpaidInvoiceCount)} tone="negative" hint={`باقي: ${formatCurrency(summary.unpaidInvoiceAmount)}`} />
+            </Link>
+            <Link to="/invoices?hasUnpricedItems=true" className="block">
+              <StatCard label="فواتير غير مسعّرة" value={String(summary.unpricedInvoiceCount)} hint="فيها أصناف بدون سعر" />
+            </Link>
+          </div>
+
+          <h2 className="font-semibold text-gray-700 mb-2">الشيكات قيد التحصيل</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
+            <Link to="/checks" className="block">
+              <StatCard label="فات موعدها" value={String(summary.checksOverdueCount)} tone="negative" hint={formatCurrency(summary.checksOverdueAmount)} />
+            </Link>
+            <Link to="/checks" className="block">
+              <StatCard label="مستحقة اليوم" value={String(summary.checksDueTodayCount)} hint={formatCurrency(summary.checksDueTodayAmount)} />
+            </Link>
+            <Link to="/checks" className="block">
+              <StatCard label="خلال 7 أيام" value={String(summary.checksDueSoonCount)} hint={formatCurrency(summary.checksDueSoonAmount)} />
+            </Link>
+          </div>
+
+          {(summary.topMerchantDebts.length > 0 || summary.topSellerDues.length > 0) && (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-8">
+              <TopDebtList title="أكبر الديون على المشترين" rows={summary.topMerchantDebts} accountPath="merchant-account" />
+              <TopDebtList title="أكبر المستحقات للباعة والسواق" rows={summary.topSellerDues} accountPath="farmer-account" />
+            </div>
+          )}
+        </>
+      )}
 
       {hasPermission("reports.view") && (
         <div className="card p-4">
@@ -189,6 +221,36 @@ export function DashboardPage() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+/** "مين ندين له / مين بدنا منه" — the few biggest balances, each linking straight into that
+ * person's own كشف حساب. Capped server-side: a dashboard is a starting point, not the
+ * قيمة الديون page it links to. */
+function TopDebtList({ title, rows, accountPath }: {
+  title: string;
+  rows: PartnerDebtRow[];
+  accountPath: "merchant-account" | "farmer-account";
+}) {
+  if (rows.length === 0) return null;
+  return (
+    <div className="card p-4">
+      <h2 className="font-semibold mb-3">{title}</h2>
+      <table className="table-base">
+        <tbody>
+          {rows.map((row) => (
+            <tr key={row.partnerId}>
+              <td>
+                <Link to={`/partners/${row.partnerId}/${accountPath}`} className="text-brand-700 hover:underline">
+                  {row.name}
+                </Link>
+              </td>
+              <td className="font-semibold text-end">{formatCurrency(row.remaining)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }

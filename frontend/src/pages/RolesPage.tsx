@@ -14,6 +14,7 @@ const PERMISSION_LABELS: Record<string, string> = {
   "invoices.edit": "تعديل فواتير",
   "invoices.cancel": "إلغاء فواتير (تبقى ظاهرة كـ«ملغاة»)",
   "invoices.delete": "حذف فواتير (تختفي من القوائم والتقارير)",
+  "invoices.returns": "تسجيل مرتجع بضاعة على الفواتير",
 
   "partners.view": "إظهار الباعة السائقين والمشترين",
   "partners.create": "إضافة شخص جديد",

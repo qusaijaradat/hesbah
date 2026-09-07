@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { deleteInvoice, downloadInvoicePdf, downloadInvoicesExcel, getInvoice, listInvoices, triggerBlobDownload } from "../api/invoices";
 import { getFarmerAccount } from "../api/partners";
 import { listSettings } from "../api/settings";
-import type { InvoiceFilter, InvoiceListItemDto } from "../types";
+import type { InvoiceFilter, InvoiceListItemDto, InvoicePaymentStatus } from "../types";
 import { buildStatementMessage, buildWhatsAppLink, formatCurrency, formatDate, formatQuantity, formatWeight } from "../lib/format";
 import { shareFile } from "../lib/share";
 import { apiErrorMessage } from "../api/client";
@@ -13,6 +13,20 @@ import { TablePagination } from "../components/TablePagination";
 import { runBulkDelete, summarizeBulkDelete } from "../lib/bulkDelete";
 
 const STATUS_LABELS: Record<string, string> = { Active: "فعّالة", Cancelled: "ملغاة" };
+
+// Where the invoice stands against what has actually been collected on it — the question the
+// market asks all day, which used to need a trip to the Payments page. An uncleared check does
+// NOT count as paid here, same as every balance in the app (see backend PaymentRules).
+const PAYMENT_STATUS_LABELS: Record<InvoicePaymentStatus, string> = {
+  Unpaid: "غير مدفوعة",
+  Partial: "مدفوعة جزئياً",
+  Paid: "مدفوعة",
+};
+const PAYMENT_STATUS_CLASS: Record<InvoicePaymentStatus, string> = {
+  Unpaid: "bg-red-100 text-red-700",
+  Partial: "bg-amber-100 text-amber-800",
+  Paid: "bg-brand-100 text-brand-800",
+};
 
 function startOfDay(d: Date) {
   const x = new Date(d);
@@ -29,7 +43,20 @@ export function InvoicesPage() {
   const { hasPermission } = useAuth();
   // Defaults to today (explicit request: "الفواتير لازم تنعرض بتاريخ اليوم افتراضيًا") — changing
   // either date input below then drives the same filter/refresh as any other change here.
+  const [searchParams] = useSearchParams();
   const [filter, setFilter] = useState<InvoiceFilter>(() => {
+    // Arriving from a dashboard card ("فواتير غير مسدّدة") means asking about the CURRENT
+    // position, not about today — so a linked filter drops the default date window entirely,
+    // otherwise the count on the card and the rows here would almost never match.
+    const paymentStatus = searchParams.get("paymentStatus") as InvoicePaymentStatus | null;
+    const hasUnpricedItems = searchParams.get("hasUnpricedItems") === "true";
+    if (paymentStatus || hasUnpricedItems) {
+      return {
+        page: 1, pageSize: 25,
+        paymentStatus: paymentStatus ?? undefined,
+        hasUnpricedItems: hasUnpricedItems || undefined,
+      };
+    }
     const now = new Date();
     return { page: 1, pageSize: 25, dateFrom: startOfDay(now).toISOString(), dateTo: endOfDay(now).toISOString() };
   });
@@ -203,6 +230,25 @@ export function InvoicesPage() {
           <label className="label">اسم الصنف</label>
           <input className="input" onChange={(e) => setFilter((f) => ({ ...f, itemName: e.target.value || undefined, page: 1 }))} />
         </div>
+        <div>
+          <label className="label">حالة الدفع</label>
+          <select className="input" value={filter.paymentStatus ?? ""}
+            onChange={(e) => setFilter((f) => ({ ...f, paymentStatus: (e.target.value || undefined) as InvoicePaymentStatus | undefined, page: 1 }))}>
+            <option value="">الكل</option>
+            <option value="Unpaid">غير مدفوعة</option>
+            <option value="Partial">مدفوعة جزئياً</option>
+            <option value="Paid">مدفوعة</option>
+          </select>
+        </div>
+        <div className="flex items-end">
+          {/* The work queue for goods that went out before being priced — without it an unpriced
+              invoice can sit forgotten indefinitely. */}
+          <label className="flex items-center gap-2 text-sm text-gray-700 pb-2">
+            <input type="checkbox" checked={filter.hasUnpricedItems === true}
+              onChange={(e) => setFilter((f) => ({ ...f, hasUnpricedItems: e.target.checked || undefined, page: 1 }))} />
+            غير مسعّرة فقط
+          </label>
+        </div>
         <div className="flex items-end">
           <button
             className="btn-secondary"
@@ -258,15 +304,16 @@ export function InvoicesPage() {
               <th>الأصناف</th>
               <th>الكمية</th>
               <th>القيمة</th>
+              <th>حالة الدفع</th>
               <th>الحالة</th>
               <th></th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={canDelete ? 11 : 10} className="text-center text-gray-400 py-6">جاري التحميل...</td></tr>
+              <tr><td colSpan={canDelete ? 12 : 11} className="text-center text-gray-400 py-6">جاري التحميل...</td></tr>
             ) : rows.length === 0 ? (
-              <tr><td colSpan={canDelete ? 11 : 10} className="text-center text-gray-400 py-6">لا توجد فواتير</td></tr>
+              <tr><td colSpan={canDelete ? 12 : 11} className="text-center text-gray-400 py-6">لا توجد فواتير</td></tr>
             ) : (
               rows.map((inv) => (
                 <tr key={inv.id}>
@@ -290,6 +337,17 @@ export function InvoicesPage() {
                     {inv.totalWeightKg === 0 && inv.totalBoxes === 0 && "—"}
                   </td>
                   <td className="font-semibold">{formatCurrency(inv.totalValue)}</td>
+                  <td className="whitespace-nowrap">
+                    <span className={`text-xs px-2 py-0.5 rounded-full ${PAYMENT_STATUS_CLASS[inv.paymentStatus]}`}>
+                      {PAYMENT_STATUS_LABELS[inv.paymentStatus]}
+                    </span>
+                    {inv.paidAmount > 0 && inv.remainingAmount > 0 && (
+                      <div className="text-xs text-gray-500 mt-0.5">باقي: {formatCurrency(inv.remainingAmount)}</div>
+                    )}
+                    {inv.hasUnpricedItems && (
+                      <div className="text-xs text-amber-700 mt-0.5">فيها أصناف غير مسعّرة</div>
+                    )}
+                  </td>
                   <td>
                     <span className={`text-xs px-2 py-0.5 rounded-full ${inv.status === "Active" ? "bg-brand-100 text-brand-800" : "bg-red-100 text-red-700"}`}>
                       {STATUS_LABELS[inv.status]}

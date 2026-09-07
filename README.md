@@ -76,7 +76,9 @@ environment variables before running: `POSTGRES_PASSWORD`, `JWT_SIGNING_KEY` (us
 long random string in anything beyond local dev).
 
 **Default login:** `admin` / `ChangeMe123!` — change this immediately after first login
-(there's no "force change on first login" flow yet; see Future Features below).
+(the seeded account carries `MustChangePassword`, so the first login is forced through the
+change-password screen before anything else in the app is reachable — enforced server-side in
+`LiveUserStateMiddleware`, not merely in the UI).
 
 ## Manual setup (without Docker)
 
@@ -161,14 +163,17 @@ backfilling.
 - QR codes on invoices
 - Native mobile app (the current frontend is responsive/mobile-web, not a packaged app)
 - Multi-branch support
-- Automatic backups (infrastructure/ops concern, not application code)
+- Scheduled automatic backups (infrastructure/ops concern). A manual **"تنزيل نسخة احتياطية"**
+  button now exists under Settings — it downloads every table as a ZIP of CSVs, soft-deleted rows
+  included (see `BackupService`). That is a complete DATA export, not a `pg_dump`: no schema, no
+  indexes, no sequence positions. A scheduled dump at the infrastructure level is still the right
+  disaster-recovery answer; this is the copy that exists in the meantime.
 - Direct WhatsApp Business API send — the API generates the invoice PDF
   (`GET /api/invoices/{id}/pdf`); wiring that to WhatsApp Business's API needs a Meta
   Business account and API credentials that only the market owner can provision, so the
   frontend currently just downloads the PDF for manual sending.
 - Offline Mode (local storage + sync on reconnect) — doc explicitly frames this as
   optional/future, so it wasn't built.
-- Force-password-change-on-first-login for the seeded admin account.
 
 ## An honest note on verification
 

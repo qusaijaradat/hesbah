@@ -86,6 +86,35 @@ public class Invoice : AuditableEntity
     /// </summary>
     public decimal DriverBoxFeeApplied { get; set; }
 
+    /// <summary>
+    /// "خصم" — a flat concession given to the buyer on this invoice (haggling, a goodwill
+    /// reduction, a rounding-down). Comes off the merchant's grand total and nothing else: it is
+    /// the MARKET's concession out of its own commission, so it never reduces TotalValue (the
+    /// commission base) and never reduces what the farmer or driver is paid. Same "kept out of the
+    /// commission base" treatment as TransportFee/BoxPriceApplied, just in the other direction.
+    /// </summary>
+    public decimal Discount { get; set; }
+
+    /// <summary>
+    /// What this invoice actually charges the merchant, STORED rather than derived:
+    /// TotalValue + TransportFee + wood total + box-fee total − Discount − returns total.
+    /// Recomputed by <see cref="Services.InvoiceCharge"/> whenever items, fees, the discount or
+    /// this invoice's returns change.
+    ///
+    /// This deliberately breaks the "computed fresh on read, never stored" convention that
+    /// WoodTotal/BoxFeeTotal follow, and it's worth saying why: those are only ever needed for ONE
+    /// invoice whose Items are already loaded. The merchant's BALANCE, though, is a sum across
+    /// every invoice they've ever had — and deriving it per row means a correlated subquery over
+    /// InvoiceItems for each one. That cost is exactly why four separate balance queries
+    /// (PartnerService's list/account/debts and ReportService's merchant report) quietly summed
+    /// TotalValue alone instead, leaving the wood, transport and box charges out of every balance
+    /// in the app while the printed invoice's own "الرصيد السابق" included them — the same merchant
+    /// showing two different debts depending on the screen. One stored column removes that whole
+    /// class of drift: every balance is now SUM(GrandTotal), and there is one place that decides
+    /// what an invoice charges.
+    /// </summary>
+    public decimal GrandTotal { get; set; }
+
     public int? CancelledByUserId { get; set; }
     public DateTimeOffset? CancelledAt { get; set; }
     public string? CancellationReason { get; set; }
@@ -99,4 +128,12 @@ public class Invoice : AuditableEntity
     /// legitimately have both at once.
     /// </summary>
     public ICollection<FarmerTransaction> FarmerTransactions { get; set; } = new List<FarmerTransaction>();
+
+    /// <summary>"مرتجع بضاعة" documents raised against this invoice — see GoodsReturn.</summary>
+    public ICollection<GoodsReturn> Returns { get; set; } = new List<GoodsReturn>();
+
+    /// <summary>Payments settling THIS invoice specifically (Payment.InvoiceId). A navigation
+    /// rather than a loose query so "how much of this invoice is paid" can be asked inside a
+    /// translated LINQ predicate — that's what backs the مدفوعة/جزئياً/غير مدفوعة filter.</summary>
+    public ICollection<Payment> Payments { get; set; } = new List<Payment>();
 }

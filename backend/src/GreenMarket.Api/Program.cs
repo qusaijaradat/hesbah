@@ -42,6 +42,7 @@ builder.Services.AddScoped<IItemService, ItemService>();
 builder.Services.AddScoped<IInvoiceService, InvoiceService>();
 builder.Services.AddScoped<IPaymentService, PaymentService>();
 builder.Services.AddScoped<IBoxReturnService, BoxReturnService>();
+builder.Services.AddScoped<IGoodsReturnService, GoodsReturnService>();
 builder.Services.AddScoped<IExpenseService, ExpenseService>();
 builder.Services.AddScoped<IEmployeeService, EmployeeService>();
 builder.Services.AddScoped<IGoodsService, GoodsService>();
@@ -49,6 +50,7 @@ builder.Services.AddScoped<IReportService, ReportService>();
 builder.Services.AddScoped<ISettingsService, SettingsService>();
 builder.Services.AddScoped<ICompanyLogoService, CompanyLogoService>();
 builder.Services.AddScoped<IAuditLogService, AuditLogService>();
+builder.Services.AddScoped<IBackupService, BackupService>();
 builder.Services.AddScoped<IRoleService, RoleService>();
 builder.Services.AddSingleton<IExportService, ExportService>();
 
@@ -378,6 +380,65 @@ using (var scope = app.Services.CreateScope())
         app.Logger.LogError(ex, "Failed to add the payments.CheckClearedDate column — recording the actual clearing date of a check will not work until this is fixed.");
     }
 
+    // Same EnsureCreated gap as the guards above: the "خصم" and per-invoice settlement work needs
+    // two new columns on "invoices", and "مرتجع بضاعة" needs two new tables.
+    //
+    // GrandTotal is BACKFILLED for every existing invoice in the same statement that adds it —
+    // it is what every balance in the app now sums (see Invoice.GrandTotal), so leaving old rows
+    // at 0 would read as "every historical invoice charged nothing". The backfill recomputes the
+    // exact same formula InvoiceCharge does: product value + transport + the invoice's own wood
+    // total + its box count × its locked-in box price, with no discount or returns (neither
+    // existed before this migration, so both are 0 for every historical row).
+    try
+    {
+        await db.Database.ExecuteSqlRawAsync("""
+            ALTER TABLE invoices ADD COLUMN IF NOT EXISTS "Discount" numeric(12,2) NOT NULL DEFAULT 0;
+            ALTER TABLE invoices ADD COLUMN IF NOT EXISTS "GrandTotal" numeric(14,2) NOT NULL DEFAULT 0;
+            CREATE INDEX IF NOT EXISTS ix_invoices_merchantid_status ON invoices ("MerchantId", "Status");
+
+            CREATE TABLE IF NOT EXISTS goods_returns (
+                "Id" serial PRIMARY KEY,
+                "InvoiceId" integer NOT NULL REFERENCES invoices ("Id"),
+                "Date" timestamp with time zone NOT NULL,
+                "Reason" character varying(500) NULL,
+                "TotalValue" numeric(14,2) NOT NULL DEFAULT 0,
+                "CommissionRateApplied" numeric(6,4) NOT NULL DEFAULT 0,
+                "RecordedByUserId" integer NOT NULL,
+                "CreatedAt" timestamp with time zone NOT NULL DEFAULT now(),
+                "CreatedByUserId" integer NULL,
+                "UpdatedAt" timestamp with time zone NULL,
+                "UpdatedByUserId" integer NULL,
+                "IsDeleted" boolean NOT NULL DEFAULT FALSE
+            );
+            CREATE INDEX IF NOT EXISTS ix_goods_returns_invoiceid ON goods_returns ("InvoiceId");
+            CREATE INDEX IF NOT EXISTS ix_goods_returns_date ON goods_returns ("Date");
+
+            CREATE TABLE IF NOT EXISTS goods_return_items (
+                "Id" serial PRIMARY KEY,
+                "GoodsReturnId" integer NOT NULL REFERENCES goods_returns ("Id") ON DELETE CASCADE,
+                "ItemName" character varying(200) NOT NULL,
+                "Quantity" numeric(14,3) NOT NULL DEFAULT 0,
+                "Unit" integer NOT NULL DEFAULT 1,
+                "PricePerUnit" numeric(14,2) NOT NULL DEFAULT 0,
+                "LineTotal" numeric(14,2) NOT NULL DEFAULT 0
+            );
+            CREATE INDEX IF NOT EXISTS ix_goods_return_items_returnid ON goods_return_items ("GoodsReturnId");
+
+            UPDATE invoices i
+            SET "GrandTotal" = i."TotalValue" + i."TransportFee" + COALESCE(lines.wood, 0) + (COALESCE(lines.boxes, 0) * i."BoxPriceApplied")
+            FROM (
+                SELECT "InvoiceId",
+                       SUM("WoodPrice") AS wood,
+                       SUM(CASE WHEN "Unit" = 2 THEN "Quantity" ELSE 0 END) AS boxes
+                FROM invoice_items GROUP BY "InvoiceId"
+            ) AS lines
+            WHERE lines."InvoiceId" = i."Id" AND i."GrandTotal" = 0;
+            """);
+    }
+    catch (Exception ex)
+    {
+        app.Logger.LogError(ex, "Failed to add the invoices.Discount/GrandTotal columns or the goods-return tables — discounts, per-invoice payment status and مرتجع بضاعة will not work until this is fixed.");
+    }
     // One-time data backfill for the "a check only counts once it has cleared" rule (see
     // Domain/Services/PaymentRules). The merchant side recomputes its balance from the payments
     // table on every read, so it picked the new rule up for free — but a payment TO a farmer or

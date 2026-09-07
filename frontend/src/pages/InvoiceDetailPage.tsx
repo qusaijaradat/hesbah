@@ -3,11 +3,21 @@ import { Link, useParams } from "react-router-dom";
 import { cancelInvoice, downloadFarmerInvoicePdf, downloadInvoicePdf, getInvoice, triggerBlobDownload } from "../api/invoices";
 import { getFarmerAccount } from "../api/partners";
 import { listSettings } from "../api/settings";
-import type { InvoiceDto } from "../types";
+import type { InvoiceDto, InvoicePaymentStatus } from "../types";
+import { InvoiceReturnsCard } from "../components/InvoiceReturnsCard";
 import { buildStatementMessage, buildWhatsAppLink, formatCurrency, formatDate, formatQuantity, formatWeight } from "../lib/format";
 import { shareFile } from "../lib/share";
 import { useAuth } from "../auth/AuthContext";
 import { apiErrorMessage } from "../api/client";
+
+const PAYMENT_STATUS_LABELS: Record<InvoicePaymentStatus, string> = {
+  Unpaid: "غير مدفوعة", Partial: "مدفوعة جزئياً", Paid: "مدفوعة",
+};
+const PAYMENT_STATUS_CLASS: Record<InvoicePaymentStatus, string> = {
+  Unpaid: "bg-red-100 text-red-700",
+  Partial: "bg-amber-100 text-amber-800",
+  Paid: "bg-brand-100 text-brand-800",
+};
 
 export function InvoiceDetailPage() {
   const { id } = useParams();
@@ -29,8 +39,12 @@ export function InvoiceDetailPage() {
   // Informational (not an error) — e.g. "your browser can't share files, downloaded it instead".
   const [notice, setNotice] = useState<string | null>(null);
 
-  useEffect(() => {
+  function reloadInvoice() {
     if (id) getInvoice(Number(id)).then(setInvoice);
+  }
+
+  useEffect(() => {
+    reloadInvoice();
     listSettings().then((settings) => {
       const name = settings.find((s) => s.key === "market.name")?.value;
       const phone = settings.find((s) => s.key === "whatsapp.business_number")?.value;
@@ -216,8 +230,31 @@ export function InvoiceDetailPage() {
             {invoice.transportFee > 0 && (
               <div className="text-gray-500">أجرة النقل: <span className="font-semibold text-gray-900">{formatCurrency(invoice.transportFee)}</span></div>
             )}
+            {/* Both are already subtracted inside grandTotal — shown so the total below never
+                looks smaller than the lines add up to for no visible reason. */}
+            {invoice.discount > 0 && (
+              <div className="text-gray-500">خصم: <span className="font-semibold text-red-600">- {formatCurrency(invoice.discount)}</span></div>
+            )}
+            {invoice.returnsTotal > 0 && (
+              <div className="text-gray-500">مرتجع: <span className="font-semibold text-red-600">- {formatCurrency(invoice.returnsTotal)}</span></div>
+            )}
           </div>
-          <div className="text-lg font-bold text-brand-700">{formatCurrency(invoice.grandTotal)}</div>
+          <div className="text-end">
+            <div className="text-lg font-bold text-brand-700">{formatCurrency(invoice.grandTotal)}</div>
+            {/* Settlement for THIS invoice specifically — the merchant's overall balance says
+                nothing about whether this one is paid. An uncleared check does not count. */}
+            <div className="text-xs mt-1">
+              <span className={`px-2 py-0.5 rounded-full ${PAYMENT_STATUS_CLASS[invoice.paymentStatus]}`}>
+                {PAYMENT_STATUS_LABELS[invoice.paymentStatus]}
+              </span>
+              {invoice.paidAmount > 0 && (
+                <span className="text-gray-500 ms-2">مدفوع: <span className="font-semibold text-gray-900">{formatCurrency(invoice.paidAmount)}</span></span>
+              )}
+              {invoice.remainingAmount > 0 && (
+                <span className="text-gray-500 ms-2">باقي: <span className="font-semibold text-gray-900">{formatCurrency(invoice.remainingAmount)}</span></span>
+              )}
+            </div>
+          </div>
         </div>
 
         {/* الرصيد السابق: ما تبقى على هذا المشتري من كل فواتيره الفعّالة الأخرى مطروحًا منه كل
@@ -285,6 +322,14 @@ export function InvoiceDetailPage() {
           )}
         </div>
       </div>
+
+      {/* "مرتجع بضاعة" — its own card under the invoice, since a return is its own dated
+          document rather than an edit to the invoice above it. */}
+      <InvoiceReturnsCard
+        invoice={invoice}
+        canManage={hasPermission("invoices.returns")}
+        onChanged={reloadInvoice}
+      />
     </div>
   );
 }

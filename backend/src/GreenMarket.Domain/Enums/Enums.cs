@@ -132,6 +132,11 @@ public static class PermissionKeys
     /// deleting is for rows entered by mistake that shouldn't be on screen at all — a role can
     /// legitimately be allowed one without the other.</summary>
     public const string InvoicesDelete = "invoices.delete";
+    /// <summary>Recording a "مرتجع بضاعة" against an invoice, and removing one entered by
+    /// mistake. Its own key rather than InvoicesEdit: a return moves money on both sides and
+    /// posts to the seller's ledger, so it is a heavier action than fixing a typo — and a role
+    /// that takes goods back at the gate is not necessarily one that may rewrite invoices.</summary>
+    public const string InvoicesReturns = "invoices.returns";
     public const string InvoicesView = "invoices.view";
 
     public const string PartnersView = "partners.view";
@@ -211,9 +216,15 @@ public static class PermissionKeys
     /// every reports-viewing role should see.</summary>
     public const string AuditView = "audit.view";
 
+    /// <summary>Downloading the full "نسخة احتياطية" data export. Its own key, and a heavy one:
+    /// the file contains every row in the system — every balance, every partner's details, the
+    /// whole audit log — so it belongs to whoever is trusted with all of it at once, not to
+    /// anyone who merely has ReportsExport.</summary>
+    public const string BackupDownload = "backup.download";
+
     public static readonly string[] All =
     {
-        InvoicesCreate, InvoicesEdit, InvoicesCancel, InvoicesDelete, InvoicesView,
+        InvoicesCreate, InvoicesEdit, InvoicesCancel, InvoicesDelete, InvoicesReturns, InvoicesView,
         PartnersView, PartnersCreate, PartnersEdit, PartnersDelete,
         ItemsView, ItemsCreate, ItemsEdit, ItemsDelete,
         PaymentsView, PaymentsCreate, PaymentsEdit, PaymentsDelete,
@@ -225,7 +236,8 @@ public static class PermissionKeys
         SettingsView, SettingsEdit,
         UsersView, UsersCreate, UsersEdit,
         RolesView, RolesCreate, RolesEdit, RolesDelete,
-        AuditView
+        AuditView,
+        BackupDownload
     };
 }
 

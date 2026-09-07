@@ -92,6 +92,9 @@ export function InvoiceEditPage() {
   const [driverText, setDriverText] = useState("");
   // Optional flat transport/delivery fee for the whole invoice ("أجرة النقل").
   const [transportFee, setTransportFee] = useState("");
+  // "خصم" — a flat concession to the buyer. Comes off THEIR total only: it never touches the
+  // commission base, so the seller is still paid on the full sale (see backend Invoice.Discount).
+  const [discount, setDiscount] = useState("");
   const [rows, setRows] = useState<Row[]>([]);
   // The invoice's total BEFORE this edit — captured once when it loads, not derived from the
   // (now-editable) rows — so the credit-limit projection below can subtract out this invoice's
@@ -128,6 +131,7 @@ export function InvoiceEditPage() {
         setDriverText(invoice.driverName);
       }
       setTransportFee(invoice.transportFee > 0 ? String(invoice.transportFee) : "");
+      setDiscount(invoice.discount > 0 ? String(invoice.discount) : "");
       setRows(invoice.items.map((it) => ({
         itemName: it.itemName,
         quantity: String(it.quantity),
@@ -155,7 +159,8 @@ export function InvoiceEditPage() {
   const totalValue = parsedRows.reduce((sum, r) => sum + r.quantity * r.pricePerUnit, 0);
   const woodTotal = parsedRows.reduce((sum, r) => sum + r.woodPrice, 0);
   const transportFeeValue = parseFloat(transportFee) || 0;
-  const grandTotal = totalValue + woodTotal + transportFeeValue;
+  const discountValue = parseFloat(discount) || 0;
+  const grandTotal = totalValue + woodTotal + transportFeeValue - discountValue;
 
   useEffect(() => {
     if (!merchant) { setMerchantAccount(null); return; }
@@ -208,6 +213,7 @@ export function InvoiceEditPage() {
         driverId: driver?.id,
         driverName: driver ? undefined : (driverName || undefined),
         transportFee: transportFeeValue,
+        discount: discountValue,
         items,
       });
       // After the invoice, and using ITS merchant id — a payment added in the same edit that also
@@ -361,6 +367,12 @@ export function InvoiceEditPage() {
           <input className="input" type="number" min="0" step="0.01" value={transportFee}
             onChange={(e) => setTransportFee(e.target.value)} placeholder="اتركه فارغًا إن لم يوجد" />
         </div>
+        <div className="max-w-xs">
+          <label className="label">خصم (₪، اختياري)</label>
+          <input className="input" type="number" min="0" step="0.01" value={discount}
+            onChange={(e) => setDiscount(e.target.value)} placeholder="اتركه فارغًا إن لم يوجد" />
+          <p className="text-xs text-gray-500 mt-1">بينزل من حساب المشتري فقط — العمولة ومستحق البائع ما بيتأثروا.</p>
+        </div>
         <div className="flex flex-wrap gap-4 justify-between text-sm">
           {totalWeight > 0 && (
             <div>
@@ -388,6 +400,12 @@ export function InvoiceEditPage() {
             <div>
               <div className="text-gray-500">أجرة النقل</div>
               <div className="font-medium">{formatCurrency(transportFeeValue)}</div>
+            </div>
+          )}
+          {discountValue > 0 && (
+            <div>
+              <div className="text-gray-500">خصم</div>
+              <div className="font-medium text-red-600">- {formatCurrency(discountValue)}</div>
             </div>
           )}
           {paidTotal > 0 && (

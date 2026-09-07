@@ -94,7 +94,7 @@ public class PartnerService : IPartnerService
         var purchasesByMerchant = await _db.Invoices
             .Where(i => merchantIds.Contains(i.MerchantId) && i.Status == InvoiceStatus.Active)
             .GroupBy(i => i.MerchantId)
-            .Select(g => new { MerchantId = g.Key, Total = g.Sum(i => i.TotalValue) })
+            .Select(g => new { MerchantId = g.Key, Total = g.Sum(i => i.GrandTotal) })
             .ToDictionaryAsync(x => x.MerchantId, x => x.Total);
 
         // A check only counts once it has actually cleared — see PaymentRules, which every
@@ -241,7 +241,7 @@ public class PartnerService : IPartnerService
 
         var invoices = await _db.Invoices
             .Where(i => i.MerchantId == id && i.Status == InvoiceStatus.Active)
-            .Select(i => new { i.Id, i.Date, i.InvoiceNumber, i.TotalValue })
+            .Select(i => new { i.Id, i.Date, i.InvoiceNumber, i.GrandTotal })
             .ToListAsync();
 
         // Method/Notes/linked invoice number: a payment can optionally be tied to one specific
@@ -257,7 +257,7 @@ public class PartnerService : IPartnerService
             .ToListAsync();
 
         var entries = invoices.Select(i => new AccountStatementBuilder.Entry(
-                i.Date, $"فاتورة رقم {i.InvoiceNumber}", i.TotalValue,
+                i.Date, $"فاتورة رقم {i.InvoiceNumber}", i.GrandTotal,
                 InvoiceId: i.Id, InvoiceNumber: i.InvoiceNumber))
             .Concat(payments.Select(p =>
             {
@@ -274,7 +274,7 @@ public class PartnerService : IPartnerService
 
         var openingBalance = partner.OpeningBalance ?? 0;
         var statement = AccountStatementBuilder.Build(entries, openingBalance);
-        var totalPurchases = invoices.Sum(i => i.TotalValue);
+        var totalPurchases = invoices.Sum(i => i.GrandTotal);
         var totalPaid = payments.Where(p => PaymentRules.CountsTowardBalance(p.CheckStatus)).Sum(p => p.Amount);
         var remaining = openingBalance + totalPurchases - totalPaid;
         var isOverLimit = partner.CreditLimit is not null && remaining > partner.CreditLimit;
@@ -402,7 +402,7 @@ public class PartnerService : IPartnerService
         var purchasesByMerchant = await _db.Invoices
             .Where(i => i.Status == InvoiceStatus.Active)
             .GroupBy(i => i.MerchantId)
-            .Select(g => new { MerchantId = g.Key, Total = g.Sum(i => i.TotalValue) })
+            .Select(g => new { MerchantId = g.Key, Total = g.Sum(i => i.GrandTotal) })
             .ToDictionaryAsync(x => x.MerchantId, x => x.Total);
 
         // Same "only cleared checks count" rule as ListAsync/GetMerchantAccountAsync — see PaymentRules.
@@ -477,8 +477,9 @@ public class PartnerService : IPartnerService
         invoices.SelectMany(i =>
         {
             var woodTotal = i.Items.Sum(it => it.WoodPrice);
-            var boxFeeTotal = i.Items.Where(it => it.Unit == UnitOfMeasure.Box).Sum(it => it.Quantity) * i.BoxPriceApplied;
-            var grandTotal = i.TotalValue + i.TransportFee + woodTotal + boxFeeTotal;
+            // The charge itself is read off the invoice, never re-derived here — see
+            // Invoice.GrandTotal / Domain.Services.InvoiceCharge.
+            var grandTotal = i.GrandTotal;
             return i.Items.Select(it => new PartnerInvoiceItemLineDto(
                 i.Id, i.InvoiceNumber, i.Date,
                 it.ItemName, it.Unit, it.Quantity, it.PricePerUnit, it.WoodPrice, it.LineTotal,

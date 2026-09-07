@@ -200,7 +200,19 @@ export interface InvoiceDto {
   commission: number;
   /** totalValue − commission — what's actually due to the farmer for this one invoice. */
   netDueToFarmer: number;
+  /** "خصم" and "قيمة المرتجع" — both already subtracted inside grandTotal, broken out so the
+   * screen can show why the total is lower than the lines add up to. */
+  discount: number;
+  returnsTotal: number;
+  /** Collected against THIS invoice (uncleared checks don't count), what's left, and the state
+   * that follows from the two. */
+  paidAmount: number;
+  remainingAmount: number;
+  paymentStatus: InvoicePaymentStatus;
+  /** Any line still at price 0 — goods that went out before being priced. */
+  hasUnpricedItems: boolean;
   items: InvoiceItemDto[];
+  returns: GoodsReturnDto[];
 }
 
 export interface InvoiceListItemDto {
@@ -248,6 +260,42 @@ export interface InvoiceListItemDto {
    * show. driverDue = transportFee + driverBoxFeeTotal + woodTotal. */
   driverBoxFeeTotal: number;
   driverDue: number;
+  /** "خصم" and "قيمة المرتجع" — both already subtracted inside grandTotal, broken out so the
+   * screen can show why the total is lower than the lines add up to. */
+  discount: number;
+  returnsTotal: number;
+  /** Collected against THIS invoice (uncleared checks don't count), what's left, and the state
+   * that follows from the two. */
+  paidAmount: number;
+  remainingAmount: number;
+  paymentStatus: InvoicePaymentStatus;
+  /** Any line still at price 0 — goods that went out before being priced. */
+  hasUnpricedItems: boolean;
+}
+
+/** Where an invoice stands against what has actually been collected on it — see backend
+ * InvoicePaymentStatus. Derived from GrandTotal vs. the payments linked to that invoice. */
+export type InvoicePaymentStatus = "Unpaid" | "Partial" | "Paid";
+
+export interface GoodsReturnItemDto {
+  itemName: string;
+  quantity: number;
+  unit: UnitOfMeasure;
+  pricePerUnit: number;
+  lineTotal: number;
+}
+
+/** "مرتجع بضاعة" — goods sent back off an invoice. Reduces what the buyer owes AND, net of the
+ * commission charged on it, what the seller is due. See backend GoodsReturn. */
+export interface GoodsReturnDto {
+  id: number;
+  invoiceId: number;
+  invoiceNumber: string;
+  date: string;
+  reason?: string | null;
+  totalValue: number;
+  commissionRateApplied: number;
+  items: GoodsReturnItemDto[];
 }
 
 export interface InvoiceFilter {
@@ -263,6 +311,10 @@ export interface InvoiceFilter {
   /** "طباعة الفواتير" per-section "استثناء أسماء": drop invoices belonging to these people. One
    * list per role — each section only ever fills its own, so excluding a name as a مشتري can't
    * also drop invoices where that person is the بائع. See backend InvoiceFilterRequest. */
+  /** "الفواتير غير المدفوعة" — narrows to one payment state, computed server-side. */
+  paymentStatus?: InvoicePaymentStatus;
+  /** true = only invoices with at least one line still unpriced (price 0). */
+  hasUnpricedItems?: boolean;
   excludeMerchantIds?: number[];
   excludeFarmerIds?: number[];
   excludeDriverIds?: number[];
@@ -574,4 +626,30 @@ export interface SettingDto {
   key: string;
   value: string;
   description?: string | null;
+}
+
+/** One person on a "من علينا / علينا لمين" list — see backend PartnerDebtRow. */
+export interface PartnerDebtRow {
+  partnerId: number;
+  name: string;
+  remaining: number;
+}
+
+/** The whole dashboard in one payload. "today" figures are today's activity; every balance and
+ * count below is the CURRENT position, all-time. See backend DashboardSummaryDto. */
+export interface DashboardSummaryDto {
+  todayInvoiceCount: number;
+  todaySalesValue: number;
+  todayCommission: number;
+  todayCashIn: number;
+  todayCashOut: number;
+  merchantsOwe: number;
+  owedToSellers: number;
+  checksDueTodayCount: number; checksDueTodayAmount: number;
+  checksOverdueCount: number; checksOverdueAmount: number;
+  checksDueSoonCount: number; checksDueSoonAmount: number;
+  unpaidInvoiceCount: number; unpaidInvoiceAmount: number;
+  unpricedInvoiceCount: number;
+  topMerchantDebts: PartnerDebtRow[];
+  topSellerDues: PartnerDebtRow[];
 }

@@ -133,3 +133,42 @@ public record DailyClosingDto(
     decimal NetProfit,
     decimal PaymentsReceivedFromMerchants,
     decimal PaymentsPaidToFarmers);
+
+/// <summary>
+/// Everything the دashboard needs to answer "how do we stand right now", in ONE request.
+///
+/// The screen it replaces showed three numbers about today and nothing else — the market's real
+/// money picture (who owes us, what we owe, which checks are about to land, what's still unpaid or
+/// unpriced) lived scattered across five other pages, so nobody saw it unless they went looking.
+///
+/// Two different clocks on purpose: the "اليوم" figures are today's activity, while every balance
+/// and count below is the CURRENT position, all-time — a debt from last month is still a debt this
+/// morning. Mixing the two into one date-scoped payload is what would make this misleading.
+/// </summary>
+public record DashboardSummaryDto(
+    // Today.
+    int TodayInvoiceCount,
+    decimal TodaySalesValue,
+    decimal TodayCommission,
+    decimal TodayCashIn,
+    decimal TodayCashOut,
+
+    // Current position. MerchantsOwe is what buyers still owe the market; OwedToSellers is what the
+    // market still owes sellers and drivers (their ledgers share one table — see FarmerTransaction).
+    decimal MerchantsOwe,
+    decimal OwedToSellers,
+
+    // Checks still قيد التحصيل, split by how urgent they are. Overdue is "due date already passed",
+    // which is the one that costs money to miss.
+    int ChecksDueTodayCount, decimal ChecksDueTodayAmount,
+    int ChecksOverdueCount, decimal ChecksOverdueAmount,
+    int ChecksDueSoonCount, decimal ChecksDueSoonAmount,
+
+    // Work still outstanding on invoices — the same two states the invoices list can now filter by.
+    int UnpaidInvoiceCount, decimal UnpaidInvoiceAmount,
+    int UnpricedInvoiceCount,
+
+    // Who to chase first. Biggest debts, largest first, capped — a dashboard is a starting point,
+    // not the قيمة الديون page.
+    IReadOnlyList<PartnerDebtRow> TopMerchantDebts,
+    IReadOnlyList<PartnerDebtRow> TopSellerDues);

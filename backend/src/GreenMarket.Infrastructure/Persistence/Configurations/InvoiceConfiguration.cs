@@ -16,6 +16,8 @@ public class InvoiceConfiguration : IEntityTypeConfiguration<Invoice>
         builder.Property(x => x.TotalValue).HasColumnType("numeric(14,2)");
         builder.Property(x => x.CommissionRateApplied).HasColumnType("numeric(6,4)");
         builder.Property(x => x.TransportFee).HasColumnType("numeric(12,2)");
+        builder.Property(x => x.Discount).HasColumnType("numeric(12,2)");
+        builder.Property(x => x.GrandTotal).HasColumnType("numeric(14,2)");
         builder.Property(x => x.BoxPriceApplied).HasColumnType("numeric(8,2)");
         builder.Property(x => x.DriverBoxFeeApplied).HasColumnType("numeric(8,2)");
         builder.Property(x => x.CancellationReason).HasMaxLength(500);
@@ -48,6 +50,9 @@ public class InvoiceConfiguration : IEntityTypeConfiguration<Invoice>
         builder.HasIndex(x => x.FarmerId);
         builder.HasIndex(x => x.DriverId);
         builder.HasIndex(x => x.Status);
+        // Every merchant balance is now "SUM(GrandTotal) WHERE MerchantId = ? AND Status = Active"
+        // — the one query shape that runs on nearly every screen, so it gets its own covering index.
+        builder.HasIndex(x => new { x.MerchantId, x.Status });
 
         builder.HasMany(x => x.Items)
             .WithOne(i => i.Invoice)

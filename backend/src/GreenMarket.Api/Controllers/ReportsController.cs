@@ -183,6 +183,12 @@ public class ReportsController : ControllerBase
         return ExcelFile(_exportService.DriverReportToExcel(rows), "driver-report.xlsx");
     }
 
+    /// <summary>Everything the dashboard shows, in one request — see DashboardSummaryDto.</summary>
+    [HttpGet("dashboard")]
+    [RequirePermission(PermissionKeys.ReportsView)]
+    public async Task<ActionResult<DashboardSummaryDto>> Dashboard() =>
+        Ok(await _reportService.DashboardSummaryAsync());
+
     [HttpGet("market/export/excel")]
     [RequirePermission(PermissionKeys.ReportsExport)]
     public async Task<IActionResult> MarketExcel([FromQuery] ReportFilterRequest filter)

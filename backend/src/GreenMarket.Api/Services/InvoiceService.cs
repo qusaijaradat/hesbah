@@ -109,6 +109,13 @@ public class InvoiceService : IInvoiceService
             CommissionRateApplied = commissionRate,
             BoxPriceApplied = boxPrice,
             DriverBoxFeeApplied = driverBoxFee,
+            Discount = request.Discount,
+            // What the buyer is charged, stored once here and kept in step by RecomputeGrandTotal
+            // on every later edit/return — see Invoice.GrandTotal for why it is stored at all.
+            // A brand-new invoice has no returns yet, hence 0.
+            GrandTotal = InvoiceCharge.ForMerchant(
+                totals.TotalValue, request.TransportFee, totals.WoodTotal,
+                totals.TotalBoxes * boxPrice, request.Discount, returnsTotal: 0m),
             Items = totals.Lines.Select(l => new InvoiceItem
             {
                 ItemName = l.ItemName,
@@ -287,6 +294,13 @@ public class InvoiceService : IInvoiceService
         invoice.CommissionRateApplied = commissionRate;
         invoice.BoxPriceApplied = boxPrice;
         invoice.DriverBoxFeeApplied = driverBoxFee;
+        invoice.Discount = request.Discount;
+        // Recomputed from the edited lines/fees, keeping whatever has already been returned
+        // against this invoice subtracted (an edit must never quietly un-return goods).
+        invoice.GrandTotal = InvoiceCharge.ForMerchant(
+            totals.TotalValue, request.TransportFee, totals.WoodTotal,
+            totals.TotalBoxes * boxPrice, request.Discount,
+            await _db.GoodsReturns.Where(r => r.InvoiceId == invoice.Id).SumAsync(r => (decimal?)r.TotalValue) ?? 0m);
 
         // Replace the item lines wholesale rather than trying to diff old vs. new — EF Core
         // cascade-deletes anything removed from a required collection navigation like this one.
@@ -458,16 +472,9 @@ public class InvoiceService : IInvoiceService
 
         var otherInvoices = await _db.Invoices
             .Where(i => i.MerchantId == merchantId && i.Status == InvoiceStatus.Active && !excludeInvoiceIds.Contains(i.Id))
-            .Select(i => new
-            {
-                i.TotalValue, i.TransportFee,
-                WoodTotal = i.Items.Sum(it => it.WoodPrice),
-                // Same "TotalBoxes × BoxPriceApplied, computed fresh, never stored" treatment as
-                // ToDto's own boxFeeTotal — see Invoice.BoxPriceApplied's doc comment.
-                BoxFeeTotal = i.Items.Where(it => it.Unit == UnitOfMeasure.Box).Sum(it => it.Quantity) * i.BoxPriceApplied
-            })
+            .Select(i => new { i.GrandTotal })
             .ToListAsync();
-        var totalOwed = otherInvoices.Sum(i => i.TotalValue + i.TransportFee + i.WoodTotal + i.BoxFeeTotal);
+        var totalOwed = otherInvoices.Sum(i => i.GrandTotal);
 
         // Only cleared checks count (see PaymentRules) — a check still قيد التحصيل, or one that
         // came back, never actually paid anything, so it must not make the printed "previous
@@ -523,6 +530,35 @@ public class InvoiceService : IInvoiceService
         if (filter.MaxWeightKg is not null) query = query.Where(i => i.TotalWeightKg <= filter.MaxWeightKg);
         if (filter.MinAmount is not null) query = query.Where(i => i.TotalValue >= filter.MinAmount);
         if (filter.MaxAmount is not null) query = query.Where(i => i.TotalValue <= filter.MaxAmount);
+        // "فيها أصناف غير مسعّرة" — a correlated Any() over the lines, translated to an EXISTS.
+        if (filter.HasUnpricedItems == true)
+            query = query.Where(i => i.Items.Any(it => it.PricePerUnit == 0));
+
+        // Payment status. Compared against the STORED GrandTotal and the invoice's own linked
+        // payments, so this is one translated query rather than loading every invoice to sort
+        // them in memory — which matters precisely because the list is paged by the server.
+        // "Paid" is >= (not ==) so an overpayment still reads as settled.
+        if (filter.PaymentStatus is not null)
+        {
+            var status = filter.PaymentStatus.Value;
+            query = status switch
+            {
+                InvoicePaymentStatus.Unpaid => query.Where(i =>
+                    i.Payments.Where(pm => pm.CheckStatus == null || pm.CheckStatus == CheckClearanceStatus.Cleared)
+                        .Sum(pm => (decimal?)pm.Amount) == null
+                    || i.Payments.Where(pm => pm.CheckStatus == null || pm.CheckStatus == CheckClearanceStatus.Cleared)
+                        .Sum(pm => (decimal?)pm.Amount) == 0),
+                InvoicePaymentStatus.Paid => query.Where(i =>
+                    (i.Payments.Where(pm => pm.CheckStatus == null || pm.CheckStatus == CheckClearanceStatus.Cleared)
+                        .Sum(pm => (decimal?)pm.Amount) ?? 0) >= i.GrandTotal),
+                _ => query.Where(i =>
+                    (i.Payments.Where(pm => pm.CheckStatus == null || pm.CheckStatus == CheckClearanceStatus.Cleared)
+                        .Sum(pm => (decimal?)pm.Amount) ?? 0) > 0
+                    && (i.Payments.Where(pm => pm.CheckStatus == null || pm.CheckStatus == CheckClearanceStatus.Cleared)
+                        .Sum(pm => (decimal?)pm.Amount) ?? 0) < i.GrandTotal),
+            };
+        }
+
         if (!string.IsNullOrWhiteSpace(filter.ItemName))
             query = query.Where(i => i.Items.Any(it => it.ItemName.Contains(filter.ItemName)));
 
@@ -551,6 +587,16 @@ public class InvoiceService : IInvoiceService
                 // farmer-side and driver-side figures below can be derived per row.
                 i.CommissionRateApplied,
                 i.DriverBoxFeeApplied,
+                i.GrandTotal,
+                i.Discount,
+                ReturnsTotal = i.Returns.Sum(r => (decimal?)r.TotalValue) ?? 0,
+                // Only payments that actually moved money — the same rule as every balance in
+                // the app (PaymentRules), spelled out inline because a translated projection
+                // can't call into it.
+                PaidAmount = i.Payments
+                    .Where(pm => pm.CheckStatus == null || pm.CheckStatus == CheckClearanceStatus.Cleared)
+                    .Sum(pm => (decimal?)pm.Amount) ?? 0,
+                HasUnpricedItems = i.Items.Any(it => it.PricePerUnit == 0),
                 ItemNames = i.Items.Select(it => it.ItemName).ToList()
             })
             .ToListAsync();
@@ -590,14 +636,20 @@ public class InvoiceService : IInvoiceService
                 x.Id, x.InvoiceNumber, x.Date, x.MerchantId, x.MerchantName, x.MerchantWhatsApp,
                 x.FarmerId, x.FarmerName, x.FarmerWhatsApp, x.DriverId, x.DriverName, x.DriverWhatsApp,
                 x.Status, x.TotalWeightKg, x.TotalBoxes, x.TotalValue, x.TransportFee,
-                x.TotalValue + x.TransportFee + x.WoodTotal + boxFeeTotal,
+                x.GrandTotal,
                 string.Join("، ", x.ItemNames.Distinct()),
                 x.WoodTotal, boxFeeTotal,
                 merchantRemainingById.GetValueOrDefault(x.MerchantId),
                 x.FarmerId is not null ? sellerRemainingById.GetValueOrDefault(x.FarmerId.Value) : null,
                 x.DriverId is not null ? sellerRemainingById.GetValueOrDefault(x.DriverId.Value) : null,
                 commissionResult.Commission, commissionResult.NetDueToFarmer + x.WoodTotal,
-                driverBoxFeeTotal, x.TransportFee + driverBoxFeeTotal + x.WoodTotal);
+                driverBoxFeeTotal, x.TransportFee + driverBoxFeeTotal + x.WoodTotal,
+                x.Discount, x.ReturnsTotal,
+                x.PaidAmount, x.GrandTotal - x.PaidAmount,
+                x.PaidAmount <= 0 ? InvoicePaymentStatus.Unpaid
+                    : x.PaidAmount >= x.GrandTotal ? InvoicePaymentStatus.Paid
+                    : InvoicePaymentStatus.Partial,
+                x.HasUnpricedItems);
         }).ToList();
 
         return new PagedResult<InvoiceListItemDto> { Items = items, TotalCount = total, Page = filter.Page, PageSize = filter.PageSize };
@@ -859,7 +911,18 @@ public class InvoiceService : IInvoiceService
         // Deliberately excluded from grandTotal below (merchant-facing) — see InvoiceDto's own doc
         // comment.
         var driverBoxFeeTotal = totalBoxes * i.DriverBoxFeeApplied;
-        var grandTotal = i.TotalValue + i.TransportFee + woodTotal + boxFeeTotal;
+        // Read, not re-derived: Invoice.GrandTotal is the one authoritative charge (it also nets
+        // out the discount and any returns, which this expression never did) — see InvoiceCharge.
+        var grandTotal = i.GrandTotal;
+
+        // Settlement, per invoice. Only payments that actually moved money count (an uncleared
+        // check has not — see PaymentRules), matching every balance elsewhere in the app.
+        var returnsTotal = i.Returns.Sum(r => r.TotalValue);
+        var paidAmount = i.Payments.Where(pm => PaymentRules.CountsTowardBalance(pm.CheckStatus)).Sum(pm => pm.Amount);
+        // ">=" not "==" so an overpayment still reads as settled rather than falling into Partial.
+        var paymentStatus = paidAmount <= 0 ? InvoicePaymentStatus.Unpaid
+            : paidAmount >= grandTotal ? InvoicePaymentStatus.Paid
+            : InvoicePaymentStatus.Partial;
 
         // Same base as the linked FarmerTransaction.Commission (TotalValue only — never +wood/
         // +transport/+box, see CommissionCalculator's own doc comment) so the COMMISSION itself can
@@ -883,6 +946,12 @@ public class InvoiceService : IInvoiceService
             grandTotal,
             previousBalance,
             i.CommissionRateApplied, commissionResult.Commission, netDueToFarmer,
-            i.Items.Select(it => new InvoiceItemDto(it.Id, it.ItemName, it.Quantity, it.Unit, it.PricePerUnit, it.WoodPrice, it.LineTotal)).ToList());
+            i.Discount, returnsTotal,
+            paidAmount, grandTotal - paidAmount, paymentStatus,
+            i.Items.Any(it => it.PricePerUnit == 0),
+            i.Items.Select(it => new InvoiceItemDto(it.Id, it.ItemName, it.Quantity, it.Unit, it.PricePerUnit, it.WoodPrice, it.LineTotal)).ToList(),
+            i.Returns.OrderBy(r => r.Date).Select(r => new GoodsReturnDto(
+                r.Id, r.InvoiceId, i.InvoiceNumber, r.Date, r.Reason, r.TotalValue, r.CommissionRateApplied,
+                r.Items.Select(ri => new GoodsReturnItemDto(ri.ItemName, ri.Quantity, ri.Unit, ri.PricePerUnit, ri.LineTotal)).ToList())).ToList());
     }
 }

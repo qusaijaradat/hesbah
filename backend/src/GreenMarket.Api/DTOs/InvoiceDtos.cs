@@ -29,6 +29,9 @@ public record CreateInvoiceRequest(
     string? DriverName,
     IReadOnlyList<InvoiceItemInput> Items,
     decimal TransportFee = 0,
+    // "خصم" — see Invoice.Discount. Comes off the buyer's total only; never touches the
+    // commission base or what the seller/driver are paid.
+    decimal Discount = 0,
     decimal? PaidAmount = null);
 
 public record InvoiceItemDto(int Id, string ItemName, decimal Quantity, UnitOfMeasure Unit, decimal PricePerUnit, decimal WoodPrice, decimal LineTotal);
@@ -84,7 +87,18 @@ public record InvoiceDto(
     decimal GrandTotal,
     decimal PreviousBalance,
     decimal CommissionRateApplied, decimal Commission, decimal NetDueToFarmer,
-    IReadOnlyList<InvoiceItemDto> Items);
+    // "خصم" and "قيمة المرتجع" — both already subtracted inside GrandTotal above, broken out on
+    // their own so the invoice can show WHY the total is lower than the lines add up to, same
+    // "never let a figure disappear silently into a total" convention as WoodTotal/BoxFeeTotal.
+    decimal Discount, decimal ReturnsTotal,
+    // What has actually been collected against THIS invoice (payments linked to it that count —
+    // an uncleared check does not, see PaymentRules), what is left, and where that leaves it.
+    // The merchant's overall balance says nothing about one invoice; this does.
+    decimal PaidAmount, decimal RemainingAmount, InvoicePaymentStatus PaymentStatus,
+    // True when any line is still at price 0 — goods that went out before being priced.
+    bool HasUnpricedItems,
+    IReadOnlyList<InvoiceItemDto> Items,
+    IReadOnlyList<GoodsReturnDto> Returns);
 
 /// <summary>
 /// MerchantId/MerchantWhatsApp let the bulk-print page group the filtered list by trader
@@ -136,7 +150,12 @@ public record InvoiceListItemDto(
     // All four are computed even when no farmer/driver is attached (harmless and unused then),
     // same convention as InvoiceDto's own Commission/NetDueToFarmer.
     decimal Commission, decimal NetDueToFarmer,
-    decimal DriverBoxFeeTotal, decimal DriverDue);
+    // Per-invoice settlement, so the list can answer "مين دافع؟" at a glance and be filtered by
+    // it — see InvoicePaymentStatus. Discount/ReturnsTotal are already inside GrandTotal.
+    decimal DriverBoxFeeTotal, decimal DriverDue,
+    decimal Discount, decimal ReturnsTotal,
+    decimal PaidAmount, decimal RemainingAmount, InvoicePaymentStatus PaymentStatus,
+    bool HasUnpricedItems);
 
 /// <summary>Requirement doc §7 filters: date range, merchant, farmer/driver, item, user, invoice number, weight, amount.</summary>
 public class InvoiceFilterRequest
@@ -169,6 +188,17 @@ public class InvoiceFilterRequest
     public List<int>? ExcludeFarmerIds { get; set; }
     public List<int>? ExcludeDriverIds { get; set; }
 
+    /// <summary>"الفواتير غير المدفوعة" — narrows to invoices in one payment state. Computed
+    /// server-side from this invoice's own linked payments (see InvoicePaymentStatus), because
+    /// the list is paged by the backend and filtering it in the browser would only ever filter
+    /// the page you can already see.</summary>
+    public InvoicePaymentStatus? PaymentStatus { get; set; }
+
+    /// <summary>"فواتير فيها أصناف غير مسعّرة" — true = only invoices carrying at least one line
+    /// still at price 0. Goods go out unpriced and get priced later; without this there is no
+    /// list of what is still waiting, and an invoice can sit unpriced indefinitely.</summary>
+    public bool? HasUnpricedItems { get; set; }
+
     public string? ItemName { get; set; }
     public int? CreatedByUserId { get; set; }
     public string? InvoiceNumber { get; set; }
@@ -198,6 +228,23 @@ public class InvoiceFilterRequest
 /// other two (no commission on a driver's copy, no merchant grand total on a farmer's, and so on)
 /// — see ExportService.InvoiceCard for exactly what each one shows.
 /// </summary>
+/// <summary>
+/// Where an invoice stands against what has actually been collected on it — the answer to the
+/// question a market asks all day ("هاي الفاتورة انسدّدت؟"), which used to need a trip to the
+/// Payments page because a merchant's balance is global and says nothing about one invoice.
+/// Derived, never stored: it is purely GrandTotal vs. the payments linked to this invoice that
+/// actually count (an uncleared check does not — see Domain.Services.PaymentRules).
+/// </summary>
+public enum InvoicePaymentStatus
+{
+    /// <summary>Nothing collected on it yet.</summary>
+    Unpaid = 1,
+    /// <summary>Something collected, but less than the invoice charges.</summary>
+    Partial = 2,
+    /// <summary>Settled in full (or overpaid).</summary>
+    Paid = 3
+}
+
 public enum InvoicePrintRole
 {
     Merchant,
@@ -264,3 +311,22 @@ public record FarmerGoodsDto(int FarmerId, string FarmerName, IReadOnlyList<Farm
 public record CreateBoxReturnRequest(DateTimeOffset Date, decimal Quantity, string? Notes);
 
 public record BoxReturnDto(int Id, int PartnerId, DateTimeOffset Date, decimal Quantity, string? Notes);
+
+/// <summary>One "مرتجع بضاعة" document raised against an invoice — see Domain GoodsReturn.</summary>
+public record GoodsReturnDto(
+    int Id, int InvoiceId, string InvoiceNumber, DateTimeOffset Date, string? Reason,
+    decimal TotalValue, decimal CommissionRateApplied,
+    IReadOnlyList<GoodsReturnItemDto> Items);
+
+public record GoodsReturnItemDto(string ItemName, decimal Quantity, UnitOfMeasure Unit, decimal PricePerUnit, decimal LineTotal);
+
+/// <summary>
+/// Recording a return. Quantities are validated against what the invoice actually sold minus what
+/// has already come back on it, so the same goods can never be returned twice (see
+/// GoodsReturnService). PricePerUnit is NOT taken from the caller — it is read off the invoice
+/// line, so a return is always credited at the price actually charged.
+/// </summary>
+public record CreateGoodsReturnRequest(
+    DateTimeOffset Date, string? Reason, IReadOnlyList<GoodsReturnLineInput> Items);
+
+public record GoodsReturnLineInput(string ItemName, UnitOfMeasure Unit, decimal Quantity);

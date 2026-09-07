@@ -67,6 +67,12 @@ public class InvoiceService : IInvoiceService
         if (request.TransportFee < 0)
             throw new ValidationAppException("أجرة النقل لا يمكن أن تكون قيمة سالبة.");
 
+        // A negative discount would ADD to what the buyer owes through the back door — see
+        // InvoiceCharge, which simply subtracts it. The over-the-total case is checked after
+        // the lines are totalled, where the ceiling is actually known.
+        if (request.Discount < 0)
+            throw new ValidationAppException("الخصم لا يمكن أن يكون قيمة سالبة.");
+
         var merchant = await ResolvePartnerAsync(request.MerchantId, request.MerchantName, PartnerType.Merchant, "merchant");
         // Seller (Farmer) and Driver are both optional and independent of each other — an invoice
         // can have either, both, or neither attached.
@@ -95,6 +101,15 @@ public class InvoiceService : IInvoiceService
         // Amount right below.
         var driverBoxFee = await _settings.GetDecimalAsync(Setting.Keys.DriverBoxFee, 0m);
         var driverBoxFeeTotal = totals.TotalBoxes * driverBoxFee;
+
+        // A discount bigger than the invoice itself would push GrandTotal below zero and show
+        // the buyer as being owed money by the market. Capped against the pre-discount charge,
+        // which is the largest concession that can still make sense.
+        var chargeBeforeDiscount = InvoiceCharge.ForMerchant(
+            totals.TotalValue, request.TransportFee, totals.WoodTotal,
+            totals.TotalBoxes * boxPrice, discount: 0m, returnsTotal: 0m);
+        if (request.Discount > chargeBeforeDiscount)
+            throw new ValidationAppException($"الخصم ({request.Discount:0.##}) أكبر من إجمالي الفاتورة ({chargeBeforeDiscount:0.##}).");
 
         var invoice = new Invoice
         {
@@ -246,6 +261,12 @@ public class InvoiceService : IInvoiceService
         if (request.TransportFee < 0)
             throw new ValidationAppException("أجرة النقل لا يمكن أن تكون قيمة سالبة.");
 
+        // A negative discount would ADD to what the buyer owes through the back door — see
+        // InvoiceCharge, which simply subtracts it. The over-the-total case is checked after
+        // the lines are totalled, where the ceiling is actually known.
+        if (request.Discount < 0)
+            throw new ValidationAppException("الخصم لا يمكن أن يكون قيمة سالبة.");
+
         // PaidAmount only ever means "record an automatic payment right now" (see CreateAsync) —
         // there's no sensible "automatic payment" moment on an edit, and silently doing nothing
         // with it left staff assuming a payment was recorded when it wasn't. Rejecting it here with
@@ -279,6 +300,15 @@ public class InvoiceService : IInvoiceService
         // rather than only inside ToDto.
         var driverBoxFee = await _settings.GetDecimalAsync(Setting.Keys.DriverBoxFee, 0m);
         var driverBoxFeeTotal = totals.TotalBoxes * driverBoxFee;
+
+        // A discount bigger than the invoice itself would push GrandTotal below zero and show
+        // the buyer as being owed money by the market. Capped against the pre-discount charge,
+        // which is the largest concession that can still make sense.
+        var chargeBeforeDiscount = InvoiceCharge.ForMerchant(
+            totals.TotalValue, request.TransportFee, totals.WoodTotal,
+            totals.TotalBoxes * boxPrice, discount: 0m, returnsTotal: 0m);
+        if (request.Discount > chargeBeforeDiscount)
+            throw new ValidationAppException($"الخصم ({request.Discount:0.##}) أكبر من إجمالي الفاتورة ({chargeBeforeDiscount:0.##}).");
 
         var previousMerchantId = invoice.MerchantId;
         var previousFarmerId = invoice.FarmerId;
@@ -887,13 +917,47 @@ public class InvoiceService : IInvoiceService
         return null;
     }
 
+    /// <summary>
+    /// Next human-facing number for the year: one past the HIGHEST already issued, read across
+    /// every row including soft-deleted and cancelled ones.
+    ///
+    /// This used to COUNT the year's invoices instead, which broke the moment invoices could be
+    /// deleted. The count runs through the global soft-delete filter, but the unique index on
+    /// InvoiceNumber does not — so a deleted invoice stopped being counted while still occupying
+    /// its number. Delete one invoice out of ten and the next one is assigned INV-yyyy-000010,
+    /// which invoice #10 still holds: the insert violates the unique index, and because every
+    /// retry recomputes the same number, invoice creation stays broken rather than failing once.
+    ///
+    /// Taking the maximum instead is immune to that: numbers are only ever consumed, never freed,
+    /// so a gap left by a deleted or cancelled invoice stays a gap rather than being handed out a
+    /// second time — which is also what anyone reading a numbered sequence of invoices expects.
+    ///
+    /// Still not safe against two API instances issuing at the same instant (the max is read
+    /// before the insert). Unchanged from before, and fine for a single-writer market counter; a
+    /// per-year DB sequence is the fix if this is ever load-balanced.
+    /// </summary>
     private async Task<string> GenerateInvoiceNumberAsync(DateTimeOffset date)
     {
         var year = date.Year;
-        var countThisYear = await _db.Invoices.CountAsync(i => i.Date.Year == year);
-        // Note: fine for a single-writer/low-concurrency market counter; if this ever runs
-        // multiple API instances behind a load balancer, switch to a DB sequence per year.
-        return $"INV-{year}-{(countThisYear + 1):D6}";
+        var prefix = $"INV-{year}-";
+
+        // IgnoreQueryFilters is the whole point: a soft-deleted invoice keeps its number, so the
+        // number generator has to be able to see it.
+        var numbersThisYear = await _db.Invoices
+            .IgnoreQueryFilters()
+            .Where(i => i.InvoiceNumber.StartsWith(prefix))
+            .Select(i => i.InvoiceNumber)
+            .ToListAsync();
+
+        // Parsed in memory rather than in SQL — the suffix is a fixed-width zero-padded tail, and
+        // an unparsable one (hand-edited, imported from an older scheme) is skipped rather than
+        // taking the whole sequence down with it.
+        var highest = numbersThisYear
+            .Select(n => int.TryParse(n[prefix.Length..], out var value) ? value : 0)
+            .DefaultIfEmpty(0)
+            .Max();
+
+        return $"{prefix}{(highest + 1):D6}";
     }
 
     private static InvoiceDto ToDto(Invoice i, decimal previousBalance)

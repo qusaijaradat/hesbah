@@ -100,6 +100,14 @@ public class PartnersController : ControllerBase
     /// this is just the history list on its own, for a dedicated "سجل الإرجاع" view if ever needed.
     /// Gated by BoxesView, separate from PartnersView, so a role can be handed crate-tracking
     /// without also seeing full partner records, or vice versa.</summary>
+    /// <summary>"تسوية/تعويض" on a seller's or driver's account — see
+    /// PartnerService.CreateAdjustmentAsync. Its own permission, not PartnersEdit: this moves a
+    /// real balance on a typed reason alone.</summary>
+    [HttpPost("{id:int}/adjustments")]
+    [RequirePermission(PermissionKeys.PartnersAdjust)]
+    public async Task<ActionResult<AdjustmentDto>> CreateAdjustment(int id, CreateAdjustmentRequest request) =>
+        Ok(await _partnerService.CreateAdjustmentAsync(id, request));
+
     [HttpGet("{id:int}/box-returns")]
     [RequirePermission(PermissionKeys.BoxesView)]
     public async Task<ActionResult<IReadOnlyList<BoxReturnDto>>> BoxReturns(int id) => Ok(await _boxReturnService.ListAsync(id));

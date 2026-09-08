@@ -42,7 +42,7 @@ var invoice = new InvoiceDto(
     GrandTotal: 1329.19m,
     PreviousBalance: 2450m,
     CommissionRateApplied: 0.10m, Commission: 110.87m, NetDueToFarmer: 997.82m,
-    Discount: 50m, ReturnsTotal: 50m,
+    ReturnsTotal: 50m,
     PaidAmount: 500m, RemainingAmount: 829.19m, PaymentStatus: InvoicePaymentStatus.Partial,
     HasUnpricedItems: false,
     Items: items,

@@ -12,8 +12,7 @@ namespace GreenMarket.Domain.Entities;
 /// never sold — or cancelling the whole thing and re-entering it. Neither leaves a trace of what
 /// actually came back, and both burn the audit trail.
 ///
-/// A return moves money on BOTH sides, which is what makes it different from a
-/// <see cref="Invoice.Discount"/>:
+/// A return moves money on BOTH sides:
 ///   • the buyer owes less — <see cref="Services.InvoiceCharge"/> subtracts the return total from
 ///     the invoice's stored GrandTotal;
 ///   • the seller is due less — they never actually sold those goods, so an offsetting Adjustment

@@ -146,6 +146,13 @@ public static class PermissionKeys
     /// see PartnerService.DeleteAsync. For someone with real history, deactivating isn't even
     /// needed: they simply stop being picked for new invoices/payments once no longer used.</summary>
     public const string PartnersDelete = "partners.delete";
+    /// <summary>Posting a manual "تسوية/تعويض" line to a seller's or driver's account — the rare
+    /// case where the market compensates a seller because an item's price collapsed after it was
+    /// taken in, or corrects a balance that no invoice or payment explains. Its own key, and a
+    /// heavy one: it moves money on a real balance with nothing but a typed reason behind it, so
+    /// it belongs to whoever actually decides that, not to everyone who may edit a partner's name.
+    /// Every line is audit-logged with the user who posted it (AuditSaveChangesInterceptor).</summary>
+    public const string PartnersAdjust = "partners.adjust";
 
     /// <summary>The invoice item-name catalog (see Item.cs) — separate from Invoices* so a role
     /// can manage the item list without also being able to create/edit invoices, or vice versa.</summary>
@@ -225,7 +232,7 @@ public static class PermissionKeys
     public static readonly string[] All =
     {
         InvoicesCreate, InvoicesEdit, InvoicesCancel, InvoicesDelete, InvoicesReturns, InvoicesView,
-        PartnersView, PartnersCreate, PartnersEdit, PartnersDelete,
+        PartnersView, PartnersCreate, PartnersEdit, PartnersDelete, PartnersAdjust,
         ItemsView, ItemsCreate, ItemsEdit, ItemsDelete,
         PaymentsView, PaymentsCreate, PaymentsEdit, PaymentsDelete,
         ExpensesView, ExpensesCreate, ExpensesEdit, ExpensesDelete,

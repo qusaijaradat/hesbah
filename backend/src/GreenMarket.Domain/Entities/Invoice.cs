@@ -87,18 +87,9 @@ public class Invoice : AuditableEntity
     public decimal DriverBoxFeeApplied { get; set; }
 
     /// <summary>
-    /// "خصم" — a flat concession given to the buyer on this invoice (haggling, a goodwill
-    /// reduction, a rounding-down). Comes off the merchant's grand total and nothing else: it is
-    /// the MARKET's concession out of its own commission, so it never reduces TotalValue (the
-    /// commission base) and never reduces what the farmer or driver is paid. Same "kept out of the
-    /// commission base" treatment as TransportFee/BoxPriceApplied, just in the other direction.
-    /// </summary>
-    public decimal Discount { get; set; }
-
-    /// <summary>
     /// What this invoice actually charges the merchant, STORED rather than derived:
-    /// TotalValue + TransportFee + wood total + box-fee total − Discount − returns total.
-    /// Recomputed by <see cref="Services.InvoiceCharge"/> whenever items, fees, the discount or
+    /// TotalValue + TransportFee + wood total + box-fee total − returns total.
+    /// Recomputed by <see cref="Services.InvoiceCharge"/> whenever items, fees or
     /// this invoice's returns change.
     ///
     /// This deliberately breaks the "computed fresh on read, never stored" convention that

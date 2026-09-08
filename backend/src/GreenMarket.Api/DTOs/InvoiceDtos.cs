@@ -29,9 +29,6 @@ public record CreateInvoiceRequest(
     string? DriverName,
     IReadOnlyList<InvoiceItemInput> Items,
     decimal TransportFee = 0,
-    // "خصم" — see Invoice.Discount. Comes off the buyer's total only; never touches the
-    // commission base or what the seller/driver are paid.
-    decimal Discount = 0,
     decimal? PaidAmount = null);
 
 public record InvoiceItemDto(int Id, string ItemName, decimal Quantity, UnitOfMeasure Unit, decimal PricePerUnit, decimal WoodPrice, decimal LineTotal);
@@ -87,10 +84,10 @@ public record InvoiceDto(
     decimal GrandTotal,
     decimal PreviousBalance,
     decimal CommissionRateApplied, decimal Commission, decimal NetDueToFarmer,
-    // "خصم" and "قيمة المرتجع" — both already subtracted inside GrandTotal above, broken out on
-    // their own so the invoice can show WHY the total is lower than the lines add up to, same
-    // "never let a figure disappear silently into a total" convention as WoodTotal/BoxFeeTotal.
-    decimal Discount, decimal ReturnsTotal,
+    // "قيمة المرتجع" — already subtracted inside GrandTotal above, broken out on its own so the
+    // invoice can show WHY the total is lower than the lines add up to, same "never let a figure
+    // disappear silently into a total" convention as WoodTotal/BoxFeeTotal.
+    decimal ReturnsTotal,
     // What has actually been collected against THIS invoice (payments linked to it that count —
     // an uncleared check does not, see PaymentRules), what is left, and where that leaves it.
     // The merchant's overall balance says nothing about one invoice; this does.
@@ -151,9 +148,9 @@ public record InvoiceListItemDto(
     // same convention as InvoiceDto's own Commission/NetDueToFarmer.
     decimal Commission, decimal NetDueToFarmer,
     // Per-invoice settlement, so the list can answer "مين دافع؟" at a glance and be filtered by
-    // it — see InvoicePaymentStatus. Discount/ReturnsTotal are already inside GrandTotal.
+    // it — see InvoicePaymentStatus. ReturnsTotal is already inside GrandTotal.
     decimal DriverBoxFeeTotal, decimal DriverDue,
-    decimal Discount, decimal ReturnsTotal,
+    decimal ReturnsTotal,
     decimal PaidAmount, decimal RemainingAmount, InvoicePaymentStatus PaymentStatus,
     bool HasUnpricedItems);
 

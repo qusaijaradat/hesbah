@@ -3,7 +3,7 @@ import { usePagination } from "../lib/usePagination";
 import { TablePagination } from "../components/TablePagination";
 import { Link, useParams } from "react-router-dom";
 import {
-  createBoxReturn, deleteBoxReturn, getFarmerAccount, getMerchantAccount,
+  createAdjustment, createBoxReturn, deleteBoxReturn, getFarmerAccount, getMerchantAccount,
   printFarmerAccountPdf, printMerchantAccountPdf,
 } from "../api/partners";
 import { triggerBlobDownload } from "../api/invoices";
@@ -48,8 +48,13 @@ export function FarmerAccountPage() {
   const { id } = useParams();
   const [account, setAccount] = useState<FarmerAccountDto | null>(null);
 
+  async function refresh() {
+    if (id) setAccount(await getFarmerAccount(Number(id)));
+  }
+
   useEffect(() => {
-    if (id) getFarmerAccount(Number(id)).then(setAccount);
+    refresh();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
   if (!account) return <div className="text-gray-500">جاري التحميل...</div>;
@@ -79,7 +84,99 @@ export function FarmerAccountPage() {
         <div className="text-sm text-gray-500 mb-4">رصيد افتتاحي مدرج ضمن المتبقي: <span className="font-medium text-gray-800">{formatCurrency(account.openingBalance)}</span></div>
       )}
 
+      <AdjustmentSection partnerId={Number(id)} roleLabel={roleLabel} onChanged={refresh} />
+
       <StatementTable statement={account.statement} />
+    </div>
+  );
+}
+
+/**
+ * "تسوية/تعويض" — the one case the market actually has for the word "خصم": an item's price
+ * collapses in the market after a seller brought it in, and he is compensated for it. That is
+ * money moving TO the seller, which is why it lives here on his account and not as a field on the
+ * buyer's invoice (where a "discount" only ever reduced what the BUYER owed and came out of the
+ * market's own margin — see the removed Invoice.Discount).
+ *
+ * Deliberately not tied to an invoice: the reason usually covers a whole load, not one line. It
+ * never touches the commission either — that stays on the sale value as originally invoiced.
+ *
+ * There is no delete. A ledger line that moved a real balance is corrected by posting the
+ * opposite line, which leaves both the mistake and the correction visible on the statement —
+ * quietly removing it would leave a balance nobody can explain from the history.
+ */
+function AdjustmentSection({ partnerId, roleLabel, onChanged }: { partnerId: number; roleLabel: string; onChanged: () => void }) {
+  const { hasPermission } = useAuth();
+  const [open, setOpen] = useState(false);
+  const [amount, setAmount] = useState("");
+  // Which way the money goes is a choice, not a minus sign someone has to remember to type.
+  const [direction, setDirection] = useState<"credit" | "debit">("credit");
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  if (!hasPermission("partners.adjust")) return null;
+
+  const value = parseFloat(amount) || 0;
+  const signed = direction === "credit" ? value : -value;
+
+  async function handleSave() {
+    setError(null);
+    if (value <= 0) { setError("أدخل قيمة أكبر من صفر."); return; }
+    if (!reason.trim()) { setError("اكتب سبب التسوية."); return; }
+    setBusy(true);
+    try {
+      await createAdjustment(partnerId, { amount: signed, reason: reason.trim() });
+      setAmount(""); setReason(""); setDirection("credit"); setOpen(false);
+      onChanged();
+    } catch (err) {
+      setError(apiErrorMessage(err, "فشل حفظ التسوية"));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="card p-4 mb-4">
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <div>
+          <div className="font-semibold text-gray-700">تسوية / تعويض</div>
+          <p className="text-xs text-gray-500 mt-1">
+            لتعويض ال{roleLabel} عن بضاعة انخسف سعرها، أو لتصحيح رصيد. بتظهر كسطر مستقل بالكشف، وما بتأثر على العمولة.
+          </p>
+        </div>
+        {!open && <button className="btn-secondary text-sm" onClick={() => setOpen(true)}>➕ تسجيل تسوية</button>}
+      </div>
+
+      {open && (
+        <div className="mt-3 flex flex-wrap items-end gap-3">
+          <div>
+            <label className="label">النوع</label>
+            <select className="input" value={direction} onChange={(e) => setDirection(e.target.value as "credit" | "debit")}>
+              <option value="credit">له (بزيد المستحق)</option>
+              <option value="debit">عليه (بنقّص المستحق)</option>
+            </select>
+          </div>
+          <div>
+            <label className="label">القيمة (₪)</label>
+            <input className="input" type="number" min="0" step="0.01" value={amount}
+              onChange={(e) => setAmount(e.target.value)} />
+          </div>
+          <div className="grow min-w-[14rem]">
+            <label className="label">السبب</label>
+            <input className="input" value={reason} maxLength={500}
+              onChange={(e) => setReason(e.target.value)} placeholder="مثال: تعويض عن انخفاض سعر البندورة" />
+          </div>
+          <button className="btn-primary" onClick={handleSave} disabled={busy}>{busy ? "جاري الحفظ..." : "حفظ"}</button>
+          <button className="btn-secondary" onClick={() => { setOpen(false); setError(null); }} disabled={busy}>إلغاء</button>
+          {value > 0 && (
+            <div className="w-full text-xs text-gray-500">
+              رح ينزل سطر بقيمة <span className="font-semibold text-gray-800">{formatCurrency(signed)}</span> على حساب ال{roleLabel}.
+            </div>
+          )}
+          {error && <div className="w-full text-sm text-red-600">{error}</div>}
+        </div>
+      )}
     </div>
   );
 }

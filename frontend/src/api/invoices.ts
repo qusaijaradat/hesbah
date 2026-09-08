@@ -25,8 +25,7 @@ export async function createInvoice(payload: {
   farmerId?: number; farmerName?: string;
   driverId?: number; driverName?: string;
   transportFee?: number;
-  /** "خصم" — comes off the buyer's total only. */
-  discount?: number;
+
   items: InvoiceItemInput[];
   /** Optional "المبلغ المدفوع" — records a linked FromMerchant payment right when the invoice is
    * created (see backend CreateInvoiceRequest.PaidAmount). Omit/0 = nothing paid yet. */
@@ -42,8 +41,7 @@ export async function updateInvoice(id: number, payload: {
   farmerId?: number; farmerName?: string;
   driverId?: number; driverName?: string;
   transportFee?: number;
-  /** "خصم" — comes off the buyer's total only. */
-  discount?: number;
+
   items: InvoiceItemInput[];
 }) {
   const { data } = await apiClient.put<InvoiceDto>(`/invoices/${id}`, payload);

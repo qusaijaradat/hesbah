@@ -16,7 +16,6 @@ public class InvoiceConfiguration : IEntityTypeConfiguration<Invoice>
         builder.Property(x => x.TotalValue).HasColumnType("numeric(14,2)");
         builder.Property(x => x.CommissionRateApplied).HasColumnType("numeric(6,4)");
         builder.Property(x => x.TransportFee).HasColumnType("numeric(12,2)");
-        builder.Property(x => x.Discount).HasColumnType("numeric(12,2)");
         builder.Property(x => x.GrandTotal).HasColumnType("numeric(14,2)");
         builder.Property(x => x.BoxPriceApplied).HasColumnType("numeric(8,2)");
         builder.Property(x => x.DriverBoxFeeApplied).HasColumnType("numeric(8,2)");

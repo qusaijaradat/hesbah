@@ -67,11 +67,6 @@ public class InvoiceService : IInvoiceService
         if (request.TransportFee < 0)
             throw new ValidationAppException("أجرة النقل لا يمكن أن تكون قيمة سالبة.");
 
-        // A negative discount would ADD to what the buyer owes through the back door — see
-        // InvoiceCharge, which simply subtracts it. The over-the-total case is checked after
-        // the lines are totalled, where the ceiling is actually known.
-        if (request.Discount < 0)
-            throw new ValidationAppException("الخصم لا يمكن أن يكون قيمة سالبة.");
 
         var merchant = await ResolvePartnerAsync(request.MerchantId, request.MerchantName, PartnerType.Merchant, "merchant");
         // Seller (Farmer) and Driver are both optional and independent of each other — an invoice
@@ -102,14 +97,6 @@ public class InvoiceService : IInvoiceService
         var driverBoxFee = await _settings.GetDecimalAsync(Setting.Keys.DriverBoxFee, 0m);
         var driverBoxFeeTotal = totals.TotalBoxes * driverBoxFee;
 
-        // A discount bigger than the invoice itself would push GrandTotal below zero and show
-        // the buyer as being owed money by the market. Capped against the pre-discount charge,
-        // which is the largest concession that can still make sense.
-        var chargeBeforeDiscount = InvoiceCharge.ForMerchant(
-            totals.TotalValue, request.TransportFee, totals.WoodTotal,
-            totals.TotalBoxes * boxPrice, discount: 0m, returnsTotal: 0m);
-        if (request.Discount > chargeBeforeDiscount)
-            throw new ValidationAppException($"الخصم ({request.Discount:0.##}) أكبر من إجمالي الفاتورة ({chargeBeforeDiscount:0.##}).");
 
         var invoice = new Invoice
         {
@@ -124,13 +111,12 @@ public class InvoiceService : IInvoiceService
             CommissionRateApplied = commissionRate,
             BoxPriceApplied = boxPrice,
             DriverBoxFeeApplied = driverBoxFee,
-            Discount = request.Discount,
             // What the buyer is charged, stored once here and kept in step by RecomputeGrandTotal
             // on every later edit/return — see Invoice.GrandTotal for why it is stored at all.
             // A brand-new invoice has no returns yet, hence 0.
             GrandTotal = InvoiceCharge.ForMerchant(
                 totals.TotalValue, request.TransportFee, totals.WoodTotal,
-                totals.TotalBoxes * boxPrice, request.Discount, returnsTotal: 0m),
+                totals.TotalBoxes * boxPrice, returnsTotal: 0m),
             Items = totals.Lines.Select(l => new InvoiceItem
             {
                 ItemName = l.ItemName,
@@ -262,11 +248,6 @@ public class InvoiceService : IInvoiceService
         if (request.TransportFee < 0)
             throw new ValidationAppException("أجرة النقل لا يمكن أن تكون قيمة سالبة.");
 
-        // A negative discount would ADD to what the buyer owes through the back door — see
-        // InvoiceCharge, which simply subtracts it. The over-the-total case is checked after
-        // the lines are totalled, where the ceiling is actually known.
-        if (request.Discount < 0)
-            throw new ValidationAppException("الخصم لا يمكن أن يكون قيمة سالبة.");
 
         // PaidAmount only ever means "record an automatic payment right now" (see CreateAsync) —
         // there's no sensible "automatic payment" moment on an edit, and silently doing nothing
@@ -302,14 +283,6 @@ public class InvoiceService : IInvoiceService
         var driverBoxFee = await _settings.GetDecimalAsync(Setting.Keys.DriverBoxFee, 0m);
         var driverBoxFeeTotal = totals.TotalBoxes * driverBoxFee;
 
-        // A discount bigger than the invoice itself would push GrandTotal below zero and show
-        // the buyer as being owed money by the market. Capped against the pre-discount charge,
-        // which is the largest concession that can still make sense.
-        var chargeBeforeDiscount = InvoiceCharge.ForMerchant(
-            totals.TotalValue, request.TransportFee, totals.WoodTotal,
-            totals.TotalBoxes * boxPrice, discount: 0m, returnsTotal: 0m);
-        if (request.Discount > chargeBeforeDiscount)
-            throw new ValidationAppException($"الخصم ({request.Discount:0.##}) أكبر من إجمالي الفاتورة ({chargeBeforeDiscount:0.##}).");
 
         var previousMerchantId = invoice.MerchantId;
         var previousFarmerId = invoice.FarmerId;
@@ -325,12 +298,11 @@ public class InvoiceService : IInvoiceService
         invoice.CommissionRateApplied = commissionRate;
         invoice.BoxPriceApplied = boxPrice;
         invoice.DriverBoxFeeApplied = driverBoxFee;
-        invoice.Discount = request.Discount;
         // Recomputed from the edited lines/fees, keeping whatever has already been returned
         // against this invoice subtracted (an edit must never quietly un-return goods).
         invoice.GrandTotal = InvoiceCharge.ForMerchant(
             totals.TotalValue, request.TransportFee, totals.WoodTotal,
-            totals.TotalBoxes * boxPrice, request.Discount,
+            totals.TotalBoxes * boxPrice,
             await _db.GoodsReturns.Where(r => r.InvoiceId == invoice.Id).SumAsync(r => (decimal?)r.TotalValue) ?? 0m);
 
         // Replace the item lines wholesale rather than trying to diff old vs. new — EF Core
@@ -619,7 +591,6 @@ public class InvoiceService : IInvoiceService
                 i.CommissionRateApplied,
                 i.DriverBoxFeeApplied,
                 i.GrandTotal,
-                i.Discount,
                 ReturnsTotal = i.Returns.Sum(r => (decimal?)r.TotalValue) ?? 0,
                 // Only payments that actually moved money — the same rule as every balance in
                 // the app (PaymentRules), spelled out inline because a translated projection
@@ -675,7 +646,7 @@ public class InvoiceService : IInvoiceService
                 x.DriverId is not null ? sellerRemainingById.GetValueOrDefault(x.DriverId.Value) : null,
                 commissionResult.Commission, commissionResult.NetDueToFarmer,
                 driverBoxFeeTotal, x.TransportFee + driverBoxFeeTotal + x.WoodTotal,
-                x.Discount, x.ReturnsTotal,
+                x.ReturnsTotal,
                 x.PaidAmount, x.GrandTotal - x.PaidAmount,
                 x.PaidAmount <= 0 ? InvoicePaymentStatus.Unpaid
                     : x.PaidAmount >= x.GrandTotal ? InvoicePaymentStatus.Paid
@@ -977,7 +948,7 @@ public class InvoiceService : IInvoiceService
         // comment.
         var driverBoxFeeTotal = totalBoxes * i.DriverBoxFeeApplied;
         // Read, not re-derived: Invoice.GrandTotal is the one authoritative charge (it also nets
-        // out the discount and any returns, which this expression never did) — see InvoiceCharge.
+        // out any returns, which this expression never did) — see InvoiceCharge.
         var grandTotal = i.GrandTotal;
 
         // Settlement, per invoice. Only payments that actually moved money count (an uncleared
@@ -1011,7 +982,7 @@ public class InvoiceService : IInvoiceService
             grandTotal,
             previousBalance,
             i.CommissionRateApplied, commissionResult.Commission, netDueToFarmer,
-            i.Discount, returnsTotal,
+            returnsTotal,
             paidAmount, grandTotal - paidAmount, paymentStatus,
             i.Items.Any(it => it.PricePerUnit == 0),
             i.Items.Select(it => new InvoiceItemDto(it.Id, it.ItemName, it.Quantity, it.Unit, it.PricePerUnit, it.WoodPrice, it.LineTotal)).ToList(),

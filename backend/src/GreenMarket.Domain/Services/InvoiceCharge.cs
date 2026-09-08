@@ -21,9 +21,7 @@ namespace GreenMarket.Domain.Services;
 ///                      went out twice and the market lost money on every invoice that had a
 ///                      seller and a driver on it.
 ///   • boxFeeTotal    — رسوم الصناديق, charged to the buyer only.
-///   • − discount     — خصم, the market's own concession; never touches the commission base, so it
-///                      comes out of the market's margin rather than the farmer's due.
-///   • − returnsTotal — قيمة المرتجع, goods the buyer sent back. Unlike the discount this DOES
+///   • − returnsTotal — قيمة المرتجع, goods the buyer sent back. This DOES
 ///                      reduce the farmer's due as well (they never sold those goods) — that side
 ///                      is posted as its own ledger Adjustment, see GoodsReturnService.
 /// </summary>
@@ -34,7 +32,6 @@ public static class InvoiceCharge
         decimal transportFee,
         decimal woodTotal,
         decimal boxFeeTotal,
-        decimal discount,
         decimal returnsTotal) =>
-        totalValue + transportFee + woodTotal + boxFeeTotal - discount - returnsTotal;
+        totalValue + transportFee + woodTotal + boxFeeTotal - returnsTotal;
 }

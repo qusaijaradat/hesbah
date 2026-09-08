@@ -40,6 +40,18 @@ public interface IPartnerService
     /// one invoice and a merchant on another). If no match exists, creates a brand new partner.
     /// </summary>
     Task<Partner> FindOrCreateAsync(string name, PartnerType type);
+    /// <summary>
+    /// Posts a manual "تسوية/تعويض" line to a seller's or driver's ledger — the one case the
+    /// market actually has for the word "خصم": an item's price collapsed after it was taken in and
+    /// the seller is compensated for it. That is money moving TO the seller, which the invoice's
+    /// old buyer-side discount field never did, and it is deliberately not tied to any one invoice:
+    /// the reason usually spans a day's load, not a line.
+    ///
+    /// It never touches the commission. Commission stays on the original sale value, exactly as
+    /// invoiced — an adjustment is a separate line on the ledger, not a re-pricing of the sale.
+    /// </summary>
+    Task<AdjustmentDto> CreateAdjustmentAsync(int partnerId, CreateAdjustmentRequest request);
+
     Task<MerchantAccountDto> GetMerchantAccountAsync(int id);
     Task<FarmerAccountDto> GetFarmerAccountAsync(int id);
 
@@ -213,6 +225,48 @@ public class PartnerService : IPartnerService
         return partner;
     }
 
+    public async Task<AdjustmentDto> CreateAdjustmentAsync(int partnerId, CreateAdjustmentRequest request)
+    {
+        // Zero would be a no-op line that still shows on the statement and still costs a reader a
+        // moment to dismiss. A reason is required for the same reason the statement shows it: a
+        // balance that moved with no invoice and no payment behind it has to say why.
+        if (request.Amount == 0)
+            throw new ValidationAppException("قيمة التسوية لا يمكن أن تكون صفر.");
+        var reason = request.Reason?.Trim();
+        if (string.IsNullOrWhiteSpace(reason))
+            throw new ValidationAppException("يجب كتابة سبب التسوية.");
+        if (reason.Length > 500)
+            throw new ValidationAppException("سبب التسوية طويل جدًا (الحد الأقصى 500 حرف).");
+
+        var partner = await _db.Partners.FindAsync(partnerId) ?? throw new NotFoundAppException("Partner", partnerId);
+        // farmer_transactions IS the seller/driver ledger — a buyer's balance is computed from
+        // invoices and payments and would not see a row here at all, so posting one against a
+        // merchant would silently do nothing. Type is nullable by design (staff can record a
+        // person before knowing their role), so an unset type is allowed through, same as every
+        // other type check in this codebase.
+        if (partner.Type is PartnerType.Merchant)
+            throw new ValidationAppException($"الشخص المحدد ({partner.Name}) مشترٍ — التسوية تُسجّل على حساب بائع أو سائق فقط.");
+
+        var line = new FarmerTransaction
+        {
+            FarmerId = partner.Id,
+            Type = FarmerTransactionType.Adjustment,
+            // No InvoiceId: this is not a correction to one invoice (cancellations and goods
+            // returns are, and they set it) — it stands on its own on the account.
+            Date = DateTimeOffset.UtcNow,
+            // SaleValue/Commission stay 0: an adjustment is not a sale, and it must not enter any
+            // commission figure. The market's cut stays on the original sale value as invoiced.
+            Amount = request.Amount,
+            Notes = reason
+        };
+        _db.FarmerTransactions.Add(line);
+        // Who posted it and when is recorded by AuditSaveChangesInterceptor on this save, so the
+        // line is traceable to a person without a second write here.
+        await _db.SaveChangesAsync();
+
+        return new AdjustmentDto(line.Id, partner.Id, line.Date, line.Amount, reason);
+    }
+
     public async Task<PartnerDto> UpdateAsync(int id, UpdatePartnerRequest request)
     {
         ValidateNameAndType(request.Name, request.Type);
@@ -348,7 +402,11 @@ public class PartnerService : IPartnerService
                 {
                     FarmerTransactionType.Sale => t.Invoice is not null ? $"بيع — فاتورة رقم {t.Invoice.InvoiceNumber}" : "بيع",
                     FarmerTransactionType.TransportFee => t.Invoice is not null ? $"أجرة نقل — فاتورة رقم {t.Invoice.InvoiceNumber}" : "أجرة نقل",
-                    FarmerTransactionType.Adjustment => t.Invoice is not null ? $"تعديل — فاتورة رقم {t.Invoice.InvoiceNumber}" : "تعديل",
+                    // An Adjustment tied to an invoice is a reversal the system posted itself
+                    // (a cancellation, a goods return); one with no invoice is a manual تسوية
+                    // someone typed on this account. Different things, so they read differently —
+                    // and the reason typed for the manual one shows in Notes just below.
+                    FarmerTransactionType.Adjustment => t.Invoice is not null ? $"تعديل — فاتورة رقم {t.Invoice.InvoiceNumber}" : "تسوية",
                     _ => "دفعة مدفوعة"
                 },
                 t.Amount,

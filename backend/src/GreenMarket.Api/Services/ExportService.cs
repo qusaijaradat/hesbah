@@ -409,8 +409,6 @@ public class ExportService : IExportService
                         col.Item().AlignRight().Text($"رسوم الصناديق: ₪ {invoice.BoxFeeTotal:0.##}").FontSize(thermalWidth ? 8 : 10);
                     if (invoice.TransportFee > 0)
                         col.Item().AlignRight().Text($"أجرة النقل: ₪ {invoice.TransportFee:0.##}").FontSize(thermalWidth ? 8 : 10);
-                    if (invoice.Discount > 0)
-                        col.Item().AlignRight().Text($"خصم: - ₪ {invoice.Discount:0.##}").FontSize(thermalWidth ? 8 : 10).FontColor(PrintInk.Deduction);
                     if (invoice.ReturnsTotal > 0)
                         col.Item().AlignRight().Text($"مرتجع بضاعة: - ₪ {invoice.ReturnsTotal:0.##}").FontSize(thermalWidth ? 8 : 10).FontColor(PrintInk.Deduction);
                     col.Item().PaddingTop(4).AlignRight().Text($"الإجمالي: ₪ {invoice.GrandTotal:0.##}").Bold().FontSize(13);
@@ -1401,8 +1399,6 @@ public class ExportService : IExportService
                 }
 
                 default:
-                    if (invoice.Discount > 0)
-                        col.Item().AlignRight().Text($"خصم: - ₪ {invoice.Discount:0.##}").FontSize(7).FontColor(PrintInk.Deduction);
                     if (invoice.ReturnsTotal > 0)
                         col.Item().AlignRight().Text($"مرتجع: - ₪ {invoice.ReturnsTotal:0.##}").FontSize(7).FontColor(PrintInk.Deduction);
                     CardMerchantTotals(col, invoice.WoodTotal, invoice.BoxFeeTotal, invoice.GrandTotal, invoice.PreviousBalance);

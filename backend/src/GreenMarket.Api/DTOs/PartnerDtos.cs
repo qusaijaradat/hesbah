@@ -107,3 +107,19 @@ public record PartnerInvoiceItemLineDto(
 /// Invoice.DriverId depending on partner Type — same page-sharing convention as
 /// GetFarmerAccountAsync) and GetMerchantInvoiceDetailAsync (مشتري side, Invoice.MerchantId).</summary>
 public record PartnerInvoiceDetailDto(int PartnerId, string PartnerName, IReadOnlyList<PartnerInvoiceItemLineDto> Lines);
+
+/// <summary>
+/// A manual "تسوية/تعويض" line on a seller's or driver's account (see
+/// PartnerService.CreateAdjustmentAsync).
+///
+/// Amount is SIGNED and that sign is the whole point: positive means the market owes this person
+/// more (the case this was built for — compensating a seller when an item's price collapsed in the
+/// market after he brought it in), negative means it owes them less. Reason is required, because a
+/// balance that moved with no invoice and no payment behind it has to explain itself on the
+/// statement, where this shows up as its own line.
+/// </summary>
+public record CreateAdjustmentRequest(decimal Amount, string Reason);
+
+/// <summary>The line that was posted, echoed back so the caller can show it without re-fetching
+/// the whole statement.</summary>
+public record AdjustmentDto(int Id, int PartnerId, DateTimeOffset Date, decimal Amount, string Reason);

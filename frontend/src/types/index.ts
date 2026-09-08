@@ -200,9 +200,8 @@ export interface InvoiceDto {
   commission: number;
   /** totalValue − commission — what's actually due to the farmer for this one invoice. */
   netDueToFarmer: number;
-  /** "خصم" and "قيمة المرتجع" — both already subtracted inside grandTotal, broken out so the
-   * screen can show why the total is lower than the lines add up to. */
-  discount: number;
+  /** "قيمة المرتجع" — already subtracted inside grandTotal, broken out so the screen can show
+   * why the total is lower than the lines add up to. */
   returnsTotal: number;
   /** Collected against THIS invoice (uncleared checks don't count), what's left, and the state
    * that follows from the two. */
@@ -260,9 +259,8 @@ export interface InvoiceListItemDto {
    * show. driverDue = transportFee + driverBoxFeeTotal + woodTotal. */
   driverBoxFeeTotal: number;
   driverDue: number;
-  /** "خصم" and "قيمة المرتجع" — both already subtracted inside grandTotal, broken out so the
-   * screen can show why the total is lower than the lines add up to. */
-  discount: number;
+  /** "قيمة المرتجع" — already subtracted inside grandTotal, broken out so the screen can show
+   * why the total is lower than the lines add up to. */
   returnsTotal: number;
   /** Collected against THIS invoice (uncleared checks don't count), what's left, and the state
    * that follows from the two. */
@@ -614,6 +612,20 @@ export interface PartnerInvoiceItemLineDto {
   lineTotal: number;
   transportFee: number;
   grandTotal: number;
+}
+
+/**
+ * A manual "تسوية/تعويض" line posted to a seller's or driver's account. amount is signed:
+ * positive = the market owes them more (the case this exists for — compensating a seller whose
+ * item collapsed in price), negative = less. It never touches the commission, which stays on the
+ * sale value as originally invoiced.
+ */
+export interface AdjustmentDto {
+  id: number;
+  partnerId: number;
+  date: string;
+  amount: number;
+  reason: string;
 }
 
 export interface PartnerInvoiceDetailDto {

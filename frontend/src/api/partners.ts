@@ -2,7 +2,7 @@ import { apiClient } from "./client";
 import type {
   PartnerDto, PartnerSuggestionDto, PagedResult, PartnerType,
   MerchantAccountDto, FarmerAccountDto, DebtsOverviewDto, PartnerInvoiceDetailDto,
-  BoxReturnDto, CreateBoxReturnRequest,
+  BoxReturnDto, CreateBoxReturnRequest, AdjustmentDto,
 } from "../types";
 
 export async function listPartners(params: { search?: string; type?: PartnerType; page?: number; pageSize?: number }) {
@@ -121,4 +121,14 @@ export async function createBoxReturn(partnerId: number, payload: CreateBoxRetur
 
 export async function deleteBoxReturn(returnId: number) {
   await apiClient.delete(`/partners/box-returns/${returnId}`);
+}
+
+/**
+ * "تسوية/تعويض" on a seller's or driver's account — see the backend
+ * PartnerService.CreateAdjustmentAsync. `amount` is signed: positive means the market owes this
+ * person more (compensating a seller whose item's price collapsed), negative means less.
+ */
+export async function createAdjustment(partnerId: number, payload: { amount: number; reason: string }) {
+  const { data } = await apiClient.post<AdjustmentDto>(`/partners/${partnerId}/adjustments`, payload);
+  return data;
 }

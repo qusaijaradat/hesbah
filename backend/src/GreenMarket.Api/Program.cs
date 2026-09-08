@@ -381,19 +381,27 @@ using (var scope = app.Services.CreateScope())
         app.Logger.LogError(ex, "Failed to add the payments.CheckClearedDate column — recording the actual clearing date of a check will not work until this is fixed.");
     }
 
-    // Same EnsureCreated gap as the guards above: the "خصم" and per-invoice settlement work needs
-    // two new columns on "invoices", and "مرتجع بضاعة" needs two new tables.
+    // Same EnsureCreated gap as the guards above: the per-invoice settlement work needs a new
+    // column on "invoices", "مرتجع بضاعة" needs two new tables, and the abandoned "خصم" column
+    // needs dropping.
     //
     // GrandTotal is BACKFILLED for every existing invoice in the same statement that adds it —
     // it is what every balance in the app now sums (see Invoice.GrandTotal), so leaving old rows
     // at 0 would read as "every historical invoice charged nothing". The backfill recomputes the
     // exact same formula InvoiceCharge does: product value + transport + the invoice's own wood
-    // total + its box count × its locked-in box price, with no discount or returns (neither
-    // existed before this migration, so both are 0 for every historical row).
+    // total + its box count × its locked-in box price, with no returns (they did not exist
+    // before this migration, so that term is 0 for every historical row).
     try
     {
         await db.Database.ExecuteSqlRawAsync("""
-            ALTER TABLE invoices ADD COLUMN IF NOT EXISTS "Discount" numeric(12,2) NOT NULL DEFAULT 0;
+            -- "خصم" is gone: the market never gave a buyer a flat concession on the invoice — a
+            -- price concession is made by editing the item's own price, and the one real case for
+            -- the word (compensating a seller when an item's price collapsed) is money moving to
+            -- the SELLER, which this column never did. Dropped rather than left in place: the
+            -- column is NOT NULL and the model no longer writes it, so leaving it would depend on
+            -- its DEFAULT forever, and it would keep reading as a supported feature. Use a ledger
+            -- adjustment on the partner's account for a real concession.
+            ALTER TABLE invoices DROP COLUMN IF EXISTS "Discount";
             ALTER TABLE invoices ADD COLUMN IF NOT EXISTS "GrandTotal" numeric(14,2) NOT NULL DEFAULT 0;
             CREATE INDEX IF NOT EXISTS ix_invoices_merchantid_status ON invoices ("MerchantId", "Status");
 
@@ -438,7 +446,7 @@ using (var scope = app.Services.CreateScope())
     }
     catch (Exception ex)
     {
-        app.Logger.LogError(ex, "Failed to add the invoices.Discount/GrandTotal columns or the goods-return tables — discounts, per-invoice payment status and مرتجع بضاعة will not work until this is fixed.");
+        app.Logger.LogError(ex, "Failed to add the invoices.GrandTotal column, drop the obsolete Discount column, or create the goods-return tables — per-invoice payment status and مرتجع بضاعة will not work until this is fixed.");
     }
     // Correction for the wood price having been paid out twice. سعر الخشب is charged to the buyer
     // once, and it belongs to the DRIVER, who supplies and handles the crates (see InvoiceCharge).

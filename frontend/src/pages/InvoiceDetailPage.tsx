@@ -232,9 +232,7 @@ export function InvoiceDetailPage() {
             )}
             {/* Both are already subtracted inside grandTotal — shown so the total below never
                 looks smaller than the lines add up to for no visible reason. */}
-            {invoice.discount > 0 && (
-              <div className="text-gray-500">خصم: <span className="font-semibold text-red-600">- {formatCurrency(invoice.discount)}</span></div>
-            )}
+
             {invoice.returnsTotal > 0 && (
               <div className="text-gray-500">مرتجع: <span className="font-semibold text-red-600">- {formatCurrency(invoice.returnsTotal)}</span></div>
             )}

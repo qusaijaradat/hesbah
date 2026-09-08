@@ -526,12 +526,13 @@ public class ExportService : IExportService
                         col.Item().AlignRight().Text($"إجمالي الوزن: {invoice.TotalWeightKg:0.###} كغم");
                     if (totalBoxes > 0)
                         col.Item().AlignRight().Text($"إجمالي الصناديق: {totalBoxes:0.###}");
-                    // Wood/crate price is charged to the merchant (see GrandTotal) AND paid to the
-                    // farmer in full on top of the commission math (explicit requirement) — shown
-                    // here as its own line so "الصافي المستحق" below reconciles: TotalValue -
-                    // Commission + WoodTotal. Kept OUT of the commission math itself (never taxed).
+                    // Wood/crate price is charged to the merchant (see GrandTotal) and paid to the
+                    // DRIVER, who supplies and handles the crates — not to the seller. Shown here
+                    // only as cargo detail, and labelled so the seller is not left wondering why a
+                    // figure on his own invoice is missing from his total: "الصافي المستحق" below
+                    // is TotalValue − Commission, with no wood in it.
                     if (invoice.WoodTotal > 0)
-                        col.Item().AlignRight().Text($"سعر الخشب (يُضاف للمستحق — لا يدخل بحساب العمولة): ₪ {invoice.WoodTotal:0.##}");
+                        col.Item().AlignRight().Text($"سعر الخشب (لا يُضاف للمستحق — يُدفع للسائق): ₪ {invoice.WoodTotal:0.##}").FontSize(9).FontColor(PrintInk.Secondary);
                     // Same informational-only treatment as WoodTotal above — رسوم الصناديق is
                     // charged to the MERCHANT (see InvoiceDto.BoxFeeTotal), never deducted from
                     // what's owed to the farmer, so it's shown here as cargo detail but kept OUT
@@ -1366,12 +1367,13 @@ public class ExportService : IExportService
             switch (role)
             {
                 case InvoicePrintRole.Farmer:
-                    // Mirrors GenerateFarmerInvoicePdf's footer: TotalValue - Commission +
-                    // WoodTotal = NetDueToFarmer. رسوم الصناديق is charged to the merchant and never
-                    // deducted from the seller, so it has no place on this copy at all.
+                    // Mirrors GenerateFarmerInvoicePdf's footer: TotalValue - Commission =
+                    // NetDueToFarmer. Neither سعر الخشب nor رسوم الصناديق is money owed to the
+                    // seller — the crates are the driver's and the box fee is the market's — so
+                    // the wood line is labelled as such and the box fee has no place here at all.
                     col.Item().AlignRight().Text($"إجمالي المبيعات: ₪ {invoice.TotalValue:0.##}").FontSize(8);
                     if (invoice.WoodTotal > 0)
-                        col.Item().AlignRight().Text($"سعر الخشب (يُضاف للمستحق): ₪ {invoice.WoodTotal:0.##}").FontSize(7);
+                        col.Item().AlignRight().Text($"سعر الخشب (يُدفع للسائق): ₪ {invoice.WoodTotal:0.##}").FontSize(7);
                     col.Item().AlignRight().Text($"العمولة ({invoice.CommissionRateApplied:0.##%}): - ₪ {invoice.Commission:0.##}").FontSize(7).FontColor(PrintInk.Deduction);
                     col.Item().PaddingTop(2).AlignRight().Text($"الصافي المستحق: ₪ {invoice.NetDueToFarmer:0.##}").Bold().FontSize(10);
                     break;

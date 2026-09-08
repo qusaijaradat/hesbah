@@ -189,11 +189,12 @@ public class InvoiceService : IInvoiceService
                 Date = invoice.Date,
                 SaleValue = totals.TotalValue,
                 Commission = commissionResult.Commission,
-                // Explicit requirement: "سعر الخشب" is paid out in full to the farmer too (on top
-                // of what the merchant is separately charged for it below), never reduced by the
-                // commission — same flat "on top of the commission math" treatment as WoodTotal
-                // gets everywhere else. See ToDto's own NetDueToFarmer for the read-side mirror.
-                Amount = commissionResult.NetDueToFarmer + totals.WoodTotal,
+                // "سعر الخشب" is NOT part of this: the crates are not the seller's to be paid for.
+                // The buyer is charged for them once and that money goes to the driver, who is the
+                // side that supplies and handles them (see the driver's own ledger row below).
+                // Adding it here as well was paying a single charge out twice — see ToDto's
+                // NetDueToFarmer for the read-side mirror of this.
+                Amount = commissionResult.NetDueToFarmer,
                 Notes = $"تسجيل تلقائي من الفاتورة رقم {invoice.InvoiceNumber}"
             });
             await _db.SaveChangesAsync();
@@ -359,11 +360,11 @@ public class InvoiceService : IInvoiceService
         else if (existingSale is not null && previousFarmerId == farmer.Id)
         {
             // Same farmer as before — just correct the figures on their existing ledger row.
-            // Amount folds in totals.WoodTotal, same as CreateAsync — see its own comment.
+            // Amount carries no wood, same as CreateAsync — see its own comment.
             existingSale.Date = invoice.Date;
             existingSale.SaleValue = totals.TotalValue;
             existingSale.Commission = commissionResult.Commission;
-            existingSale.Amount = commissionResult.NetDueToFarmer + totals.WoodTotal;
+            existingSale.Amount = commissionResult.NetDueToFarmer;
             existingSale.Notes = $"Auto-generated from invoice {invoice.InvoiceNumber} (edited)";
         }
         else
@@ -380,7 +381,7 @@ public class InvoiceService : IInvoiceService
                 Date = invoice.Date,
                 SaleValue = totals.TotalValue,
                 Commission = commissionResult.Commission,
-                Amount = commissionResult.NetDueToFarmer + totals.WoodTotal,
+                Amount = commissionResult.NetDueToFarmer,
                 Notes = $"تسجيل تلقائي من الفاتورة رقم {invoice.InvoiceNumber} (بعد التعديل)"
             });
         }
@@ -672,7 +673,7 @@ public class InvoiceService : IInvoiceService
                 merchantRemainingById.GetValueOrDefault(x.MerchantId),
                 x.FarmerId is not null ? sellerRemainingById.GetValueOrDefault(x.FarmerId.Value) : null,
                 x.DriverId is not null ? sellerRemainingById.GetValueOrDefault(x.DriverId.Value) : null,
-                commissionResult.Commission, commissionResult.NetDueToFarmer + x.WoodTotal,
+                commissionResult.Commission, commissionResult.NetDueToFarmer,
                 driverBoxFeeTotal, x.TransportFee + driverBoxFeeTotal + x.WoodTotal,
                 x.Discount, x.ReturnsTotal,
                 x.PaidAmount, x.GrandTotal - x.PaidAmount,
@@ -990,13 +991,13 @@ public class InvoiceService : IInvoiceService
 
         // Same base as the linked FarmerTransaction.Commission (TotalValue only — never +wood/
         // +transport/+box, see CommissionCalculator's own doc comment) so the COMMISSION itself can
-        // never drift from the farmer's own ledger. NetDueToFarmer below then adds woodTotal on top
-        // (explicit requirement: the farmer is paid the full wood-price amount too, same as the
-        // driver — see FarmerTransaction.Amount in CreateAsync/UpdateAsync) so THIS never drifts
-        // from the farmer's own ledger row either. Computed even without a farmer attached
-        // (harmless/unused then) — see InvoiceDto's own doc comment for where this is and isn't shown.
+        // never drift from the farmer's own ledger. NetDueToFarmer carries no wood — the crates are
+        // not the seller's to be paid for, they are the driver's (see FarmerTransaction.Amount in
+        // CreateAsync/UpdateAsync) — so THIS never drifts from the farmer's own ledger row either.
+        // Computed even without a farmer attached (harmless/unused then) — see InvoiceDto's own doc
+        // comment for where this is and isn't shown.
         var commissionResult = CommissionCalculator.Calculate(i.TotalValue, i.CommissionRateApplied);
-        var netDueToFarmer = commissionResult.NetDueToFarmer + woodTotal;
+        var netDueToFarmer = commissionResult.NetDueToFarmer;
 
         return new(
             i.Id, i.InvoiceNumber, i.Date,

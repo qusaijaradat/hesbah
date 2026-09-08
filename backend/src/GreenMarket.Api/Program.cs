@@ -440,6 +440,36 @@ using (var scope = app.Services.CreateScope())
     {
         app.Logger.LogError(ex, "Failed to add the invoices.Discount/GrandTotal columns or the goods-return tables — discounts, per-invoice payment status and مرتجع بضاعة will not work until this is fixed.");
     }
+    // Correction for the wood price having been paid out twice. سعر الخشب is charged to the buyer
+    // once, and it belongs to the DRIVER, who supplies and handles the crates (see InvoiceCharge).
+    // It used to be added to the SELLER's ledger row as well, so every invoice carrying both a
+    // seller and a driver paid a single charge out to two people — money the market never
+    // collected, sitting in sellers' balances as if it were owed to them.
+    //
+    // A Sale row's amount is fully derivable from figures stored on the row itself: net due is the
+    // sale value minus the commission, and neither of those was ever wrong. So this RECOMPUTES
+    // rather than subtracting the wood back off — subtracting is only correct once, and a
+    // recompute is correct however many times it runs. The WHERE makes a re-run a no-op, and
+    // nothing outside seller Sale rows is touched: driver rows (TransportFee), payments and manual
+    // adjustments are all left exactly as they are. Type 1 = Sale.
+    try
+    {
+        var corrected = await db.Database.ExecuteSqlRawAsync("""
+            UPDATE farmer_transactions
+            SET "Amount" = "SaleValue" - "Commission"
+            WHERE "Type" = 1
+              AND "Amount" <> "SaleValue" - "Commission";
+            """);
+        if (corrected > 0)
+            app.Logger.LogWarning(
+                "Corrected {Count} seller ledger row(s) that had the wood price added to them — سعر الخشب is the driver's, and those sellers' balances were overstated by it.",
+                corrected);
+    }
+    catch (Exception ex)
+    {
+        app.Logger.LogError(ex, "Failed to correct seller ledger rows that double-counted سعر الخشب — affected sellers' balances stay overstated until this is fixed.");
+    }
+
     // One-time data backfill for the "a check only counts once it has cleared" rule (see
     // Domain/Services/PaymentRules). The merchant side recomputes its balance from the payments
     // table on every read, so it picked the new rule up for free — but a payment TO a farmer or

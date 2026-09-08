@@ -5,6 +5,7 @@ import { deleteLogo, getLogo, listSettings, updateSetting, uploadLogo } from "..
 import type { SettingDto } from "../types";
 import { apiErrorMessage } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
+import { toMonochromePng } from "../lib/monochrome";
 
 const KEY_LABELS: Record<string, string> = {
   "commission.default_rate": "نسبة العمولة الافتراضية (مثال: 0.10 = 10%)",
@@ -94,9 +95,19 @@ export function SettingsPage() {
     }
     setLogoBusy(true);
     try {
-      await uploadLogo(file);
+      // Stored black-and-white, not just printed that way: the invoice PDF carries no colour of
+      // its own (see PrintInk in the backend's ExportService), and the logo is the one thing that
+      // could put colour back on a page headed for a black-only printer.
+      const { file: monochrome, converted } = await toMonochromePng(file);
+      if (monochrome.size > MAX_LOGO_BYTES) {
+        setLogoMessage("حجم الصورة كبير جدًا بعد التحويل (الحد الأقصى 3 ميغابايت) — جرّب صورة أصغر.");
+        return;
+      }
+      await uploadLogo(monochrome);
       await refreshLogo();
-      setLogoMessage("تم رفع الشعار — سيظهر على ترويسة الفواتير المطبوعة.");
+      setLogoMessage(converted
+        ? "تم رفع الشعار وتحويله للأبيض والأسود — سيظهر على ترويسة الفواتير المطبوعة."
+        : "تم رفع الشعار كما هو — تعذّر تحويله للأبيض والأسود، فقد يطبع بلون باهت على الطابعة.");
     } catch (err) {
       setLogoMessage(apiErrorMessage(err, "فشل رفع الشعار"));
     } finally {
@@ -169,6 +180,8 @@ export function SettingsPage() {
         <label className="label">شعار الشركة</label>
         <p className="text-xs text-gray-400 mb-3">
           يظهر هذا الشعار بجانب اسم السوق على ترويسة الفاتورة المطبوعة (PDF). بدون رفع شعار خاص بك، تُستخدم شعار "أرديس" الافتراضي تلقائيًا.
+          <br />
+          أي شعار ترفعه يُحوَّل تلقائيًا للأبيض والأسود، لأن الفاتورة المطبوعة كلها بالأسود.
         </p>
         <div className="flex items-center gap-4">
           <div className="w-20 h-20 rounded-md border border-dashed border-gray-300 flex items-center justify-center overflow-hidden bg-gray-50 shrink-0">

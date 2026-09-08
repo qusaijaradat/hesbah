@@ -9,6 +9,51 @@ using QuestPDF.Infrastructure;
 namespace GreenMarket.Api.Services;
 
 /// <summary>
+/// Every ink a printed document is allowed to use, in one place.
+///
+/// The market prints on a black-only printer, so nothing here may depend on hue: a red "خصم"
+/// line and a black one leave that printer looking identical, and a mid-grey (the old
+/// Grey.Darken1) turns into halftone dither that makes 7-9pt Arabic look fuzzy and faint. So
+/// every glyph and every rule is pure black, and the hierarchy that colour used to carry is
+/// carried by font size and weight instead — which survives printing, photocopying and faxing
+/// unchanged.
+///
+/// The only non-black inks left are the table fills. Those are deliberately near-white tints
+/// that halftone into a clean light grey rather than a pattern, and they earn their place by
+/// showing which row is a header and which is a total.
+///
+/// Named per ROLE rather than per colour, so if this market ever prints in colour again,
+/// Secondary and Deduction go back to grey and red here and nowhere else.
+/// </summary>
+internal static class PrintInk
+{
+    /// <summary>Every glyph and every rule on the page.</summary>
+    public static readonly string Text = Colors.Black;
+
+    /// <summary>Supporting text — an address, a print date, an "empty table" note. Black like
+    /// everything else; it reads as secondary because it is set smaller, not because it is
+    /// paler.</summary>
+    public static readonly string Secondary = Colors.Black;
+
+    /// <summary>Amounts subtracted from a total (خصم، مرتجع، عمولة). These used to be red; the
+    /// leading "- ₪" is what actually says "this comes off the total", and unlike the colour it
+    /// still says it in black and white.</summary>
+    public static readonly string Deduction = Colors.Black;
+
+    /// <summary>A table's header row.</summary>
+    public static readonly string HeaderFill = Colors.Grey.Lighten2;
+
+    /// <summary>A totals/section row inside a table — a step lighter than a header.</summary>
+    public static readonly string SubHeaderFill = Colors.Grey.Lighten3;
+
+    /// <summary>Alternating row shading. Near-white on purpose: it has to stay readable under a
+    /// black-only printer's halftone, with small text sitting on top of it.</summary>
+    public static readonly string ZebraFill = Colors.Grey.Lighten4;
+
+    /// <summary>The unshaded half of the alternating rows above.</summary>
+    public static readonly string NoFill = Colors.White;
+}
+/// <summary>
 /// The company-identity block shown on every printed invoice/statement header — all four values
 /// come from Settings (market.name, market.address, market.phone, market.registration_number) so
 /// the market can fill them in themselves without a code change. Everything but Name is optional
@@ -271,13 +316,13 @@ public class ExportService : IExportService
                     {
                         textCol.Item().AlignCenter().Text(company.Name).Bold().FontSize(thermalWidth ? 12 : 18);
                         if (!thermalWidth && !string.IsNullOrWhiteSpace(company.Address))
-                            textCol.Item().AlignCenter().Text(company.Address).FontSize(9).FontColor(Colors.Grey.Darken1);
+                            textCol.Item().AlignCenter().Text(company.Address).FontSize(9).FontColor(PrintInk.Secondary);
                         if (!thermalWidth && !string.IsNullOrWhiteSpace(company.RegistrationNumber))
                             textCol.Item().AlignCenter().Text($"رقم السجل: {company.RegistrationNumber}").FontSize(9);
                         if (!string.IsNullOrWhiteSpace(company.Phone))
                             textCol.Item().AlignCenter().Text($"هاتف: {company.Phone}").FontSize(thermalWidth ? 8 : 9);
                     });
-                    col.Item().PaddingTop(6).LineHorizontal(1).LineColor(Colors.Grey.Darken1);
+                    col.Item().PaddingTop(6).LineHorizontal(1).LineColor(PrintInk.Text);
                     col.Item().PaddingTop(6).Text("فاتورة مشتري").Bold().FontSize(thermalWidth ? 10 : 13);
                     col.Item().PaddingTop(2).Text($"التاريخ: {invoice.Date:yyyy-MM-dd}").FontSize(thermalWidth ? 9 : 11);
                     col.Item().Text($"المطلوب من: {invoice.MerchantName}").FontSize(thermalWidth ? 9 : 11);
@@ -353,7 +398,7 @@ public class ExportService : IExportService
 
                 page.Footer().ContentFromRightToLeft().Column(col =>
                 {
-                    col.Item().LineHorizontal(1).LineColor(Colors.Grey.Darken1);
+                    col.Item().LineHorizontal(1).LineColor(PrintInk.Text);
                     if (invoice.TotalWeightKg > 0)
                         col.Item().AlignRight().Text($"إجمالي الوزن: {invoice.TotalWeightKg:0.###} كغم");
                     if (totalBoxes > 0)
@@ -361,13 +406,13 @@ public class ExportService : IExportService
                     if (invoice.WoodTotal > 0)
                         col.Item().AlignRight().Text($"إجمالي الخشب: ₪ {invoice.WoodTotal:0.##}").FontSize(thermalWidth ? 8 : 10);
                     if (invoice.BoxFeeTotal > 0)
-                        col.Item().AlignRight().Text($"رسم الصناديق: ₪ {invoice.BoxFeeTotal:0.##}").FontSize(thermalWidth ? 8 : 10);
+                        col.Item().AlignRight().Text($"رسوم الصناديق: ₪ {invoice.BoxFeeTotal:0.##}").FontSize(thermalWidth ? 8 : 10);
                     if (invoice.TransportFee > 0)
                         col.Item().AlignRight().Text($"أجرة النقل: ₪ {invoice.TransportFee:0.##}").FontSize(thermalWidth ? 8 : 10);
                     if (invoice.Discount > 0)
-                        col.Item().AlignRight().Text($"خصم: - ₪ {invoice.Discount:0.##}").FontSize(thermalWidth ? 8 : 10).FontColor(Colors.Red.Darken1);
+                        col.Item().AlignRight().Text($"خصم: - ₪ {invoice.Discount:0.##}").FontSize(thermalWidth ? 8 : 10).FontColor(PrintInk.Deduction);
                     if (invoice.ReturnsTotal > 0)
-                        col.Item().AlignRight().Text($"مرتجع بضاعة: - ₪ {invoice.ReturnsTotal:0.##}").FontSize(thermalWidth ? 8 : 10).FontColor(Colors.Red.Darken1);
+                        col.Item().AlignRight().Text($"مرتجع بضاعة: - ₪ {invoice.ReturnsTotal:0.##}").FontSize(thermalWidth ? 8 : 10).FontColor(PrintInk.Deduction);
                     col.Item().PaddingTop(4).AlignRight().Text($"الإجمالي: ₪ {invoice.GrandTotal:0.##}").Bold().FontSize(13);
                     // What this merchant still owed BEFORE this invoice (computed in
                     // InvoiceService — every OTHER Active invoice's total minus every payment
@@ -413,13 +458,13 @@ public class ExportService : IExportService
                     {
                         textCol.Item().AlignCenter().Text(company.Name).Bold().FontSize(18);
                         if (!string.IsNullOrWhiteSpace(company.Address))
-                            textCol.Item().AlignCenter().Text(company.Address).FontSize(9).FontColor(Colors.Grey.Darken1);
+                            textCol.Item().AlignCenter().Text(company.Address).FontSize(9).FontColor(PrintInk.Secondary);
                         if (!string.IsNullOrWhiteSpace(company.RegistrationNumber))
                             textCol.Item().AlignCenter().Text($"رقم السجل: {company.RegistrationNumber}").FontSize(9);
                         if (!string.IsNullOrWhiteSpace(company.Phone))
                             textCol.Item().AlignCenter().Text($"هاتف: {company.Phone}").FontSize(9);
                     });
-                    col.Item().PaddingTop(6).LineHorizontal(1).LineColor(Colors.Grey.Darken1);
+                    col.Item().PaddingTop(6).LineHorizontal(1).LineColor(PrintInk.Text);
                     col.Item().PaddingTop(6).Text("فاتورة بائع").Bold().FontSize(13);
                     col.Item().PaddingTop(2).Text($"التاريخ: {invoice.Date:yyyy-MM-dd}").FontSize(11);
                     col.Item().Text($"البائع: {invoice.FarmerName}").FontSize(11);
@@ -470,7 +515,7 @@ public class ExportService : IExportService
 
                 page.Footer().ContentFromRightToLeft().Column(col =>
                 {
-                    col.Item().LineHorizontal(1).LineColor(Colors.Grey.Darken1);
+                    col.Item().LineHorizontal(1).LineColor(PrintInk.Text);
                     if (invoice.TotalWeightKg > 0)
                         col.Item().AlignRight().Text($"إجمالي الوزن: {invoice.TotalWeightKg:0.###} كغم");
                     if (totalBoxes > 0)
@@ -481,14 +526,14 @@ public class ExportService : IExportService
                     // Commission + WoodTotal. Kept OUT of the commission math itself (never taxed).
                     if (invoice.WoodTotal > 0)
                         col.Item().AlignRight().Text($"سعر الخشب (يُضاف للمستحق — لا يدخل بحساب العمولة): ₪ {invoice.WoodTotal:0.##}");
-                    // Same informational-only treatment as WoodTotal above — رسم الصناديق is
+                    // Same informational-only treatment as WoodTotal above — رسوم الصناديق is
                     // charged to the MERCHANT (see InvoiceDto.BoxFeeTotal), never deducted from
                     // what's owed to the farmer, so it's shown here as cargo detail but kept OUT
                     // of the commission math and net-due figures below.
                     if (invoice.BoxFeeTotal > 0)
-                        col.Item().AlignRight().Text($"رسم الصناديق (لا يدخل بحساب العمولة): ₪ {invoice.BoxFeeTotal:0.##}").FontSize(9).FontColor(Colors.Grey.Darken1);
+                        col.Item().AlignRight().Text($"رسوم الصناديق (لا يدخل بحساب العمولة): ₪ {invoice.BoxFeeTotal:0.##}").FontSize(9).FontColor(PrintInk.Secondary);
                     col.Item().PaddingTop(4).AlignRight().Text($"إجمالي المبيعات: ₪ {invoice.TotalValue:0.##}").FontSize(12);
-                    col.Item().AlignRight().Text($"العمولة ({invoice.CommissionRateApplied:0.##%}): - ₪ {invoice.Commission:0.##}").FontColor(Colors.Red.Darken1);
+                    col.Item().AlignRight().Text($"العمولة ({invoice.CommissionRateApplied:0.##%}): - ₪ {invoice.Commission:0.##}").FontColor(PrintInk.Deduction);
                     col.Item().PaddingTop(2).AlignRight().Text($"الصافي المستحق لهذه الفاتورة: ₪ {invoice.NetDueToFarmer:0.##}").Bold().FontSize(13);
                     if (previousBalance != 0)
                     {
@@ -667,10 +712,10 @@ public class ExportService : IExportService
                         if (!string.IsNullOrWhiteSpace(company.Phone))
                             textCol.Item().AlignCenter().Text($"هاتف: {company.Phone}").FontSize(9);
                     });
-                    col.Item().PaddingTop(6).LineHorizontal(1).LineColor(Colors.Grey.Darken1);
+                    col.Item().PaddingTop(6).LineHorizontal(1).LineColor(PrintInk.Text);
                     col.Item().PaddingTop(6).AlignCenter().Text("كشف أجرة نقل السائق").Bold().FontSize(14);
                     col.Item().Text($"السائق: {driverName}").FontSize(12);
-                    col.Item().Text($"تاريخ الطباعة: {DateTimeOffset.Now:yyyy-MM-dd}").FontSize(9).FontColor(Colors.Grey.Darken1);
+                    col.Item().Text($"تاريخ الطباعة: {DateTimeOffset.Now:yyyy-MM-dd}").FontSize(9).FontColor(PrintInk.Secondary);
                 });
 
                 page.Content().ContentFromRightToLeft().PaddingVertical(10).Table(table =>
@@ -711,7 +756,7 @@ public class ExportService : IExportService
 
                 page.Footer().ContentFromRightToLeft().Column(col =>
                 {
-                    col.Item().LineHorizontal(1).LineColor(Colors.Grey.Darken1);
+                    col.Item().LineHorizontal(1).LineColor(PrintInk.Text);
                     if (totalBoxes > 0)
                         col.Item().AlignRight().Text($"إجمالي الصناديق: {totalBoxes:0.###}").FontSize(9);
                     if (totalWeightKg > 0)
@@ -776,7 +821,7 @@ public class ExportService : IExportService
                         if (!string.IsNullOrWhiteSpace(company.Phone))
                             textCol.Item().AlignCenter().Text($"هاتف: {company.Phone}").FontSize(9);
                     });
-                    col.Item().PaddingTop(6).LineHorizontal(1).LineColor(Colors.Grey.Darken1);
+                    col.Item().PaddingTop(6).LineHorizontal(1).LineColor(PrintInk.Text);
                     col.Item().PaddingTop(6).AlignCenter().Text("كشف المشترين").Bold().FontSize(14);
                     if (dateFrom is not null || dateTo is not null)
                     {
@@ -784,7 +829,7 @@ public class ExportService : IExportService
                         var to = dateTo is not null ? dateTo.Value.ToString("yyyy-MM-dd") : "اليوم";
                         col.Item().Text($"الفترة: من {from} إلى {to}").FontSize(10);
                     }
-                    col.Item().Text($"تاريخ الطباعة: {DateTimeOffset.Now:yyyy-MM-dd}").FontSize(9).FontColor(Colors.Grey.Darken1);
+                    col.Item().Text($"تاريخ الطباعة: {DateTimeOffset.Now:yyyy-MM-dd}").FontSize(9).FontColor(PrintInk.Secondary);
                 });
 
                 page.Content().ContentFromRightToLeft().PaddingVertical(10).Table(table =>
@@ -831,7 +876,7 @@ public class ExportService : IExportService
 
                 page.Footer().ContentFromRightToLeft().Column(col =>
                 {
-                    col.Item().LineHorizontal(1).LineColor(Colors.Grey.Darken1);
+                    col.Item().LineHorizontal(1).LineColor(PrintInk.Text);
                     col.Item().PaddingTop(4).AlignRight().Text($"الإجمالي: ₪ {grandTotal:0.##}").Bold().FontSize(13);
                 });
             });
@@ -870,7 +915,7 @@ public class ExportService : IExportService
                         if (!string.IsNullOrWhiteSpace(company.Phone))
                             textCol.Item().AlignCenter().Text($"هاتف: {company.Phone}").FontSize(9);
                     });
-                    col.Item().PaddingTop(6).LineHorizontal(1).LineColor(Colors.Grey.Darken1);
+                    col.Item().PaddingTop(6).LineHorizontal(1).LineColor(PrintInk.Text);
                     col.Item().PaddingTop(6).AlignCenter().Text("كشف الباعة").Bold().FontSize(14);
                     if (dateFrom is not null || dateTo is not null)
                     {
@@ -878,7 +923,7 @@ public class ExportService : IExportService
                         var to = dateTo is not null ? dateTo.Value.ToString("yyyy-MM-dd") : "اليوم";
                         col.Item().Text($"الفترة: من {from} إلى {to}").FontSize(10);
                     }
-                    col.Item().Text($"تاريخ الطباعة: {DateTimeOffset.Now:yyyy-MM-dd}").FontSize(9).FontColor(Colors.Grey.Darken1);
+                    col.Item().Text($"تاريخ الطباعة: {DateTimeOffset.Now:yyyy-MM-dd}").FontSize(9).FontColor(PrintInk.Secondary);
                 });
 
                 page.Content().ContentFromRightToLeft().PaddingVertical(10).Table(table =>
@@ -922,7 +967,7 @@ public class ExportService : IExportService
 
                 page.Footer().ContentFromRightToLeft().Column(col =>
                 {
-                    col.Item().LineHorizontal(1).LineColor(Colors.Grey.Darken1);
+                    col.Item().LineHorizontal(1).LineColor(PrintInk.Text);
                     col.Item().PaddingTop(4).AlignRight().Text($"الإجمالي: ₪ {grandTotal:0.##}").Bold().FontSize(13);
                 });
             });
@@ -962,7 +1007,7 @@ public class ExportService : IExportService
                         if (!string.IsNullOrWhiteSpace(company.Phone))
                             textCol.Item().AlignCenter().Text($"هاتف: {company.Phone}").FontSize(9);
                     });
-                    col.Item().PaddingTop(6).LineHorizontal(1).LineColor(Colors.Grey.Darken1);
+                    col.Item().PaddingTop(6).LineHorizontal(1).LineColor(PrintInk.Text);
                     col.Item().PaddingTop(6).AlignCenter().Text("كشف السائقين").Bold().FontSize(14);
                     if (dateFrom is not null || dateTo is not null)
                     {
@@ -970,7 +1015,7 @@ public class ExportService : IExportService
                         var to = dateTo is not null ? dateTo.Value.ToString("yyyy-MM-dd") : "اليوم";
                         col.Item().Text($"الفترة: من {from} إلى {to}").FontSize(10);
                     }
-                    col.Item().Text($"تاريخ الطباعة: {DateTimeOffset.Now:yyyy-MM-dd}").FontSize(9).FontColor(Colors.Grey.Darken1);
+                    col.Item().Text($"تاريخ الطباعة: {DateTimeOffset.Now:yyyy-MM-dd}").FontSize(9).FontColor(PrintInk.Secondary);
                 });
 
                 page.Content().ContentFromRightToLeft().PaddingVertical(10).Table(table =>
@@ -1011,7 +1056,7 @@ public class ExportService : IExportService
 
                 page.Footer().ContentFromRightToLeft().Column(col =>
                 {
-                    col.Item().LineHorizontal(1).LineColor(Colors.Grey.Darken1);
+                    col.Item().LineHorizontal(1).LineColor(PrintInk.Text);
                     col.Item().PaddingTop(4).AlignRight().Text($"إجمالي أجرة النقل: ₪ {grandTotal:0.##}").Bold().FontSize(13);
                 });
             });
@@ -1082,7 +1127,7 @@ public class ExportService : IExportService
                         if (!string.IsNullOrWhiteSpace(company.Phone))
                             textCol.Item().AlignCenter().Text($"هاتف: {company.Phone}").FontSize(9);
                     });
-                    col.Item().PaddingTop(6).LineHorizontal(1).LineColor(Colors.Grey.Darken1);
+                    col.Item().PaddingTop(6).LineHorizontal(1).LineColor(PrintInk.Text);
                     col.Item().PaddingTop(6).AlignCenter().Text("كشف بائع").Bold().FontSize(14);
                     col.Item().Text($"البائع: {statement.FarmerName}").FontSize(12);
                     if (dateFrom is not null || dateTo is not null)
@@ -1091,7 +1136,7 @@ public class ExportService : IExportService
                         var to = dateTo is not null ? dateTo.Value.ToString("yyyy-MM-dd") : "اليوم";
                         col.Item().Text($"الفترة: من {from} إلى {to}").FontSize(10);
                     }
-                    col.Item().Text($"تاريخ الطباعة: {DateTimeOffset.Now:yyyy-MM-dd}").FontSize(9).FontColor(Colors.Grey.Darken1);
+                    col.Item().Text($"تاريخ الطباعة: {DateTimeOffset.Now:yyyy-MM-dd}").FontSize(9).FontColor(PrintInk.Secondary);
                 });
 
                 page.Content().ContentFromRightToLeft().PaddingVertical(10).Column(mainCol =>
@@ -1100,7 +1145,7 @@ public class ExportService : IExportService
 
                     if (itemGroups.Count == 0)
                     {
-                        mainCol.Item().AlignCenter().Text("لا توجد بيانات لهذه الفترة").FontColor(Colors.Grey.Darken1);
+                        mainCol.Item().AlignCenter().Text("لا توجد بيانات لهذه الفترة").FontColor(PrintInk.Secondary);
                     }
 
                     foreach (var group in itemGroups)
@@ -1147,9 +1192,9 @@ public class ExportService : IExportService
                             itemCol.Item().PaddingTop(2).AlignRight().Row(row =>
                             {
                                 if (group.WoodSubtotal > 0)
-                                    row.AutoItem().PaddingRight(16).Text($"الخشب: ₪ {group.WoodSubtotal:0.##}").FontSize(8).FontColor(Colors.Grey.Darken1);
+                                    row.AutoItem().PaddingRight(16).Text($"الخشب: ₪ {group.WoodSubtotal:0.##}").FontSize(8).FontColor(PrintInk.Secondary);
                                 row.AutoItem().PaddingRight(16).Text($"المجموع: ₪ {group.Subtotal:0.##}").Bold();
-                                row.AutoItem().PaddingRight(16).Text($"العمولة: - ₪ {group.Commission:0.##}").FontColor(Colors.Red.Darken1);
+                                row.AutoItem().PaddingRight(16).Text($"العمولة: - ₪ {group.Commission:0.##}").FontColor(PrintInk.Deduction);
                                 row.AutoItem().Text($"الصافي: ₪ {group.Net:0.##}").Bold();
                             });
                         });
@@ -1207,7 +1252,7 @@ public class ExportService : IExportService
 
                 page.Footer().ContentFromRightToLeft().Column(col =>
                 {
-                    col.Item().LineHorizontal(1).LineColor(Colors.Grey.Darken1);
+                    col.Item().LineHorizontal(1).LineColor(PrintInk.Text);
                     if (totalWeightKg > 0)
                         col.Item().AlignRight().Text($"إجمالي الوزن: {totalWeightKg:0.###} كغم");
                     if (totalBoxes > 0)
@@ -1215,14 +1260,14 @@ public class ExportService : IExportService
                     if (woodTotal > 0)
                         col.Item().AlignRight().Text($"إجمالي الخشب: ₪ {woodTotal:0.##}").FontSize(9);
                     col.Item().PaddingTop(4).AlignRight().Text($"إجمالي المبيعات: ₪ {itemsTotal:0.##}").Bold().FontSize(12);
-                    col.Item().AlignRight().Text($"إجمالي العمولة: - ₪ {totalCommission:0.##}").FontColor(Colors.Red.Darken1).FontSize(11);
+                    col.Item().AlignRight().Text($"إجمالي العمولة: - ₪ {totalCommission:0.##}").FontColor(PrintInk.Deduction).FontSize(11);
                     col.Item().PaddingTop(2).AlignRight().Text($"الصافي المستحق للبائع: ₪ {netDue:0.##}").Bold().FontSize(13);
                     if (previousBalance != 0)
                     {
                         col.Item().PaddingTop(2).AlignRight().Text($"الرصيد السابق (رصيد حساب البائع الحالي): ₪ {previousBalance:0.##}").FontSize(10);
                         col.Item().PaddingTop(2).AlignRight().Text($"الإجمالي المستحق: ₪ {(netDue + previousBalance):0.##}").Bold().FontSize(13);
                     }
-                    col.Item().PaddingTop(6).AlignCenter().DefaultTextStyle(x => x.FontSize(8).FontColor(Colors.Grey.Darken1)).Text(x =>
+                    col.Item().PaddingTop(6).AlignCenter().DefaultTextStyle(x => x.FontSize(8).FontColor(PrintInk.Secondary)).Text(x =>
                     {
                         x.Span("صفحة ");
                         x.CurrentPageNumber();
@@ -1241,12 +1286,12 @@ public class ExportService : IExportService
     /// PDF, shrunk down and boxed so four of them read as four distinct invoices on one sheet
     /// rather than one blob. Rendered as the copy belonging to <paramref name="role"/>:
     ///
-    ///  • Merchant — "فاتورة مشتري": what the buyer owes. Product + خشب + رسم الصناديق folded into
+    ///  • Merchant — "فاتورة مشتري": what the buyer owes. Product + خشب + رسوم الصناديق folded into
     ///    GrandTotal, plus their الرصيد السابق. Commission stays invisible here (requirement §5),
     ///    and so do البائع/السائق (same reasoning as GenerateInvoicePdf).
     ///  • Farmer — "فاتورة بائع": what the seller is owed. Sale value, the commission deducted off
     ///    it, and سعر الخشب added back on top — the same math as GenerateFarmerInvoicePdf's
-    ///    "نسخة البائع". Deliberately carries NO merchant grand total, no رسم الصناديق (that's
+    ///    "نسخة البائع". Deliberately carries NO merchant grand total, no رسوم الصناديق (that's
     ///    charged to the buyer, never deducted from the seller) and no merchant الرصيد السابق.
     ///  • Driver — "فاتورة سائق": what the driver is owed. Cargo (عدد/وزن, no per-item price — a
     ///    driver has no per-item price at all) plus أجرة النقل + أجرة الصناديق + سعر الخشب, the
@@ -1263,7 +1308,7 @@ public class ExportService : IExportService
         // renders correctly — right-aligned text, and the item table's "الصنف" column as the
         // RIGHTMOST column (read first) — no matter what context it's ever called from.
         container.ContentFromRightToLeft()
-            .Border(1).BorderColor(Colors.Grey.Lighten1).Padding(8).Column(col =>
+            .Border(1).BorderColor(PrintInk.Text).Padding(8).Column(col =>
         {
             // Bug fix: this card used to show only the company name — Address/RegistrationNumber/
             // Phone were never included at all (unlike the single-invoice A4 header, which does
@@ -1274,13 +1319,13 @@ public class ExportService : IExportService
             {
                 textCol.Item().AlignCenter().Text(company.Name).Bold().FontSize(10);
                 if (!string.IsNullOrWhiteSpace(company.Address))
-                    textCol.Item().AlignCenter().Text(company.Address).FontSize(7).FontColor(Colors.Grey.Darken1);
+                    textCol.Item().AlignCenter().Text(company.Address).FontSize(7).FontColor(PrintInk.Secondary);
                 if (!string.IsNullOrWhiteSpace(company.RegistrationNumber))
                     textCol.Item().AlignCenter().Text($"رقم السجل: {company.RegistrationNumber}").FontSize(7);
                 if (!string.IsNullOrWhiteSpace(company.Phone))
                     textCol.Item().AlignCenter().Text($"هاتف: {company.Phone}").FontSize(7);
             });
-            col.Item().PaddingTop(3).LineHorizontal(0.5f).LineColor(Colors.Grey.Darken1);
+            col.Item().PaddingTop(3).LineHorizontal(0.5f).LineColor(PrintInk.Text);
             // Title and counterparty are the role's own — a بائع copy is addressed to the بائع,
             // never "المطلوب من {merchant}". A missing name can't normally happen (the Farmer and
             // Driver sections only ever select invoices that HAVE one — see InvoiceFilterRequest's
@@ -1300,24 +1345,24 @@ public class ExportService : IExportService
             // hides both البائع and السائق, and the driver's copy still names only himself.
             if (role == InvoicePrintRole.Farmer && !string.IsNullOrWhiteSpace(invoice.DriverName))
                 col.Item().Text($"السائق: {invoice.DriverName}").FontSize(8);
-            col.Item().PaddingTop(4).LineHorizontal(0.5f).LineColor(Colors.Grey.Lighten1);
+            col.Item().PaddingTop(4).LineHorizontal(0.5f).LineColor(PrintInk.Text);
 
             var isDriverCopy = role == InvoicePrintRole.Driver;
 
             CardItemsTable(col, invoice.Items, isDriverCopy);
 
-            col.Item().PaddingTop(4).LineHorizontal(0.5f).LineColor(Colors.Grey.Lighten1);
+            col.Item().PaddingTop(4).LineHorizontal(0.5f).LineColor(PrintInk.Text);
 
             switch (role)
             {
                 case InvoicePrintRole.Farmer:
                     // Mirrors GenerateFarmerInvoicePdf's footer: TotalValue - Commission +
-                    // WoodTotal = NetDueToFarmer. رسم الصناديق is charged to the merchant and never
+                    // WoodTotal = NetDueToFarmer. رسوم الصناديق is charged to the merchant and never
                     // deducted from the seller, so it has no place on this copy at all.
                     col.Item().AlignRight().Text($"إجمالي المبيعات: ₪ {invoice.TotalValue:0.##}").FontSize(8);
                     if (invoice.WoodTotal > 0)
                         col.Item().AlignRight().Text($"سعر الخشب (يُضاف للمستحق): ₪ {invoice.WoodTotal:0.##}").FontSize(7);
-                    col.Item().AlignRight().Text($"العمولة ({invoice.CommissionRateApplied:0.##%}): - ₪ {invoice.Commission:0.##}").FontSize(7).FontColor(Colors.Red.Darken1);
+                    col.Item().AlignRight().Text($"العمولة ({invoice.CommissionRateApplied:0.##%}): - ₪ {invoice.Commission:0.##}").FontSize(7).FontColor(PrintInk.Deduction);
                     col.Item().PaddingTop(2).AlignRight().Text($"الصافي المستحق: ₪ {invoice.NetDueToFarmer:0.##}").Bold().FontSize(10);
                     break;
 
@@ -1345,9 +1390,9 @@ public class ExportService : IExportService
 
                 default:
                     if (invoice.Discount > 0)
-                        col.Item().AlignRight().Text($"خصم: - ₪ {invoice.Discount:0.##}").FontSize(7).FontColor(Colors.Red.Darken1);
+                        col.Item().AlignRight().Text($"خصم: - ₪ {invoice.Discount:0.##}").FontSize(7).FontColor(PrintInk.Deduction);
                     if (invoice.ReturnsTotal > 0)
-                        col.Item().AlignRight().Text($"مرتجع: - ₪ {invoice.ReturnsTotal:0.##}").FontSize(7).FontColor(Colors.Red.Darken1);
+                        col.Item().AlignRight().Text($"مرتجع: - ₪ {invoice.ReturnsTotal:0.##}").FontSize(7).FontColor(PrintInk.Deduction);
                     CardMerchantTotals(col, invoice.WoodTotal, invoice.BoxFeeTotal, invoice.GrandTotal, invoice.PreviousBalance);
                     break;
             }
@@ -1430,7 +1475,7 @@ public class ExportService : IExportService
         if (woodTotal > 0)
             column.Item().AlignRight().Text($"منها سعر الخشب: ₪ {woodTotal:0.##}").FontSize(7);
         if (boxFeeTotal > 0)
-            column.Item().AlignRight().Text($"منها رسم الصناديق: ₪ {boxFeeTotal:0.##}").FontSize(7);
+            column.Item().AlignRight().Text($"منها رسوم الصناديق: ₪ {boxFeeTotal:0.##}").FontSize(7);
         column.Item().PaddingTop(2).AlignRight().Text($"الإجمالي: ₪ {grandTotal:0.##}").Bold().FontSize(10);
         if (previousBalance > 0)
         {
@@ -1449,27 +1494,27 @@ public class ExportService : IExportService
     private void MergedInvoiceCard(IContainer container, MergedInvoiceGroupDto group, CompanyInfo company)
     {
         container.ContentFromRightToLeft()
-            .Border(1).BorderColor(Colors.Grey.Lighten1).Padding(8).Column(col =>
+            .Border(1).BorderColor(PrintInk.Text).Padding(8).Column(col =>
         {
             CompanyHeaderBlock(col, company, 28f, textCol =>
             {
                 textCol.Item().AlignCenter().Text(company.Name).Bold().FontSize(10);
                 if (!string.IsNullOrWhiteSpace(company.Address))
-                    textCol.Item().AlignCenter().Text(company.Address).FontSize(7).FontColor(Colors.Grey.Darken1);
+                    textCol.Item().AlignCenter().Text(company.Address).FontSize(7).FontColor(PrintInk.Secondary);
                 if (!string.IsNullOrWhiteSpace(company.RegistrationNumber))
                     textCol.Item().AlignCenter().Text($"رقم السجل: {company.RegistrationNumber}").FontSize(7);
                 if (!string.IsNullOrWhiteSpace(company.Phone))
                     textCol.Item().AlignCenter().Text($"هاتف: {company.Phone}").FontSize(7);
             });
-            col.Item().PaddingTop(3).LineHorizontal(0.5f).LineColor(Colors.Grey.Darken1);
+            col.Item().PaddingTop(3).LineHorizontal(0.5f).LineColor(PrintInk.Text);
             col.Item().PaddingTop(3).Text("فاتورة مشتري").Bold().FontSize(9);
             col.Item().Text($"التاريخ: {group.Date:yyyy-MM-dd}").FontSize(8);
             col.Item().Text($"المطلوب من: {group.MerchantName}").FontSize(8);
-            col.Item().PaddingTop(4).LineHorizontal(0.5f).LineColor(Colors.Grey.Lighten1);
+            col.Item().PaddingTop(4).LineHorizontal(0.5f).LineColor(PrintInk.Text);
 
             CardItemsTable(col, group.Items, isDriverCopy: false);
 
-            col.Item().PaddingTop(4).LineHorizontal(0.5f).LineColor(Colors.Grey.Lighten1);
+            col.Item().PaddingTop(4).LineHorizontal(0.5f).LineColor(PrintInk.Text);
             CardMerchantTotals(col, group.WoodTotal, group.BoxFeeTotal, group.GrandTotal, group.PreviousBalance);
         });
     }
@@ -1498,22 +1543,22 @@ public class ExportService : IExportService
     /// <summary>Shaded header cell for the shrunk-down invoice-card table used in the 4-per-page
     /// bulk print — same look as HeaderCell, just smaller to fit a quarter page.</summary>
     private static IContainer MiniHeaderCell(IContainer container) =>
-        container.Background(Colors.Grey.Lighten3).PaddingVertical(2).PaddingHorizontal(3).DefaultTextStyle(x => x.Bold().FontSize(7));
+        container.Background(PrintInk.SubHeaderFill).PaddingVertical(2).PaddingHorizontal(3).DefaultTextStyle(x => x.Bold().FontSize(7));
 
     /// <summary>Alternating row shading for the shrunk-down invoice-card table — same look as
     /// DataCell, just smaller to fit a quarter page.</summary>
     private static IContainer MiniDataCell(IContainer container, bool shaded) =>
-        container.Background(shaded ? Colors.Grey.Lighten4 : Colors.White).PaddingVertical(2).PaddingHorizontal(3).DefaultTextStyle(x => x.FontSize(7));
+        container.Background(shaded ? PrintInk.ZebraFill : PrintInk.NoFill).PaddingVertical(2).PaddingHorizontal(3).DefaultTextStyle(x => x.FontSize(7));
 
     /// <summary>Shaded header cell for a "مرتب" (organized) look — grey background, bold text.</summary>
     private static IContainer HeaderCell(IContainer container) =>
-        container.Background(Colors.Grey.Lighten2).PaddingVertical(6).PaddingHorizontal(6).DefaultTextStyle(x => x.Bold());
+        container.Background(PrintInk.HeaderFill).PaddingVertical(6).PaddingHorizontal(6).DefaultTextStyle(x => x.Bold());
 
     /// <summary>Alternating row shading plus a thin bottom border, so a long item list stays easy
     /// to scan across a row instead of blurring into one grey block.</summary>
     private static IContainer DataCell(IContainer container, bool shaded) =>
-        container.Background(shaded ? Colors.Grey.Lighten4 : Colors.White)
-            .BorderBottom(0.5f).BorderColor(Colors.Grey.Lighten2)
+        container.Background(shaded ? PrintInk.ZebraFill : PrintInk.NoFill)
+            .BorderBottom(0.5f).BorderColor(PrintInk.Text)
             .PaddingVertical(5).PaddingHorizontal(6);
 
     private static string ArabicUnitLabel(UnitOfMeasure unit) => unit switch
@@ -1650,9 +1695,9 @@ public class ExportService : IExportService
                     {
                         textCol.Item().AlignCenter().Text(company.Name).Bold().FontSize(15);
                     });
-                    col.Item().PaddingTop(6).LineHorizontal(1).LineColor(Colors.Grey.Darken1);
+                    col.Item().PaddingTop(6).LineHorizontal(1).LineColor(PrintInk.Text);
                     col.Item().PaddingTop(6).AlignCenter().Text("كشف قيمة الديون").Bold().FontSize(14);
-                    col.Item().Text($"تاريخ الطباعة: {DateTimeOffset.Now:yyyy-MM-dd}").FontSize(9).FontColor(Colors.Grey.Darken1);
+                    col.Item().Text($"تاريخ الطباعة: {DateTimeOffset.Now:yyyy-MM-dd}").FontSize(9).FontColor(PrintInk.Secondary);
                 });
 
                 page.Content().ContentFromRightToLeft().PaddingVertical(10).Column(col =>
@@ -1688,7 +1733,7 @@ public class ExportService : IExportService
 
             if (rows.Count == 0)
             {
-                col.Item().PaddingTop(2).Text("لا يوجد أحد عليه أو له رصيد حاليًا").FontSize(9).FontColor(Colors.Grey.Darken1);
+                col.Item().PaddingTop(2).Text("لا يوجد أحد عليه أو له رصيد حاليًا").FontSize(9).FontColor(PrintInk.Secondary);
                 return;
             }
 
@@ -1751,12 +1796,12 @@ public class ExportService : IExportService
                     {
                         textCol.Item().AlignCenter().Text(company.Name).Bold().FontSize(15);
                     });
-                    col.Item().PaddingTop(6).LineHorizontal(1).LineColor(Colors.Grey.Darken1);
+                    col.Item().PaddingTop(6).LineHorizontal(1).LineColor(PrintInk.Text);
                     col.Item().PaddingTop(6).AlignCenter().Text(title).Bold().FontSize(14);
                     col.Item().Text($"الاسم: {partnerName}").FontSize(12);
                     if (openingBalance != 0)
-                        col.Item().Text($"رصيد افتتاحي: ₪ {openingBalance:0.##}").FontSize(9).FontColor(Colors.Grey.Darken1);
-                    col.Item().Text($"تاريخ الطباعة: {DateTimeOffset.Now:yyyy-MM-dd}").FontSize(9).FontColor(Colors.Grey.Darken1);
+                        col.Item().Text($"رصيد افتتاحي: ₪ {openingBalance:0.##}").FontSize(9).FontColor(PrintInk.Secondary);
+                    col.Item().Text($"تاريخ الطباعة: {DateTimeOffset.Now:yyyy-MM-dd}").FontSize(9).FontColor(PrintInk.Secondary);
                 });
 
                 page.Content().ContentFromRightToLeft().PaddingVertical(10).Table(table =>
@@ -1781,7 +1826,7 @@ public class ExportService : IExportService
 
                     if (lines.Count == 0)
                     {
-                        table.Cell().ColumnSpan(5).Element(c => DataCell(c, false)).AlignCenter().Text("لا توجد حركات").FontColor(Colors.Grey.Darken1);
+                        table.Cell().ColumnSpan(5).Element(c => DataCell(c, false)).AlignCenter().Text("لا توجد حركات").FontColor(PrintInk.Secondary);
                     }
 
                     for (var i = 0; i < lines.Count; i++)
@@ -1798,7 +1843,7 @@ public class ExportService : IExportService
 
                 page.Footer().ContentFromRightToLeft().Column(col =>
                 {
-                    col.Item().LineHorizontal(1).LineColor(Colors.Grey.Darken1);
+                    col.Item().LineHorizontal(1).LineColor(PrintInk.Text);
                     col.Item().PaddingTop(4).AlignRight().Text($"الرصيد الحالي (المتبقي): ₪ {remaining:0.##}").Bold().FontSize(13);
                     col.Item().PaddingTop(2).AlignCenter().Text(x =>
                     {
@@ -1856,10 +1901,10 @@ public class ExportService : IExportService
                     {
                         textCol.Item().AlignCenter().Text(company.Name).Bold().FontSize(15);
                     });
-                    col.Item().PaddingTop(6).LineHorizontal(1).LineColor(Colors.Grey.Darken1);
+                    col.Item().PaddingTop(6).LineHorizontal(1).LineColor(PrintInk.Text);
                     col.Item().PaddingTop(6).AlignCenter().Text(title).Bold().FontSize(14);
                     col.Item().Text($"الاسم: {partnerName}").FontSize(12);
-                    col.Item().Text($"تاريخ الطباعة: {DateTimeOffset.Now:yyyy-MM-dd}").FontSize(9).FontColor(Colors.Grey.Darken1);
+                    col.Item().Text($"تاريخ الطباعة: {DateTimeOffset.Now:yyyy-MM-dd}").FontSize(9).FontColor(PrintInk.Secondary);
                 });
 
                 page.Content().ContentFromRightToLeft().PaddingVertical(10).Table(table =>
@@ -1905,7 +1950,7 @@ public class ExportService : IExportService
 
                 page.Footer().ContentFromRightToLeft().Column(col =>
                 {
-                    col.Item().LineHorizontal(1).LineColor(Colors.Grey.Darken1);
+                    col.Item().LineHorizontal(1).LineColor(PrintInk.Text);
                     col.Item().PaddingTop(4).AlignRight().Text($"مجموع قيمة الأصناف: ₪ {lines.Sum(l => l.LineTotal):0.##}").Bold().FontSize(12);
                     col.Item().PaddingTop(2).AlignCenter().Text(x =>
                     {
@@ -1962,11 +2007,11 @@ public class ExportService : IExportService
                     {
                         textCol.Item().AlignCenter().Text(company.Name).Bold().FontSize(15);
                     });
-                    col.Item().PaddingTop(6).LineHorizontal(1).LineColor(Colors.Grey.Darken1);
+                    col.Item().PaddingTop(6).LineHorizontal(1).LineColor(PrintInk.Text);
                     col.Item().PaddingTop(6).AlignCenter().Text("كشف الشيكات").Bold().FontSize(14);
                     if (!string.IsNullOrWhiteSpace(periodLabel))
                         col.Item().Text(periodLabel).FontSize(10);
-                    col.Item().Text($"تاريخ الطباعة: {DateTimeOffset.Now:yyyy-MM-dd}").FontSize(9).FontColor(Colors.Grey.Darken1);
+                    col.Item().Text($"تاريخ الطباعة: {DateTimeOffset.Now:yyyy-MM-dd}").FontSize(9).FontColor(PrintInk.Secondary);
                 });
 
                 page.Content().ContentFromRightToLeft().PaddingVertical(10).Table(table =>
@@ -2009,7 +2054,7 @@ public class ExportService : IExportService
 
                 page.Footer().ContentFromRightToLeft().Column(col =>
                 {
-                    col.Item().LineHorizontal(1).LineColor(Colors.Grey.Darken1);
+                    col.Item().LineHorizontal(1).LineColor(PrintInk.Text);
                     var pendingTotal = checks.Where(c => c.CheckStatus == CheckClearanceStatus.Pending).Sum(c => c.Amount);
                     col.Item().PaddingTop(4).AlignRight().Text($"إجمالي الشيكات قيد التحصيل: ₪ {pendingTotal:0.##}").Bold().FontSize(12);
                     col.Item().PaddingTop(2).AlignCenter().Text(x =>
@@ -2048,7 +2093,7 @@ public class ExportService : IExportService
                     {
                         textCol.Item().AlignCenter().Text(company.Name).Bold().FontSize(15);
                     });
-                    col.Item().PaddingTop(6).LineHorizontal(1).LineColor(Colors.Grey.Darken1);
+                    col.Item().PaddingTop(6).LineHorizontal(1).LineColor(PrintInk.Text);
                     col.Item().PaddingTop(6).AlignCenter().Text("كشف الدفعات").Bold().FontSize(14);
                     if (dateFrom is not null || dateTo is not null)
                     {
@@ -2056,7 +2101,7 @@ public class ExportService : IExportService
                         var to = dateTo is not null ? dateTo.Value.ToString("yyyy-MM-dd") : "اليوم";
                         col.Item().Text($"الفترة: من {from} إلى {to}").FontSize(10);
                     }
-                    col.Item().Text($"تاريخ الطباعة: {DateTimeOffset.Now:yyyy-MM-dd}").FontSize(9).FontColor(Colors.Grey.Darken1);
+                    col.Item().Text($"تاريخ الطباعة: {DateTimeOffset.Now:yyyy-MM-dd}").FontSize(9).FontColor(PrintInk.Secondary);
                 });
 
                 page.Content().ContentFromRightToLeft().PaddingVertical(10).Table(table =>
@@ -2099,7 +2144,7 @@ public class ExportService : IExportService
 
                 page.Footer().ContentFromRightToLeft().Column(col =>
                 {
-                    col.Item().LineHorizontal(1).LineColor(Colors.Grey.Darken1);
+                    col.Item().LineHorizontal(1).LineColor(PrintInk.Text);
                     var toFarmerTotal = payments.Where(p => p.Direction == PaymentDirection.ToFarmer).Sum(p => p.Amount);
                     var toDriverTotal = payments.Where(p => p.Direction == PaymentDirection.ToDriver).Sum(p => p.Amount);
                     var fromMerchantTotal = payments.Where(p => p.Direction == PaymentDirection.FromMerchant).Sum(p => p.Amount);
@@ -2138,7 +2183,7 @@ public class ExportService : IExportService
                     {
                         textCol.Item().AlignCenter().Text(company.Name).Bold().FontSize(15);
                     });
-                    col.Item().PaddingTop(6).LineHorizontal(1).LineColor(Colors.Grey.Darken1);
+                    col.Item().PaddingTop(6).LineHorizontal(1).LineColor(PrintInk.Text);
                     col.Item().PaddingTop(6).AlignCenter().Text("كشف مصاريف الحسبة").Bold().FontSize(14);
                     if (dateFrom is not null || dateTo is not null)
                     {
@@ -2146,7 +2191,7 @@ public class ExportService : IExportService
                         var to = dateTo is not null ? dateTo.Value.ToString("yyyy-MM-dd") : "اليوم";
                         col.Item().Text($"الفترة: من {from} إلى {to}").FontSize(10);
                     }
-                    col.Item().Text($"تاريخ الطباعة: {DateTimeOffset.Now:yyyy-MM-dd}").FontSize(9).FontColor(Colors.Grey.Darken1);
+                    col.Item().Text($"تاريخ الطباعة: {DateTimeOffset.Now:yyyy-MM-dd}").FontSize(9).FontColor(PrintInk.Secondary);
                 });
 
                 page.Content().ContentFromRightToLeft().PaddingVertical(10).Table(table =>
@@ -2183,7 +2228,7 @@ public class ExportService : IExportService
 
                 page.Footer().ContentFromRightToLeft().Column(col =>
                 {
-                    col.Item().LineHorizontal(1).LineColor(Colors.Grey.Darken1);
+                    col.Item().LineHorizontal(1).LineColor(PrintInk.Text);
                     col.Item().PaddingTop(4).AlignRight().Text($"الإجمالي: ₪ {expenses.Sum(e => e.Amount):0.##}").Bold().FontSize(12);
                     col.Item().PaddingTop(2).AlignCenter().Text(x =>
                     {
@@ -2219,10 +2264,10 @@ public class ExportService : IExportService
                     {
                         textCol.Item().AlignCenter().Text(company.Name).Bold().FontSize(15);
                     });
-                    col.Item().PaddingTop(6).LineHorizontal(1).LineColor(Colors.Grey.Darken1);
+                    col.Item().PaddingTop(6).LineHorizontal(1).LineColor(PrintInk.Text);
                     col.Item().PaddingTop(6).AlignCenter().Text("المخزون المتوفر حاليًا").Bold().FontSize(14);
                     col.Item().Text($"البائع: {farmerName}").FontSize(12);
-                    col.Item().Text($"تاريخ الطباعة: {DateTimeOffset.Now:yyyy-MM-dd}").FontSize(9).FontColor(Colors.Grey.Darken1);
+                    col.Item().Text($"تاريخ الطباعة: {DateTimeOffset.Now:yyyy-MM-dd}").FontSize(9).FontColor(PrintInk.Secondary);
                 });
 
                 page.Content().ContentFromRightToLeft().PaddingVertical(10).Table(table =>

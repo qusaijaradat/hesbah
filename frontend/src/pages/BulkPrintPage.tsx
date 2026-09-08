@@ -383,7 +383,7 @@ function SectionFilters({ section }: { section: RoleSection }) {
  *
  * Now each tab names only its own counterparty and shows only its own money — the same figures
  * that role's printed copy carries (see backend ExportService.InvoiceCard):
- *   مشتري — القيمة، سعر الخشب، رسم الصناديق، الإجمالي
+ *   مشتري — القيمة، سعر الخشب، رسوم الصناديق، الإجمالي
  *   بائع  — قيمة المبيعات، سعر الخشب، العمولة، الصافي المستحق
  *   سائق  — أجرة النقل، أجرة الصناديق، سعر الخشب، المستحق للسائق
  * سعر الخشب stays its own column on all three (never folded silently into a total), as does the
@@ -420,7 +420,7 @@ function SectionTable({ section }: { section: RoleSection }) {
       ? [
           { label: "القيمة", value: (i) => i.totalValue, bold: true },
           { label: "سعر الخشب", value: (i) => i.woodTotal },
-          { label: "رسم الصناديق", value: (i) => i.boxFeeTotal },
+          { label: "رسوم الصناديق", value: (i) => i.boxFeeTotal },
           { label: "الإجمالي", value: (i) => i.grandTotal, bold: true },
         ]
       : role === "Farmer"
@@ -506,7 +506,7 @@ function SectionPrintBar({ section }: { section: RoleSection }) {
   return (
     <div className="card p-4 flex items-center justify-between flex-wrap gap-3 mb-4">
       {/* Totals for THIS section's side only — matching its table columns and its printed copy.
-          A بائع section used to sum the merchant's grand total (product + خشب + رسم الصناديق +
+          A بائع section used to sum the merchant's grand total (product + خشب + رسوم الصناديق +
           أجرة النقل), which is money the seller neither receives nor owes. */}
       <div className="text-sm text-gray-600 space-x-3 space-x-reverse">
         <span>محدد: <span className="font-semibold">{section.selected.size}</span> فاتورة</span>

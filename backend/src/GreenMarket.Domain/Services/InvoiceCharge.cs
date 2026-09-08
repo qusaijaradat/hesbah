@@ -16,7 +16,7 @@ namespace GreenMarket.Domain.Services;
 ///                      farmer's own math is ever computed from.
 ///   • TransportFee   — أجرة النقل, a pass-through the buyer pays and the driver receives.
 ///   • woodTotal      — سعر الخشب, charged to the buyer AND paid in full to the seller/driver.
-///   • boxFeeTotal    — رسم الصناديق, charged to the buyer only.
+///   • boxFeeTotal    — رسوم الصناديق, charged to the buyer only.
 ///   • − discount     — خصم, the market's own concession; never touches the commission base, so it
 ///                      comes out of the market's margin rather than the farmer's due.
 ///   • − returnsTotal — قيمة المرتجع, goods the buyer sent back. Unlike the discount this DOES

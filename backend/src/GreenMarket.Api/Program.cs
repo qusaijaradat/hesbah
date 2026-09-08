@@ -585,11 +585,31 @@ app.UseMiddleware<LiveUserStateMiddleware>();
 app.UseAuthorization();
 app.MapControllers();
 
-// Simple health check (audit recommendation: "مراقبة وتنبيه على أعطال السيرفر" — previously
-// nothing existed to poll, so the first sign of an outage was a user complaining). Anonymous on
-// purpose so an external uptime monitor can poll it with no credentials; only reports DB
-// reachability, nothing sensitive.
-app.MapGet("/api/health", async (GreenMarket.Infrastructure.Persistence.AppDbContext db) =>
+// ---------- Health ----------
+// ONE endpoint, at /health, and it is the only one. Everything that asks about this API's health
+// asks for this exact path: nginx.conf's `location = /health`, the container healthcheck in
+// deploy/compose/prod.yml and env.yml, and the deploy gate in deploy/scripts/portainer.sh (which
+// polls it through the public hostname and needs three consecutive 200s to call a rollout good).
+// Anonymous so an external uptime monitor can poll it with no credentials; nothing sensitive is
+// returned.
+//
+// It reports the database, not just "the process is up". Every screen in this app needs Postgres,
+// so an API that answers requests but cannot reach the database is a full outage — and that is a
+// rollout the gate SHOULD fail. There is no separate dependency-free liveness probe because there
+// is nothing here to act on one differently: a single container, one replica, behind one nginx,
+// with `restart: unless-stopped`, so nothing restarts or de-registers on an unhealthy status. That
+// split earns its keep under an orchestrator; here it was only a second thing to keep in sync.
+// The false-failure worry it was meant to answer does not apply either: `depends_on: db:
+// service_healthy` plus EnsureCreatedAsync above mean the database has already been reached
+// successfully before this line can ever run.
+//
+// Renaming or removing this fails no build and no test. It fails every deploy, seven minutes in,
+// as a health-gate timeout that reads like a networking problem — while the site itself looks
+// perfectly fine, because nginx routes / and /api/ correctly and only the probe path 404s. That
+// has now happened three times: dropped in 1c712fb, restored in 9290402, then moved to /api/health
+// in c2627fb, which is what broke the deploy of 2f38ac2. If it has to move, move the six callers
+// listed above in the same commit.
+app.MapGet("/health", async (GreenMarket.Infrastructure.Persistence.AppDbContext db) =>
 {
     try
     {

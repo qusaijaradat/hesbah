@@ -261,19 +261,19 @@ export function InvoiceEditPage() {
           </div>
           <PartnerAutocomplete
             label="المشتري" value={merchant} onChange={setMerchant}
-            allowNew onFreeTextChange={setMerchantText}
+            allowNew newTypeLabel="مشتري" text={merchantText} onFreeTextChange={setMerchantText}
             placeholder="اكتب اسم المشتري أو اختره من القائمة..."
             types={["Merchant", "Both"]}
           />
           <PartnerAutocomplete
             label="البائع (اختياري)" value={farmer} onChange={setFarmer}
-            allowNew onFreeTextChange={setFarmerText}
+            allowNew newTypeLabel="بائع" text={farmerText} onFreeTextChange={setFarmerText}
             placeholder="اتركه فارغًا إن لم يكن معروفًا..."
             types={["Farmer", "Both"]}
           />
           <PartnerAutocomplete
             label="السائق (اختياري)" value={driver} onChange={setDriver}
-            allowNew onFreeTextChange={setDriverText}
+            allowNew newTypeLabel="سائق" text={driverText} onFreeTextChange={setDriverText}
             placeholder="اتركه فارغًا إن لم يكن معروفًا..."
             types={["Driver"]}
           />

@@ -345,8 +345,12 @@ function PaymentFormModal({ onClose, onSaved }: { onClose: () => void; onSaved: 
             value={partner}
             onChange={setPartner}
             allowNew
+            text={partnerText}
             onFreeTextChange={setPartnerText}
             types={direction === "FromMerchant" ? ["Merchant", "Both"] : direction === "ToFarmer" ? ["Farmer", "Both"] : ["Driver"]}
+            // The chosen direction is what decides which side a new name is created as — the same
+            // mapping the backend applies to PartnerName (see PaymentService.ResolvePartnerAsync).
+            newTypeLabel={direction === "FromMerchant" ? "مشتري" : direction === "ToFarmer" ? "بائع" : "سائق"}
           />
           <InvoiceLinkPicker partnerId={partner?.id ?? null} direction={direction} invoiceId={invoiceId} onChange={setInvoiceId} />
           <div>

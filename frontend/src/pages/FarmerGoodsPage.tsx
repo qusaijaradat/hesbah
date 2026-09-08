@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { usePagination } from "../lib/usePagination";
 import { TablePagination } from "../components/TablePagination";
 import { getFarmerGoods, triggerBlobDownload } from "../api/invoices";
+import { createPartner } from "../api/partners";
 import { createGoodsEntry, deleteGoodsEntry, getFarmerGoodsStock, getGoodsGlobalStock, printFarmerGoodsStockPdf, updateGoodsEntry } from "../api/goods";
 import { apiErrorMessage } from "../api/client";
 import { PartnerAutocomplete } from "../components/PartnerAutocomplete";
@@ -34,8 +35,21 @@ export function FarmerGoodsPage() {
   const canCreate = hasPermission("farmerGoods.create");
   const canEdit = hasPermission("farmerGoods.edit");
   const canDelete = hasPermission("farmerGoods.delete");
+  const canCreatePartners = hasPermission("partners.create");
 
   const [farmerPick, setFarmerPick] = useState<{ id: number; name: string } | null>(null);
+
+  /** A seller who turns up with goods before anyone has recorded them — added right here rather
+   *  than on the partners page and back. Only the name and type; the rest of their details stay
+   *  optional, exactly as they are for a seller first met on an invoice. */
+  async function createFarmer(name: string) {
+    try {
+      const created = await createPartner({ name, type: "Farmer" });
+      return { id: created.id, name: created.name };
+    } catch (err) {
+      throw new Error(apiErrorMessage(err, "فشلت إضافة البائع"));
+    }
+  }
 
   // "البضاعة المتوفرة حاليًا — كل الباعة": a global summary across every farmer, independent of
   // whichever single farmer is picked above — loads once on mount, shown at the end of the page.
@@ -249,10 +263,18 @@ export function FarmerGoodsPage() {
 
       <div className="card p-4 mb-4 space-y-3">
         <div className="w-full max-w-xs">
+          {/* Unlike the invoice form, this picker cannot defer creating the person: everything
+              below it loads THAT seller's own stock and entries, so it needs a real id in hand.
+              So the "add new" row here creates the seller on the spot and selects them — shown
+              only to someone who may create a partner at all, since the invoice-style "it will be
+              added when you save" promise does not apply. */}
           <PartnerAutocomplete
             label="البائع" value={farmerPick} onChange={setFarmerPick}
             placeholder="اكتب اسم البائع واختره من القائمة..."
             types={["Farmer", "Both"]}
+            allowNew={canCreatePartners}
+            newTypeLabel="بائع"
+            onCreateNew={canCreatePartners ? createFarmer : undefined}
           />
         </div>
       </div>

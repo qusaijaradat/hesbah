@@ -176,8 +176,21 @@ public class PartnerService : IPartnerService
         // Case-insensitive exact match. EF/Npgsql translates ToLower() to the SQL `lower()`
         // function, so this runs as a proper server-side query rather than pulling the whole
         // Partners table into memory.
+        //
+        // FIRST, not SINGLE, and ordered so it is the same row every time. Two partners really can
+        // share a display name here — it is why suggestions carry an id and why the invoice picker
+        // shows the type beside each name — and nothing stops the partners page from saving the
+        // same name twice, deliberately or by accident. SingleOrDefaultAsync threw on that, and it
+        // threw for good: once two "محمد" rows existed, EVERY later invoice typed with that name
+        // failed, with nothing on the invoice screen to explain why. Two concurrent saves of the
+        // same brand new name could create the pair on their own. Taking the oldest match keeps
+        // name entry working and keeps it predictable; picking the right one of two same-named
+        // people is what choosing from the dropdown is for.
         var normalized = trimmed.ToLower();
-        var existing = await _db.Partners.SingleOrDefaultAsync(p => p.Name.ToLower() == normalized);
+        var existing = await _db.Partners
+            .Where(p => p.Name.ToLower() == normalized)
+            .OrderBy(p => p.Id)
+            .FirstOrDefaultAsync();
 
         if (existing is not null)
         {

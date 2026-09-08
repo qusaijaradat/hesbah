@@ -467,7 +467,11 @@ public class ExportService : IExportService
                     col.Item().PaddingTop(6).LineHorizontal(1).LineColor(PrintInk.Text);
                     col.Item().PaddingTop(6).Text("فاتورة بائع").Bold().FontSize(13);
                     col.Item().PaddingTop(2).Text($"التاريخ: {invoice.Date:yyyy-MM-dd}").FontSize(11);
-                    col.Item().Text($"البائع: {invoice.FarmerName}").FontSize(11);
+                    // "المطلوب من", not "البائع" — every invoice names its addressee the same way
+                    // the buyer copy does (explicit request), so the line a reader looks for is in the
+                    // same place and worded the same on all three. The driver line below keeps its own
+                    // label: that is a different person (who hauled the load), not who this copy is for.
+                    col.Item().Text($"المطلوب من: {invoice.FarmerName}").FontSize(11);
                     // Shown on the farmer's own copy — unlike the merchant copy above, which
                     // deliberately hides who supplied/delivered the goods. Omitted entirely when
                     // the invoice has no driver attached, rather than printing an empty line.
@@ -1330,15 +1334,18 @@ public class ExportService : IExportService
             // never "المطلوب من {merchant}". A missing name can't normally happen (the Farmer and
             // Driver sections only ever select invoices that HAVE one — see InvoiceFilterRequest's
             // HasFarmer/HasDriver), so "—" is a last-resort placeholder, not an expected state.
-            var (title, partyLabel, partyName) = role switch
+            // The title still says which side this copy belongs to; the party line is worded the
+            // same on all three ("المطلوب من"), so a reader finds the name in the same place with the
+            // same wording whichever copy is in their hand.
+            var (title, partyName) = role switch
             {
-                InvoicePrintRole.Farmer => ("فاتورة بائع", "البائع", invoice.FarmerName),
-                InvoicePrintRole.Driver => ("فاتورة سائق", "السائق", invoice.DriverName),
-                _ => ("فاتورة مشتري", "المطلوب من", invoice.MerchantName),
+                InvoicePrintRole.Farmer => ("فاتورة بائع", invoice.FarmerName),
+                InvoicePrintRole.Driver => ("فاتورة سائق", invoice.DriverName),
+                _ => ("فاتورة مشتري", invoice.MerchantName),
             };
             col.Item().PaddingTop(3).Text(title).Bold().FontSize(9);
             col.Item().Text($"التاريخ: {invoice.Date:yyyy-MM-dd}").FontSize(8);
-            col.Item().Text($"{partyLabel}: {(string.IsNullOrWhiteSpace(partyName) ? "—" : partyName)}").FontSize(8);
+            col.Item().Text($"المطلوب من: {(string.IsNullOrWhiteSpace(partyName) ? "—" : partyName)}").FontSize(8);
             // The seller's copy — and ONLY the seller's — also names the driver who hauled the
             // load (explicit request: "بس فاتورة البائع تطلع فيها اسم السائق، الباقي" as is),
             // matching what the full-page "نسخة البائع" already shows. The buyer's copy still

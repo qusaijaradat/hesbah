@@ -284,6 +284,46 @@ public class InvoiceService : IInvoiceService
         var driverBoxFeeTotal = totals.TotalBoxes * driverBoxFee;
 
 
+        // A return is checked against what was sold at the moment it is recorded (see
+        // GoodsReturnService) — and that check only ever ran once. This edit rewrites the very
+        // lines it was checked against, so the same invariant is re-checked here: goods that came
+        // back must still be goods this invoice says went out, and their value must still fit
+        // inside it. Without this, editing an invoice down after a return pushes GrandTotal
+        // negative — the buyer shows up as owed money by the market — and leaves a return
+        // pointing at quantities the invoice no longer contains.
+        var existingReturns = await _db.GoodsReturns
+            .Include(r => r.Items)
+            .Where(r => r.InvoiceId == invoice.Id)
+            .ToListAsync();
+        if (existingReturns.Count > 0)
+        {
+            // Same trimmed/case-insensitive (name, unit) key GoodsReturnService matches on —
+            // invoice item names are free text, not a foreign key into the catalog.
+            static string Key(string name, UnitOfMeasure unit) => $"{name.Trim().ToLowerInvariant()}|{unit}";
+
+            var newSoldByKey = totals.Lines
+                .GroupBy(l => Key(l.ItemName, l.Unit))
+                .ToDictionary(g => g.Key, g => g.Sum(l => l.Quantity));
+
+            foreach (var group in existingReturns.SelectMany(r => r.Items).GroupBy(ri => Key(ri.ItemName, ri.Unit)))
+            {
+                var returned = group.Sum(ri => ri.Quantity);
+                var stillSold = newSoldByKey.GetValueOrDefault(group.Key);
+                if (returned > stillSold)
+                    throw new ValidationAppException(
+                        $"لا يمكن حفظ التعديل: الكمية المرتجعة من \"{group.First().ItemName.Trim()}\" ({returned:0.###}) أكبر من الكمية على الفاتورة بعد التعديل ({stillSold:0.###}). عدّل المرتجع أو احذفه أولًا.");
+            }
+
+            // And in money, so a price edit cannot leave the returns worth more than the goods.
+            // TotalValue is the right ceiling rather than the full charge: a return is of GOODS,
+            // and transport/wood/box fees are not returnable. Keeping returnsTotal within it also
+            // keeps GrandTotal at or above zero, since every other term it adds is non-negative.
+            var returnsTotal = existingReturns.Sum(r => r.TotalValue);
+            if (returnsTotal > totals.TotalValue)
+                throw new ValidationAppException(
+                    $"لا يمكن حفظ التعديل: قيمة المرتجعات ({returnsTotal:0.##}) أكبر من قيمة البضاعة بعد التعديل ({totals.TotalValue:0.##}). عدّل المرتجع أو احذفه أولًا.");
+        }
+
         var previousMerchantId = invoice.MerchantId;
         var previousFarmerId = invoice.FarmerId;
         var previousDriverId = invoice.DriverId;

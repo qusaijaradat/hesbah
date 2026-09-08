@@ -91,6 +91,17 @@ public class GoodsReturnService : IGoodsReturnService
             if (!soldByKey.TryGetValue(key, out var sold))
                 throw new ValidationAppException($"الصنف \"{input.ItemName}\" غير موجود على هذه الفاتورة بنفس الوحدة.");
 
+            // A return is priced from the invoice line as it stands right now, and that price is
+            // then frozen into this document. An unpriced line (goods that went out before the
+            // market priced them — a normal, supported flow, see InvoiceDto.HasUnpricedItems)
+            // would freeze a return worth ZERO: pricing the item afterwards raises what the buyer
+            // owes and what the seller is credited, while the return stays at nothing, so the
+            // buyer ends up paying for goods he handed back. Refuse instead of recording a return
+            // that is silently worth nothing — the item can be priced first, then returned.
+            if (sold.Price <= 0)
+                throw new ValidationAppException(
+                    $"الصنف \"{sold.Display}\" لسه غير مسعّر على الفاتورة — سعّره أولًا، وبعدها سجّل المرتجع (وإلا رح ينحسب المرتجع بقيمة صفر).");
+
             var remaining = sold.Quantity - alreadyReturnedByKey.GetValueOrDefault(key);
             if (input.Quantity > remaining)
                 throw new ValidationAppException(

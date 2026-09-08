@@ -1,0 +1,27 @@
+// Prints the SQL EF Core generates for queries worth being sure about, without a database:
+// ToQueryString only needs the model, not a connection. Added because a LINQ query that cannot be
+// translated compiles perfectly and then throws at runtime, on the one code path that matters.
+using GreenMarket.Domain.Enums;
+using GreenMarket.Infrastructure.Persistence;
+using Microsoft.EntityFrameworkCore;
+
+var options = new DbContextOptionsBuilder<AppDbContext>()
+    .UseNpgsql("Host=localhost;Database=none;Username=none;Password=none")
+    .Options;
+using var db = new AppDbContext(options);
+
+Show("returns of one invoice, with their lines (InvoiceService.UpdateAsync guard)",
+    db.GoodsReturns.Include(r => r.Items).Where(r => r.InvoiceId == 42));
+
+Show("seller Sale rows whose amount no longer matches sale − commission (Program.cs correction)",
+    db.FarmerTransactions.Where(t => t.Type == FarmerTransactionType.Sale && t.Amount != t.SaleValue - t.Commission));
+
+Show("find-or-create partner by name, oldest match first (PartnerService)",
+    db.Partners.Where(p => p.Name.ToLower() == "أبو عمار").OrderBy(p => p.Id));
+
+void Show<T>(string label, IQueryable<T> query)
+{
+    Console.WriteLine($"--- {label}");
+    Console.WriteLine(query.ToQueryString());
+    Console.WriteLine();
+}

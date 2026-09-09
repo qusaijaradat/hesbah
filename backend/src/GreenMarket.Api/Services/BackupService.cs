@@ -65,8 +65,43 @@ public class BackupService : IBackupService
             await AddAsync(archive, "permissions", _db.Permissions, cancellationToken);
             await AddAsync(archive, "role_permissions", _db.RolePermissions, cancellationToken);
             await AddAsync(archive, "audit_logs", _db.AuditLogs, cancellationToken);
+            await AddLogoAsync(archive, cancellationToken);
         }
         return buffer.ToArray();
+    }
+
+    /// <summary>
+    /// The uploaded logo, written as the image it is rather than squeezed into a CSV cell. It was
+    /// the one table left out of the backup, and the only one whose loss cannot be typed back in
+    /// from memory: restoring it is dropping this file back into Settings. Nothing is written when
+    /// no logo has been uploaded — an absent file says "there was none" more plainly than an empty
+    /// one does.
+    ///
+    /// Wrapped: this is a nice-to-have beside the ledgers, and a logo that fails to read (the
+    /// table missing on an older database, say — see Program.cs's own guard for it) must not cost
+    /// the owner the backup of everything else.
+    /// </summary>
+    private async Task AddLogoAsync(ZipArchive archive, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var logo = await _db.CompanyLogos.AsNoTracking().FirstOrDefaultAsync(cancellationToken);
+            if (logo is null || logo.Content.Length == 0) return;
+
+            var extension = logo.ContentType?.ToLowerInvariant() switch
+            {
+                "image/jpeg" => ".jpg",
+                "image/webp" => ".webp",
+                _ => ".png"
+            };
+            var entry = archive.CreateEntry($"company_logo{extension}", CompressionLevel.Optimal);
+            await using var stream = entry.Open();
+            await stream.WriteAsync(logo.Content, cancellationToken);
+        }
+        catch
+        {
+            // Everything else in the archive is already written and still worth having.
+        }
     }
 
     /// <summary>

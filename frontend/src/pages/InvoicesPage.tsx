@@ -305,6 +305,7 @@ export function InvoicesPage() {
               <th>الأصناف</th>
               <th>الكمية</th>
               <th>القيمة</th>
+              <th>الإجمالي</th>
               <th>حالة الدفع</th>
               <th>الحالة</th>
               <th></th>
@@ -312,9 +313,9 @@ export function InvoicesPage() {
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={canDelete ? 12 : 11} className="text-center text-gray-400 py-6">جاري التحميل...</td></tr>
+              <tr><td colSpan={canDelete ? 13 : 12} className="text-center text-gray-400 py-6">جاري التحميل...</td></tr>
             ) : rows.length === 0 ? (
-              <tr><td colSpan={canDelete ? 12 : 11} className="text-center text-gray-400 py-6">لا توجد فواتير</td></tr>
+              <tr><td colSpan={canDelete ? 13 : 12} className="text-center text-gray-400 py-6">لا توجد فواتير</td></tr>
             ) : (
               rows.map((inv) => (
                 <tr key={inv.id}>
@@ -341,7 +342,13 @@ export function InvoicesPage() {
                     {inv.totalBoxes > 0 && <div>{formatQuantity(inv.totalBoxes, "Box")}</div>}
                     {inv.totalWeightKg === 0 && inv.totalBoxes === 0 && "—"}
                   </td>
-                  <td className="font-semibold">{formatCurrency(inv.totalValue)}</td>
+                  {/* Two different figures, side by side on purpose: "القيمة" is the produce
+                      alone (what the commission is taken on), "الإجمالي" is what the buyer is
+                      actually charged — plus transport, wood and crate fees, net of any مرتجع
+                      (see the backend InvoiceCharge). "باقي" below is measured against the
+                      second one, which read as a mismatch while only the first was on screen. */}
+                  <td>{formatCurrency(inv.totalValue)}</td>
+                  <td className="font-semibold">{formatCurrency(inv.grandTotal)}</td>
                   <td className="whitespace-nowrap">
                     <span className={`text-xs px-2 py-0.5 rounded-full ${PAYMENT_STATUS_CLASS[inv.paymentStatus]}`}>
                       {PAYMENT_STATUS_LABELS[inv.paymentStatus]}

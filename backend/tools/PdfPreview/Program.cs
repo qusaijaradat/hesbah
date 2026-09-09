@@ -44,6 +44,7 @@ var invoice = new InvoiceDto(
     CommissionRateApplied: 0.10m, Commission: 110.87m, NetDueToFarmer: 997.82m,
     ReturnsTotal: 50m,
     PaidAmount: 500m, RemainingAmount: 829.19m, PaymentStatus: InvoicePaymentStatus.Partial,
+    MarketProfit: 150.87m,
     HasUnpricedItems: false,
     Items: items,
     Returns: new List<GoodsReturnDto>());

@@ -388,7 +388,10 @@ public class ReportService : IReportService
         {
             "daily" => d.ToString("yyyy-MM-dd"),
             "monthly" => d.ToString("yyyy-MM"),
-            _ => "all"
+            // Anything else collapses the whole filtered range into one row. The key doubles as
+            // the label in the Period column, so it is written to be read there — it used to say
+            // "all", which is what the screen showed once the option to ask for it existed.
+            _ => "الفترة كاملة"
         };
 
         var salesByPeriod = sales.GroupBy(s => PeriodKey(s.Date))

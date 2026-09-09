@@ -254,6 +254,17 @@ export function InvoiceDetailPage() {
                 <span className="text-gray-500 ms-2">باقي: <span className="font-semibold text-gray-900">{formatCurrency(invoice.remainingAmount)}</span></span>
               )}
             </div>
+            {/* What the market keeps out of this one invoice — commission + رسوم الصناديق + سعر
+                الخشب − أجرة صناديق السائق, net of commission handed back on any مرتجع. Computed
+                by the backend's MarketEarnings, the same function the daily closing uses, so this
+                and the day's profit cannot disagree. This screen is behind invoices.view and
+                never reaches a buyer or a seller — the commission it is built from must not. */}
+            <div className="text-xs text-gray-500 mt-2">
+              ربح المصلحة من هذه الفاتورة:{" "}
+              <span className={`font-semibold ${invoice.marketProfit >= 0 ? "text-brand-700" : "text-red-600"}`}>
+                {formatCurrency(invoice.marketProfit)}
+              </span>
+            </div>
           </div>
         </div>
 

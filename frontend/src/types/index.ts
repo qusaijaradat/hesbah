@@ -245,6 +245,10 @@ export interface InvoiceDto {
   paidAmount: number;
   remainingAmount: number;
   paymentStatus: InvoicePaymentStatus;
+  /** What the market keeps out of this invoice — commission + رسوم الصناديق + سعر الخشب −
+   *  أجرة صناديق السائق, net of commission handed back on any مرتجع. Computed by the backend's
+   *  MarketEarnings, the same function the daily closing uses, so the two cannot disagree. */
+  marketProfit: number;
   /** Any line still at price 0 — goods that went out before being priced. */
   hasUnpricedItems: boolean;
   items: InvoiceItemDto[];

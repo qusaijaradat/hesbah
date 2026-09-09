@@ -91,6 +91,12 @@ public record InvoiceDto(
     // an uncleared check does not, see PaymentRules), what is left, and where that leaves it.
     // The merchant's overall balance says nothing about one invoice; this does.
     decimal PaidAmount, decimal RemainingAmount, InvoicePaymentStatus PaymentStatus,
+    // What the MARKET keeps out of this one invoice, net of the commission it hands back on any
+    // مرتجع — commission + رسوم الصناديق + سعر الخشب − أجرة صناديق السائق, plus the transport if
+    // no driver was attached to pass it to. Computed by MarketEarnings, the same function the
+    // daily closing and the market report use, so this figure and those can never disagree.
+    // Never stored, and never shown on anything that reaches a buyer or a seller.
+    decimal MarketProfit,
     // True when any line is still at price 0 — goods that went out before being priced.
     bool HasUnpricedItems,
     IReadOnlyList<InvoiceItemDto> Items,

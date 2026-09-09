@@ -994,6 +994,10 @@ public class InvoiceService : IInvoiceService
             i.CommissionRateApplied, commissionResult.Commission, netDueToFarmer,
             returnsTotal,
             paidAmount, grandTotal - paidAmount, paymentStatus,
+            MarketEarnings.ForInvoice(
+                commissionResult.Commission, boxFeeTotal, driverBoxFeeTotal,
+                i.TransportFee, woodTotal, hasDriver: i.DriverId != null)
+                - MarketEarnings.CommissionCreditOnReturn(returnsTotal, i.CommissionRateApplied),
             i.Items.Any(it => it.PricePerUnit == 0),
             i.Items.Select(it => new InvoiceItemDto(it.Id, it.ItemName, it.Quantity, it.Unit, it.PricePerUnit, it.WoodPrice, it.LineTotal)).ToList(),
             i.Returns.OrderBy(r => r.Date).Select(r => new GoodsReturnDto(

@@ -71,9 +71,12 @@ export function ReportsPage() {
         {tab === "market" && (
           <div>
             <label className="label">التجميع</label>
-            <select className="input" value={filter.grouping ?? "daily"} onChange={(e) => setFilter((f) => ({ ...f, grouping: e.target.value as "daily" | "monthly" }))}>
+            <select className="input" value={filter.grouping ?? "daily"} onChange={(e) => setFilter((f) => ({ ...f, grouping: e.target.value as "daily" | "monthly" | "total" }))}>
               <option value="daily">يومي</option>
               <option value="monthly">شهري</option>
+              {/* One row for the whole range — "من أول السنة لهلأ، قديش ربحت". The backend has
+                  always collapsed unrecognised groupings this way; it just had no option here. */}
+              <option value="total">الفترة كاملة</option>
             </select>
           </div>
         )}

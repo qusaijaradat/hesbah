@@ -5,7 +5,9 @@ export interface ReportFilter {
   dateFrom?: string;
   dateTo?: string;
   partnerId?: number;
-  grouping?: "daily" | "monthly";
+  /** "total" collapses the whole filtered range into one row — the backend's own default for
+   *  anything it does not recognise as daily/monthly (see ReportService.PeriodKey). */
+  grouping?: "daily" | "monthly" | "total";
 }
 
 export async function farmerReport(filter: ReportFilter) {

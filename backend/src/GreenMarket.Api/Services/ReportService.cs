@@ -429,7 +429,13 @@ public class ReportService : IReportService
 
         var invoices = await invoiceQuery
             .OrderBy(i => i.MerchantId).ThenBy(i => i.Date)
-            .Select(i => new { i.Id, i.MerchantId, i.Merchant.Name, i.Date, i.TotalValue })
+            // GrandTotal, not TotalValue: what is outstanding on an invoice is what the buyer was
+            // CHARGED — transport, wood and crate fees included, net of anything returned — which
+            // is what every other balance in the app sums (see InvoiceCharge). Ageing the produce
+            // value alone understated every bucket by those fees and overstated any invoice with
+            // a مرتجع, so this report could never be reconciled against the merchant's own
+            // "المتبقي".
+            .Select(i => new { i.Id, i.MerchantId, i.Merchant.Name, i.Date, i.GrandTotal })
             .ToListAsync();
 
         // Only cleared checks count (see PaymentRules) — a check that hasn't cleared settled
@@ -443,7 +449,7 @@ public class ReportService : IReportService
             .ToListAsync();
 
         // Step 1: a payment explicitly linked to one invoice settles that invoice first.
-        var remainingByInvoice = invoices.ToDictionary(i => i.Id, i => i.TotalValue);
+        var remainingByInvoice = invoices.ToDictionary(i => i.Id, i => i.GrandTotal);
         var leftoverByMerchant = new Dictionary<int, decimal>();
         foreach (var payment in payments)
         {

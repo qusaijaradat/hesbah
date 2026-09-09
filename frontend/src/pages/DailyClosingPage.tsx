@@ -75,7 +75,6 @@ export function DailyClosingPage() {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-3">
             <StatCard label="رسوم الصناديق (من المشترين)" value={formatCurrency(closing.boxFeeIncome)} tone="positive" />
             <StatCard label="سعر الخشب (من المشترين)" value={formatCurrency(closing.woodIncome)} tone="positive" />
-            <StatCard label="أجرة الصناديق (للسائقين)" value={formatCurrency(closing.driverBoxFeeCost)} tone="negative" />
             <StatCard label="عمولة مرتجعة" value={formatCurrency(closing.returnsCommissionCredit)} tone="negative" />
             {/* Only worth a card when it is not zero: a non-zero value here is almost always a
                 driver missing from an invoice, not a real earning. */}
@@ -87,6 +86,8 @@ export function DailyClosingPage() {
               />
             )}
           </div>
+          {/* أجرة صناديق السائق is still subtracted from this total; it just no longer has a card
+              of its own, so the hint below is the only place left that accounts for it. */}
           <div className="mb-6">
             <StatCard
               label="صافي ربح اليوم"

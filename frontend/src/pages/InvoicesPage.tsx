@@ -85,7 +85,10 @@ export function InvoicesPage() {
   useEffect(() => {
     listSettings().then((settings) => {
       const name = settings.find((s) => s.key === "market.name")?.value;
-      const phone = settings.find((s) => s.key === "whatsapp.business_number")?.value;
+      // The company phone shown inside the message — the same one the printed invoice header
+      // carries. It used to read a separate "whatsapp.business_number" setting that held the same
+      // fact under a name promising the app sent from it, which it never did.
+      const phone = settings.find((s) => s.key === "market.phone")?.value;
       if (name) setCompanyName(name);
       setCompanyPhone(phone || null);
     });

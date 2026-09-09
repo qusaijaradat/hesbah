@@ -164,7 +164,6 @@ public static class DbSeeder
         {
             new Setting { Key = Setting.Keys.DefaultCommissionRate, Value = "0.10", Description = "Default market commission rate applied to new invoices (requirement doc §5)." },
             new Setting { Key = Setting.Keys.MarketName, Value = "Green Market", Description = "Displayed on invoices and reports." },
-            new Setting { Key = Setting.Keys.WhatsAppBusinessNumber, Value = "", Description = "WhatsApp Business number used to send invoices (requirement doc §9)." },
             new Setting { Key = Setting.Keys.RegistrationNumber, Value = "", Description = "Company/commercial registration number shown on the printed invoice header." },
             new Setting { Key = Setting.Keys.Phone, Value = "", Description = "Company phone number shown on the printed invoice header." },
             new Setting { Key = Setting.Keys.Address, Value = "", Description = "Company address shown on the printed invoice header." },

@@ -6,7 +6,6 @@ import {
 } from "../api/payments";
 import { listEmployees } from "../api/employees";
 import { listInvoices } from "../api/invoices";
-import { triggerBlobDownload } from "../api/invoices";
 import type { CheckClearanceStatus, EmployeeDto, ExpenseDto, InvoiceListItemDto, PaymentDirection, PaymentDto } from "../types";
 import { PartnerAutocomplete } from "../components/PartnerAutocomplete";
 import { formatCurrency, formatDate, todayLocalDateString, PAYMENT_DIRECTION_LABELS } from "../lib/format";
@@ -19,6 +18,7 @@ import { TablePagination } from "../components/TablePagination";
 import { CHECK_METHOD, PAYMENT_METHOD_OPTIONS, PaymentLineFields, emptyLine, lineTotal, paymentRequestsFromLine, validatePaymentLine } from "../components/PaymentLineFields";
 import type { PaymentLine } from "../components/PaymentLineFields";
 import { InvoiceLink, PartnerLink } from "../components/RecordLinks";
+import { PdfActions } from "../components/PdfActions";
 
 export function PaymentsPage() {
   const { hasPermission } = useAuth();
@@ -53,8 +53,6 @@ function PaymentsTab({ canCreate, canEdit, canDelete }: { canCreate: boolean; ca
   const [payments, setPayments] = useState<PaymentDto[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<PaymentDto | null>(null);
-  const [printing, setPrinting] = useState(false);
-  const [printError, setPrintError] = useState<string | null>(null);
   const [bulkError, setBulkError] = useState<string | null>(null);
   const selection = useSelection();
   const [bulkDeleting, setBulkDeleting] = useState(false);
@@ -93,18 +91,6 @@ function PaymentsTab({ canCreate, canEdit, canDelete }: { canCreate: boolean; ca
     if (outcome.failedCount > 0) setBulkError(summarizeBulkDelete(outcome));
   }
 
-  async function handlePrint() {
-    setPrinting(true);
-    setPrintError(null);
-    try {
-      const blob = await printPaymentsListPdf({});
-      triggerBlobDownload(blob, `payments-${todayLocalDateString()}.pdf`);
-    } catch (err) {
-      setPrintError(apiErrorMessage(err, "فشل إنشاء ملف الطباعة"));
-    } finally {
-      setPrinting(false);
-    }
-  }
 
   return (
     <div>
@@ -113,10 +99,11 @@ function PaymentsTab({ canCreate, canEdit, canDelete }: { canCreate: boolean; ca
           <button className="btn-primary" onClick={() => setShowForm(true)}>+ تسجيل دفعة</button>
         )}
         <Link to="/checks" className="btn-secondary">📅 الشيكات</Link>
-        <button className="btn-secondary" onClick={handlePrint} disabled={printing}>
-          {printing ? "جاري التجهيز..." : "🖨️ طباعة"}
-        </button>
-        {printError && <span className="text-sm text-red-600">{printError}</span>}
+        <PdfActions
+          fetchPdf={() => printPaymentsListPdf({})}
+          fileName={`payments-${todayLocalDateString()}.pdf`}
+          shareTitle="قائمة الدفعات"
+        />
       </div>
 
       {bulkError && <div className="text-sm text-red-600 bg-red-50 rounded-md p-3 mb-4 whitespace-pre-line">{bulkError}</div>}
@@ -591,8 +578,6 @@ function ExpensesTab({ canCreate, canEdit, canDelete }: { canCreate: boolean; ca
   const [expenses, setExpenses] = useState<ExpenseDto[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<ExpenseDto | null>(null);
-  const [printing, setPrinting] = useState(false);
-  const [printError, setPrintError] = useState<string | null>(null);
   const [bulkError, setBulkError] = useState<string | null>(null);
   const selection = useSelection();
   const [bulkDeleting, setBulkDeleting] = useState(false);
@@ -630,27 +615,16 @@ function ExpensesTab({ canCreate, canEdit, canDelete }: { canCreate: boolean; ca
     if (outcome.failedCount > 0) setBulkError(summarizeBulkDelete(outcome));
   }
 
-  async function handlePrint() {
-    setPrinting(true);
-    setPrintError(null);
-    try {
-      const blob = await printExpensesPdf({});
-      triggerBlobDownload(blob, `expenses-${todayLocalDateString()}.pdf`);
-    } catch (err) {
-      setPrintError(apiErrorMessage(err, "فشل إنشاء ملف الطباعة"));
-    } finally {
-      setPrinting(false);
-    }
-  }
 
   return (
     <div>
       <div className="flex items-center gap-2 mb-4 flex-wrap">
         {canCreate && <button className="btn-primary" onClick={() => setShowForm(true)}>+ إضافة مصروف</button>}
-        <button className="btn-secondary" onClick={handlePrint} disabled={printing}>
-          {printing ? "جاري التجهيز..." : "🖨️ طباعة"}
-        </button>
-        {printError && <span className="text-sm text-red-600">{printError}</span>}
+        <PdfActions
+          fetchPdf={() => printExpensesPdf({})}
+          fileName={`expenses-${todayLocalDateString()}.pdf`}
+          shareTitle="قائمة المصاريف"
+        />
       </div>
 
       {bulkError && <div className="text-sm text-red-600 bg-red-50 rounded-md p-3 mb-4 whitespace-pre-line">{bulkError}</div>}

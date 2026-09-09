@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { listChecks, printChecksPdf, updatePayment } from "../api/payments";
-import { triggerBlobDownload } from "../api/invoices";
+
 import { apiErrorMessage } from "../api/client";
 import { formatCurrency, formatDate, todayLocalDateString, PAYMENT_DIRECTION_LABELS } from "../lib/format";
 import { useAuth } from "../auth/AuthContext";
@@ -9,6 +9,7 @@ import { usePagination } from "../lib/usePagination";
 import { TablePagination } from "../components/TablePagination";
 import type { CheckClearanceStatus, PaymentDto } from "../types";
 import { InvoiceLink, PartnerLink } from "../components/RecordLinks";
+import { PdfActions } from "../components/PdfActions";
 
 /** Pending checks due within this many days (but not yet overdue) get the amber "قريبًا" highlight
  * — distinct from the red "فات الاستحقاق" highlight for ones already overdue. Gives an early warning
@@ -62,8 +63,7 @@ export function ChecksPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<number | null>(null);
-  const [printing, setPrinting] = useState(false);
-  const [printError, setPrintError] = useState<string | null>(null);
+
 
   async function refresh() {
     setLoading(true);
@@ -104,24 +104,15 @@ export function ChecksPage() {
     }
   }
 
-  async function handlePrint() {
-    setPrinting(true);
-    setPrintError(null);
-    try {
-      const range = showAllMonths ? null : monthRange(monthFilter);
-      const periodLabel = showAllMonths ? "كل الشهور" : `شهر ${monthFilter}`;
-      const blob = await printChecksPdf({
-        status: statusFilter || undefined,
-        dueFrom: range?.from,
-        dueTo: range?.to,
-        periodLabel,
-      });
-      triggerBlobDownload(blob, `checks-${showAllMonths ? "all" : monthFilter}.pdf`);
-    } catch (err) {
-      setPrintError(apiErrorMessage(err, "فشل إنشاء ملف الطباعة"));
-    } finally {
-      setPrinting(false);
-    }
+  // Just the fetch — PdfActions owns the busy state, the errors and the two buttons.
+  function buildChecksPdf() {
+    const range = showAllMonths ? null : monthRange(monthFilter);
+    return printChecksPdf({
+      status: statusFilter || undefined,
+      dueFrom: range?.from,
+      dueTo: range?.to,
+      periodLabel: showAllMonths ? "كل الشهور" : `شهر ${monthFilter}`,
+    });
   }
 
   const today = todayLocalDateString();
@@ -141,13 +132,15 @@ export function ChecksPage() {
       <div className="flex items-start justify-between flex-wrap gap-3 mb-1">
         <h1 className="text-2xl font-bold">الشيكات</h1>
         <div className="flex items-center gap-3">
-          <button className="btn-secondary" onClick={handlePrint} disabled={printing}>
-            {printing ? "جاري التجهيز..." : "🖨️ طباعة"}
-          </button>
+          <PdfActions
+            fetchPdf={buildChecksPdf}
+            fileName={`checks-${showAllMonths ? "all" : monthFilter}.pdf`}
+            shareTitle="قائمة الشيكات"
+          />
           <Link to="/payments" className="text-sm text-brand-700 hover:underline">→ الدفعات والمصاريف</Link>
         </div>
       </div>
-      {printError && <div className="text-sm text-red-600 bg-red-50 rounded-md p-2 mb-2">{printError}</div>}
+
       <p className="text-sm text-gray-500 mb-4">
         كل دفعة سُجّلت كشيك (له تاريخ استحقاق) — الأقدم استحقاقًا أولًا. الشيكات "قيد التحصيل" وتاريخها فات، لونها أحمر، والمستحقة قريبًا (خلال {DUE_SOON_DAYS} أيام) لونها كهرماني.
       </p>

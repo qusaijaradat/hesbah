@@ -7,6 +7,7 @@ import { formatCurrency, formatDate, formatWeight } from "../lib/format";
 import { triggerBlobDownload } from "../api/invoices";
 import { useAuth } from "../auth/AuthContext";
 import { PartnerLink } from "../components/RecordLinks";
+import { PdfActions } from "../components/PdfActions";
 
 type Tab = "farmers" | "merchants" | "drivers" | "market" | "aging";
 
@@ -36,9 +37,12 @@ export function ReportsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab, filter]);
 
-  async function handleExport(format: "excel" | "pdf") {
-    const blob = await exportReport(tab, format, tab === "market" ? { ...filter, grouping: filter.grouping ?? "daily" } : filter);
-    triggerBlobDownload(blob, `${tab}-report.${format === "excel" ? "xlsx" : "pdf"}`);
+  function reportFilter() {
+    return tab === "market" ? { ...filter, grouping: filter.grouping ?? "daily" } : filter;
+  }
+
+  async function handleExportExcel() {
+    triggerBlobDownload(await exportReport(tab, "excel", reportFilter()), `${tab}-report.xlsx`);
   }
 
   return (
@@ -82,8 +86,13 @@ export function ReportsPage() {
         )}
         {hasPermission("reports.export") && (
           <div className="flex gap-2 ms-auto">
-            <button className="btn-secondary" onClick={() => handleExport("excel")}>تصدير Excel</button>
-            <button className="btn-secondary" onClick={() => handleExport("pdf")}>تصدير PDF</button>
+            <button className="btn-secondary" onClick={handleExportExcel}>تصدير Excel</button>
+            <PdfActions
+              fetchPdf={() => exportReport(tab, "pdf", reportFilter())}
+              fileName={`${tab}-report.pdf`}
+              shareTitle="تقرير"
+              printLabel="تصدير PDF"
+            />
           </div>
         )}
       </div>

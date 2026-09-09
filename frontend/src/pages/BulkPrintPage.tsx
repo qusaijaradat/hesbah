@@ -1,6 +1,5 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
-import { getInvoicesBatch, getMerchantGroupPreviousBalance, listInvoices, printDriverManifestPdf, printFarmerStatementPdf, printInvoicesBulkPdf, printMerchantMergedInvoicesPdf, triggerBlobDownload } from "../api/invoices";
-import { apiErrorMessage } from "../api/client";
+import { getInvoicesBatch, getMerchantGroupPreviousBalance, listInvoices, printDriverManifestPdf, printFarmerStatementPdf, printInvoicesBulkPdf, printMerchantMergedInvoicesPdf } from "../api/invoices";
 import { getFarmerAccount } from "../api/partners";
 import { driverItemsBreakdown, farmerItemsBreakdown, merchantItemsBreakdown, printBuyerStatementPdf, printDriverItemsStatementPdf, printFarmerItemsStatementPdf } from "../api/reports";
 import type { ReportFilter } from "../api/reports";
@@ -11,6 +10,7 @@ import { TablePagination } from "../components/TablePagination";
 import { buildStatementMessage, buildWhatsAppLink, formatCurrency, formatDate, formatQuantity, formatWeight, todayLocalDateString } from "../lib/format";
 import type { DriverItemBreakdownRow, FarmerItemBreakdownRow, InvoiceFilter, InvoiceListItemDto, MerchantItemBreakdownRow, PartnerType, UnitOfMeasure } from "../types";
 import { InvoiceLink, PartnerLink } from "../components/RecordLinks";
+import { PdfActions } from "../components/PdfActions";
 
 function startOfDay(d: Date) {
   const x = new Date(d);
@@ -90,7 +90,7 @@ function useRoleSection(role: Role) {
   const [result, setResult] = useState<InvoiceListItemDto[]>([]);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [loading, setLoading] = useState(false);
-  const [printing, setPrinting] = useState(false);
+
   const [error, setError] = useState<string | null>(null);
 
   function buildFilter(): InvoiceFilter {
@@ -165,26 +165,18 @@ function useRoleSection(role: Role) {
     setSelected((prev) => (prev.size === result.length ? new Set() : new Set(result.map((i) => i.id))));
   }
 
-  async function handlePrint() {
-    if (selected.size === 0) return;
-    setPrinting(true);
-    setError(null);
-    try {
+  // Returns the blob rather than downloading it: PdfActions decides whether it becomes a download
+  // or an attachment in the share sheet, and owns the busy/error state that used to live here.
+  async function buildPdf() {
       // Merchant tab (explicit request): several invoices for the same merchant on the same
       // calendar day print as ONE combined invoice, regardless of which farmer/driver supplied
       // each one — so this tab uses the merged-invoice endpoint instead of the quadrant-grid bulk
       // print the Farmer/Driver tabs still use. Both produce THIS section's own document type: a
       // "فاتورة بائع" from the بائع tab and a "فاتورة سائق" from the سائق tab, never the buyer's
       // copy (which is what every tab used to hand out).
-      const blob = role === "Merchant"
-        ? await printMerchantMergedInvoicesPdf(Array.from(selected))
-        : await printInvoicesBulkPdf(Array.from(selected), role);
-      triggerBlobDownload(blob, `invoices-${ROLE_FILE_SLUG[role]}-${todayLocalDateString()}.pdf`);
-    } catch {
-      setError("فشل إنشاء ملف الطباعة");
-    } finally {
-      setPrinting(false);
-    }
+    return role === "Merchant"
+      ? printMerchantMergedInvoicesPdf(Array.from(selected))
+      : printInvoicesBulkPdf(Array.from(selected), role);
   }
 
   const selectedRows = result.filter((i) => selected.has(i.id));
@@ -207,8 +199,8 @@ function useRoleSection(role: Role) {
     invoiceNumberFrom, setInvoiceNumberFrom, invoiceNumberTo, setInvoiceNumberTo,
     partnerPick, setPartnerPick,
     excluded, setExcluded,
-    result, selected, setSelected, loading, printing, error, setError,
-    buildFilter, refresh, toggleOne, toggleAll, handlePrint, totals,
+    result, selected, setSelected, loading, error, setError,
+    buildFilter, refresh, toggleOne, toggleAll, buildPdf, totals,
   };
 }
 
@@ -534,13 +526,15 @@ function SectionPrintBar({ section }: { section: RoleSection }) {
           </>
         )}
       </div>
-      <button className="btn-primary" onClick={section.handlePrint} disabled={section.printing || section.selected.size === 0}>
-        {section.printing
-          ? "جاري التجهيز..."
-          : section.role === "Merchant"
+      <PdfActions
+        fetchPdf={section.buildPdf}
+        fileName={`invoices-${ROLE_FILE_SLUG[section.role]}-${todayLocalDateString()}.pdf`}
+        shareTitle={`فواتير ${ROLE_LABEL[section.role]}`}
+        disabled={section.selected.size === 0}
+        printLabel={section.role === "Merchant"
           ? "🖨️ طباعة فواتير مشتري (فاتورة مجمّعة لكل مشتري/يوم — 4 بالصفحة)"
           : `🖨️ طباعة فواتير ${ROLE_LABEL[section.role]} (فاتورة ${ROLE_LABEL[section.role]} — 4 بالصفحة)`}
-      </button>
+      />
     </div>
   );
 }
@@ -558,25 +552,23 @@ interface BreakdownItem {
  * Merchant/FarmerItemBreakdownRow's doc comments).
  */
 function ItemValueBreakdownCard({
-  title, nameLabel, groups, grandTotal, loading, printing, error, onPrint,
+  title, nameLabel, groups, grandTotal, loading, error, fetchPdf, fileName,
 }: {
   title: string;
   nameLabel: string;
   groups: { id: number; name: string; items: (BreakdownItem & { totalValue: number })[]; subtotal: number }[];
   grandTotal: number;
   loading: boolean;
-  printing: boolean;
   error: string | null;
-  onPrint: () => void;
+  fetchPdf: () => Promise<Blob>;
+  fileName: string;
 }) {
   return (
     <div className="card p-4 mb-4">
       <div className="flex items-center justify-between flex-wrap gap-3 mb-3">
         <h2 className="font-semibold">{title}</h2>
         {!loading && groups.length > 0 && (
-          <button className="btn-secondary" disabled={printing} onClick={onPrint}>
-            {printing ? "جاري التجهيز..." : "🖨️ طباعة"}
-          </button>
+          <PdfActions fetchPdf={fetchPdf} fileName={fileName} shareTitle="كشف سائق حسب الفترة" />
         )}
       </div>
       <div className="overflow-x-auto">
@@ -631,23 +623,21 @@ function ItemValueBreakdownCard({
  * see DriverItemBreakdownRow's doc comment).
  */
 function DriverItemBreakdownCard({
-  groups, grandTotal, loading, printing, error, onPrint,
+  groups, grandTotal, loading, error, fetchPdf, fileName,
 }: {
   groups: { id: number; name: string; items: BreakdownItem[]; transportFee: number }[];
   grandTotal: number;
   loading: boolean;
-  printing: boolean;
   error: string | null;
-  onPrint: () => void;
+  fetchPdf: () => Promise<Blob>;
+  fileName: string;
 }) {
   return (
     <div className="card p-4 mb-4">
       <div className="flex items-center justify-between flex-wrap gap-3 mb-3">
         <h2 className="font-semibold">كشف سائق حسب الفترة</h2>
         {!loading && groups.length > 0 && (
-          <button className="btn-secondary" disabled={printing} onClick={onPrint}>
-            {printing ? "جاري التجهيز..." : "🖨️ طباعة"}
-          </button>
+          <PdfActions fetchPdf={fetchPdf} fileName={fileName} shareTitle="كشف سائق حسب الفترة" />
         )}
       </div>
       <div className="overflow-x-auto">
@@ -748,45 +738,6 @@ export function BulkPrintPage() {
   const farmerBreakdownTotal = useMemo(() => farmerBreakdown.rows.reduce((sum, r) => sum + r.totalValue, 0), [farmerBreakdown.rows]);
   const driverBreakdownTotal = useMemo(() => driverBreakdownGroups.reduce((sum, g) => sum + g.transportFee, 0), [driverBreakdownGroups]);
 
-  async function handlePrintMerchantBreakdown() {
-    merchantBreakdown.setPrinting(true);
-    merchantBreakdown.setError(null);
-    try {
-      const blob = await printBuyerStatementPdf(periodFilterFor(merchantSection));
-      triggerBlobDownload(blob, `merchant-statement-by-period-${todayLocalDateString()}.pdf`);
-    } catch {
-      merchantBreakdown.setError("فشل إنشاء ملف الطباعة");
-    } finally {
-      merchantBreakdown.setPrinting(false);
-    }
-  }
-
-  async function handlePrintFarmerBreakdown() {
-    farmerBreakdown.setPrinting(true);
-    farmerBreakdown.setError(null);
-    try {
-      const blob = await printFarmerItemsStatementPdf(periodFilterFor(farmerSection));
-      triggerBlobDownload(blob, `farmer-statement-by-period-${todayLocalDateString()}.pdf`);
-    } catch {
-      farmerBreakdown.setError("فشل إنشاء ملف الطباعة");
-    } finally {
-      farmerBreakdown.setPrinting(false);
-    }
-  }
-
-  async function handlePrintDriverBreakdown() {
-    driverBreakdown.setPrinting(true);
-    driverBreakdown.setError(null);
-    try {
-      const blob = await printDriverItemsStatementPdf(periodFilterFor(driverSection));
-      triggerBlobDownload(blob, `driver-statement-by-period-${todayLocalDateString()}.pdf`);
-    } catch {
-      driverBreakdown.setError("فشل إنشاء ملف الطباعة");
-    } finally {
-      driverBreakdown.setPrinting(false);
-    }
-  }
-
   // Header info for the shared Arabic WhatsApp template (lib/format.ts buildStatementMessage) —
   // same company name/phone used on the printed PDF, so a trader's WhatsApp statement reads as
   // the same template as the print-out.
@@ -796,27 +747,28 @@ export function BulkPrintPage() {
   // calendar day, see traderGroups below), so a plain merchantId can no longer identify "which
   // button is busy" on its own.
   const [sendingTraderKey, setSendingTraderKey] = useState<string | null>(null);
-  const [printingDriverKey, setPrintingDriverKey] = useState<string | number | null>(null);
+
   const [sendingDriverKey, setSendingDriverKey] = useState<string | number | null>(null);
   const [sendingFarmerId, setSendingFarmerId] = useState<number | null>(null);
 
   // Driver tab's "طباعة فاتورة سائق" standalone shortcut — picks a driver directly and pulls every
   // one of HIS invoices within that tab's own period filter, independent of the table's selection.
-  const [driverStandaloneBusy, setDriverStandaloneBusy] = useState(false);
-  const [driverStandaloneError, setDriverStandaloneError] = useState<string | null>(null);
+
 
   // Farmer tab's "طباعة كشف بائع" — a chosen farmer's own item lines across every one of his
   // invoices within a REQUIRED date range (own from/to inputs, separate from the tab's period filter).
   const [farmerStatementPick, setFarmerStatementPick] = useState<{ id: number; name: string } | null>(null);
   const [farmerStatementFrom, setFarmerStatementFrom] = useState("");
   const [farmerStatementTo, setFarmerStatementTo] = useState("");
-  const [farmerStatementBusy, setFarmerStatementBusy] = useState(false);
-  const [farmerStatementError, setFarmerStatementError] = useState<string | null>(null);
+
 
   useEffect(() => {
     listSettings().then((settings) => {
       const name = settings.find((s) => s.key === "market.name")?.value;
-      const phone = settings.find((s) => s.key === "whatsapp.business_number")?.value;
+      // The company phone shown inside the message — the same one the printed invoice header
+      // carries. It used to read a separate "whatsapp.business_number" setting that held the same
+      // fact under a name promising the app sent from it, which it never did.
+      const phone = settings.find((s) => s.key === "market.phone")?.value;
       if (name) setCompanyName(name);
       setCompanyPhone(phone || null);
     });
@@ -935,18 +887,6 @@ export function BulkPrintPage() {
     return Array.from(byDriver.values()).sort((a, b) => a.driverName.localeCompare(b.driverName, "ar"));
   }, [driverSection.result, driverSection.selected]);
 
-  async function handlePrintDriverManifest(driverKey: string | number, driverName: string, invoiceIds: number[]) {
-    setPrintingDriverKey(driverKey);
-    driverSection.setError(null);
-    try {
-      const blob = await printDriverManifestPdf(invoiceIds);
-      triggerBlobDownload(blob, `driver-manifest-${driverName}.pdf`);
-    } catch {
-      driverSection.setError("فشل إنشاء كشف السائق");
-    } finally {
-      setPrintingDriverKey(null);
-    }
-  }
 
   // Same "current account balance right now" convention as the farmer send above.
   async function handleSendDriverWhatsApp(driverKey: string | number, driverId: number, phone: string, name: string, invoiceIds: number[]) {
@@ -963,43 +903,22 @@ export function BulkPrintPage() {
     }
   }
 
-  // Same PDF as handlePrintDriverManifest, but looks the driver's invoices up directly via the
-  // section's own picker + period filter — no reliance on the table already showing/selecting them.
-  async function handlePrintDriverStandalone() {
-    if (!driverSection.partnerPick) return;
-    setDriverStandaloneBusy(true);
-    setDriverStandaloneError(null);
-    try {
-      const data = await listInvoices({ ...driverSection.buildFilter(), pageSize: 500 });
-      if (data.items.length === 0) {
-        setDriverStandaloneError("لا توجد فواتير لهذا السائق ضمن الفترة المحددة أعلاه.");
-        return;
-      }
-      const blob = await printDriverManifestPdf(data.items.map((i) => i.id));
-      triggerBlobDownload(blob, `driver-manifest-${driverSection.partnerPick.name}.pdf`);
-    } catch {
-      setDriverStandaloneError("فشل إنشاء كشف السائق");
-    } finally {
-      setDriverStandaloneBusy(false);
-    }
+  // The same كشف as the per-driver card below, but it looks the driver's invoices up directly via
+  // the section's own picker + period filter — no reliance on the table already showing/selecting
+  // them. An empty period is raised as an error so PdfActions shows it where it shows the rest.
+  async function buildDriverStandalonePdf() {
+    const data = await listInvoices({ ...driverSection.buildFilter(), pageSize: 500 });
+    if (data.items.length === 0) throw new Error("لا توجد فواتير لهذا السائق ضمن الفترة المحددة أعلاه.");
+    return printDriverManifestPdf(data.items.map((i) => i.id));
   }
 
   // Downloads ExportService.GenerateFarmerStatementPdf for the picked farmer + required date range —
   // one continuous itemized statement (التاريخ/الصنف/العدد/الوزن/السعر/س.الخشب/مجموع كلي)، ثم المجموع الكلي.
-  async function handlePrintFarmerStatement() {
-    if (!farmerStatementPick || !farmerStatementFrom || !farmerStatementTo) return;
-    setFarmerStatementBusy(true);
-    setFarmerStatementError(null);
-    try {
-      const from = startOfDay(new Date(farmerStatementFrom)).toISOString();
-      const to = endOfDay(new Date(farmerStatementTo)).toISOString();
-      const blob = await printFarmerStatementPdf(farmerStatementPick.id, from, to);
-      triggerBlobDownload(blob, `farmer-statement-${farmerStatementPick.name}.pdf`);
-    } catch (err) {
-      setFarmerStatementError(apiErrorMessage(err, "فشل إنشاء كشف البائع"));
-    } finally {
-      setFarmerStatementBusy(false);
-    }
+  // Just the fetch — PdfActions owns the busy state, the errors and the share half.
+  function buildFarmerStatementPdf() {
+    const from = startOfDay(new Date(farmerStatementFrom)).toISOString();
+    const to = endOfDay(new Date(farmerStatementTo)).toISOString();
+    return printFarmerStatementPdf(farmerStatementPick!.id, from, to);
   }
 
   return (
@@ -1027,9 +946,9 @@ export function BulkPrintPage() {
           groups={merchantBreakdownGroups}
           grandTotal={merchantBreakdownTotal}
           loading={merchantBreakdown.loading}
-          printing={merchantBreakdown.printing}
           error={merchantBreakdown.error}
-          onPrint={handlePrintMerchantBreakdown}
+          fetchPdf={() => printBuyerStatementPdf(periodFilterFor(merchantSection))}
+          fileName={`merchant-statement-by-period-${todayLocalDateString()}.pdf`}
         />
       )}
 
@@ -1040,9 +959,9 @@ export function BulkPrintPage() {
           groups={farmerBreakdownGroups}
           grandTotal={farmerBreakdownTotal}
           loading={farmerBreakdown.loading}
-          printing={farmerBreakdown.printing}
           error={farmerBreakdown.error}
-          onPrint={handlePrintFarmerBreakdown}
+          fetchPdf={() => printFarmerItemsStatementPdf(periodFilterFor(farmerSection))}
+          fileName={`farmer-statement-by-period-${todayLocalDateString()}.pdf`}
         />
       )}
 
@@ -1051,9 +970,9 @@ export function BulkPrintPage() {
           groups={driverBreakdownGroups}
           grandTotal={driverBreakdownTotal}
           loading={driverBreakdown.loading}
-          printing={driverBreakdown.printing}
           error={driverBreakdown.error}
-          onPrint={handlePrintDriverBreakdown}
+          fetchPdf={() => printDriverItemsStatementPdf(periodFilterFor(driverSection))}
+          fileName={`driver-statement-by-period-${todayLocalDateString()}.pdf`}
         />
       )}
 
@@ -1065,10 +984,13 @@ export function BulkPrintPage() {
               old label was pointing at the wrong document. */}
           <h2 className="font-semibold mb-1">طباعة كشف السائق (مجمّع للفترة)</h2>
           <p className="text-xs text-gray-500 mb-3">استخدم حقل "تصفية حسب سائق" أعلاه لاختيار السائق — بيلمّ له تلقائيًا كل فواتيره ضمن الفترة المحددة أعلاه بكشف أجرة نقل واحد. لطباعة فواتير السائق نفسها (فاتورة لكل فاتورة) استخدم زر الطباعة أسفل الجدول.</p>
-          <button className="btn-primary" disabled={!driverSection.partnerPick || driverStandaloneBusy} onClick={handlePrintDriverStandalone}>
-            {driverStandaloneBusy ? "جاري التجهيز..." : "🖨️ طباعة كشف السائق"}
-          </button>
-          {driverStandaloneError && <div className="text-sm text-red-600 bg-red-50 rounded-md p-2 mt-3">{driverStandaloneError}</div>}
+          <PdfActions
+            fetchPdf={buildDriverStandalonePdf}
+            fileName={`driver-manifest-${driverSection.partnerPick?.name ?? ""}.pdf`}
+            shareTitle="كشف السائق"
+            disabled={!driverSection.partnerPick}
+            printLabel="🖨️ طباعة كشف السائق"
+          />
         </div>
       )}
 
@@ -1092,11 +1014,14 @@ export function BulkPrintPage() {
               <label className="label">إلى تاريخ</label>
               <input type="date" className="input" value={farmerStatementTo} onChange={(e) => setFarmerStatementTo(e.target.value)} />
             </div>
-            <button className="btn-primary" disabled={!farmerStatementPick || !farmerStatementFrom || !farmerStatementTo || farmerStatementBusy} onClick={handlePrintFarmerStatement}>
-              {farmerStatementBusy ? "جاري التجهيز..." : "🖨️ طباعة كشف البائع"}
-            </button>
+            <PdfActions
+              fetchPdf={buildFarmerStatementPdf}
+              fileName={`farmer-statement-${farmerStatementPick?.name ?? ""}.pdf`}
+              shareTitle="كشف البائع"
+              printLabel="🖨️ طباعة كشف البائع"
+              disabled={!farmerStatementPick || !farmerStatementFrom || !farmerStatementTo}
+            />
           </div>
-          {farmerStatementError && <div className="text-sm text-red-600 bg-red-50 rounded-md p-2 mt-3">{farmerStatementError}</div>}
         </div>
       )}
 
@@ -1204,13 +1129,12 @@ export function BulkPrintPage() {
                   <td className="font-semibold">{formatCurrency(g.totalDriverDue)}</td>
                   <td>
                     <div className="flex flex-wrap gap-2">
-                      <button
-                        className="btn-secondary"
-                        disabled={printingDriverKey === g.key}
-                        onClick={() => handlePrintDriverManifest(g.key, g.driverName, g.invoiceIds)}
-                      >
-                        {printingDriverKey === g.key ? "جاري التجهيز..." : "🖨️ طباعة كشف السائق"}
-                      </button>
+                      <PdfActions
+                        fetchPdf={() => printDriverManifestPdf(g.invoiceIds)}
+                        fileName={`driver-manifest-${g.driverName}.pdf`}
+                        shareTitle={`كشف السائق ${g.driverName}`}
+                        printLabel="🖨️ طباعة كشف السائق"
+                      />
                       {g.driverId && g.driverWhatsApp ? (
                         <button
                           className="btn-secondary"

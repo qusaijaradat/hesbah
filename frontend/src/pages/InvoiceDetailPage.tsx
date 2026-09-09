@@ -1,12 +1,12 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { cancelInvoice, downloadFarmerInvoicePdf, downloadInvoicePdf, getInvoice, triggerBlobDownload } from "../api/invoices";
+import { cancelInvoice, downloadFarmerInvoicePdf, downloadInvoicePdf, getInvoice, printInvoicesBulkPdf } from "../api/invoices";
+import { PdfActions } from "../components/PdfActions";
 import { getFarmerAccount } from "../api/partners";
 import { listSettings } from "../api/settings";
 import type { InvoiceDto, InvoicePaymentStatus } from "../types";
 import { InvoiceReturnsCard } from "../components/InvoiceReturnsCard";
 import { buildStatementMessage, buildWhatsAppLink, formatCurrency, formatDate, formatQuantity, formatWeight } from "../lib/format";
-import { shareFile } from "../lib/share";
 import { useAuth } from "../auth/AuthContext";
 import { apiErrorMessage } from "../api/client";
 
@@ -30,14 +30,10 @@ export function InvoiceDetailPage() {
   // trader statement read as the same template no matter which one gets sent.
   const [companyName, setCompanyName] = useState("Green Market");
   const [companyPhone, setCompanyPhone] = useState<string | null>(null);
-  const [printing, setPrinting] = useState(false);
-  const [printingFarmerCopy, setPrintingFarmerCopy] = useState(false);
-  const [sharing, setSharing] = useState(false);
+
   // Tracks which WhatsApp button is mid-send (fetching a farmer/driver's live account balance
   // takes a round trip) so only that one button shows a busy state.
   const [sendingRole, setSendingRole] = useState<"merchant" | "farmer" | "driver" | null>(null);
-  // Informational (not an error) — e.g. "your browser can't share files, downloaded it instead".
-  const [notice, setNotice] = useState<string | null>(null);
 
   function reloadInvoice() {
     if (id) getInvoice(Number(id)).then(setInvoice);
@@ -47,7 +43,10 @@ export function InvoiceDetailPage() {
     reloadInvoice();
     listSettings().then((settings) => {
       const name = settings.find((s) => s.key === "market.name")?.value;
-      const phone = settings.find((s) => s.key === "whatsapp.business_number")?.value;
+      // The company phone shown inside the message — the same one the printed invoice header
+      // carries. It used to read a separate "whatsapp.business_number" setting that held the same
+      // fact under a name promising the app sent from it, which it never did.
+      const phone = settings.find((s) => s.key === "market.phone")?.value;
       if (name) setCompanyName(name);
       setCompanyPhone(phone || null);
     });
@@ -80,56 +79,12 @@ export function InvoiceDetailPage() {
   // Opens the invoice's PDF (Arabic header, no invoice number, per lib/format.ts template) in a
   // new tab rather than forcing a download — the browser's own PDF viewer has a print icon right
   // there, so one click gets you from "viewing the invoice" to "printing it".
-  async function handlePrint(thermal: boolean) {
-    if (!invoice) return;
-    setPrinting(true);
-    try {
-      const blob = await downloadInvoicePdf(invoice.id, thermal);
-      const url = URL.createObjectURL(blob);
-      window.open(url, "_blank");
-    } finally {
-      setPrinting(false);
-    }
-  }
+  // Each party's own document, printable AND shareable (PdfActions): the buyer's copy, the seller's
+  // نسخة البائع which shows and deducts this invoice's commission (ExportService.GenerateFarmerInvoicePdf),
+  // and the driver's فاتورة سائق — the same one the bulk-print سائق tab produces, for a single invoice.
+  // Sharing used to exist for the buyer's copy alone, so a seller could be handed his paper but never
+  // his file.
 
-  // "نسخة البائع" — same invoice, but shows and deducts this invoice's own commission (see
-  // ExportService.GenerateFarmerInvoicePdf's own doc comment). Only offered when farmerId is set.
-  async function handlePrintFarmerCopy() {
-    if (!invoice) return;
-    setPrintingFarmerCopy(true);
-    try {
-      const blob = await downloadFarmerInvoicePdf(invoice.id);
-      const url = URL.createObjectURL(blob);
-      window.open(url, "_blank");
-    } finally {
-      setPrintingFarmerCopy(false);
-    }
-  }
-
-  // Shares the actual PDF as a FILE (not just typed-out text) through the OS/browser's native
-  // share sheet — WhatsApp shows up there on most phones and on Windows 10/11 if it's installed —
-  // see lib/share.ts for why there's no way to also pre-pick the recipient automatically. Falls
-  // back to a plain download on browsers/OSes that can't share files at all (canShareFiles/
-  // shareFile handle that feature-detection).
-  async function handleShareFile() {
-    if (!invoice) return;
-    setSharing(true);
-    setError(null);
-    setNotice(null);
-    try {
-      const blob = await downloadInvoicePdf(invoice.id, false);
-      const fileName = `${invoice.invoiceNumber}.pdf`;
-      const result = await shareFile(blob, fileName, "application/pdf", `فاتورة ${invoice.invoiceNumber}`);
-      if (result === "unsupported") {
-        triggerBlobDownload(blob, fileName);
-        setNotice("متصفحك ما بيدعم المشاركة المباشرة — تم تنزيل ملف الفاتورة، ترفقه يدويًا بمحادثة واتساب.");
-      }
-    } catch (err) {
-      setError(apiErrorMessage(err, "فشل مشاركة الفاتورة"));
-    } finally {
-      setSharing(false);
-    }
-  }
 
   async function handleCancel() {
     if (!invoice) return;
@@ -289,23 +244,40 @@ export function InvoiceDetailPage() {
             (كشف حساب البائع) or by printing/sending the نسخة البائع itself. */}
 
         {error && <div className="text-sm text-red-600 bg-red-50 rounded-md p-3 mt-4">{error}</div>}
-        {notice && <div className="text-sm text-blue-700 bg-blue-50 rounded-md p-3 mt-4">{notice}</div>}
 
         <div className="flex justify-end gap-2 mt-6 flex-wrap">
-          <button className="btn-secondary" disabled={printing} onClick={() => handlePrint(false)}>
-            {printing ? "جاري التجهيز..." : "🖨️ طباعة (A4)"}
-          </button>
-          <button className="btn-secondary" disabled={printing} onClick={() => handlePrint(true)}>
-            {printing ? "جاري التجهيز..." : "🖨️ طباعة (طابعة حرارية 80mm)"}
-          </button>
+          <PdfActions
+            fetchPdf={() => downloadInvoicePdf(invoice.id, false)}
+            fileName={`${invoice.invoiceNumber}.pdf`}
+            shareTitle={`فاتورة ${invoice.invoiceNumber}`}
+            printMode="tab"
+            printLabel="🖨️ طباعة (A4)"
+          />
+          <PdfActions
+            fetchPdf={() => downloadInvoicePdf(invoice.id, true)}
+            fileName={`${invoice.invoiceNumber}-80mm.pdf`}
+            shareTitle={`فاتورة ${invoice.invoiceNumber}`}
+            printMode="tab"
+            printLabel="🖨️ طباعة (طابعة حرارية 80mm)"
+          />
           {invoice.farmerId && (
-            <button className="btn-secondary" disabled={printingFarmerCopy} onClick={handlePrintFarmerCopy} title="نسخة تُظهر العمولة وتخصمها — للبائع فقط">
-              {printingFarmerCopy ? "جاري التجهيز..." : "🖨️ طباعة نسخة البائع (مع العمولة)"}
-            </button>
+            <PdfActions
+              fetchPdf={() => downloadFarmerInvoicePdf(invoice.id)}
+              fileName={`${invoice.invoiceNumber}-بائع.pdf`}
+              shareTitle={`فاتورة بائع ${invoice.invoiceNumber}`}
+              printMode="tab"
+              printLabel="🖨️ نسخة البائع (مع العمولة)"
+            />
           )}
-          <button className="btn-secondary" disabled={sharing} onClick={handleShareFile} title="يفتح قائمة مشاركة النظام (واتساب وغيره) مع ملف الفاتورة مرفق">
-            {sharing ? "جاري التجهيز..." : "📎 مشاركة الفاتورة (ملف)"}
-          </button>
+          {invoice.driverId && (
+            <PdfActions
+              fetchPdf={() => printInvoicesBulkPdf([invoice.id], "Driver")}
+              fileName={`${invoice.invoiceNumber}-سائق.pdf`}
+              shareTitle={`فاتورة سائق ${invoice.invoiceNumber}`}
+              printMode="tab"
+              printLabel="🖨️ نسخة السائق"
+            />
+          )}
           {invoice.merchantWhatsApp && (
             <button className="btn-primary" disabled={sendingRole === "merchant"} onClick={() => handleSendWhatsApp(invoice.merchantWhatsApp!, invoice.merchantName, "merchant")}>
               {sendingRole === "merchant" ? "جاري التجهيز..." : "📤 إرسال للمشتري عبر واتساب"}

@@ -2,10 +2,11 @@ import { useEffect, useState } from "react";
 import { StatCard } from "../components/StatCard";
 import { GoodsGlobalStockCard } from "../components/GoodsGlobalStockCard";
 import { dailyClosingReport, exportDailyClosingPdf, getGoodsGlobalStockForReports } from "../api/reports";
-import { triggerBlobDownload } from "../api/invoices";
+
 import { apiErrorMessage } from "../api/client";
 import { formatCurrency, todayLocalDateString } from "../lib/format";
 import type { DailyClosingDto, GoodsStockRow } from "../types";
+import { PdfActions } from "../components/PdfActions";
 
 export function DailyClosingPage() {
   const [date, setDate] = useState(() => todayLocalDateString());
@@ -38,10 +39,6 @@ export function DailyClosingPage() {
     });
   }, [date]);
 
-  async function handlePrint() {
-    const blob = await exportDailyClosingPdf(new Date(date).toISOString());
-    triggerBlobDownload(blob, `daily-closing-${date}.pdf`);
-  }
 
   const netCashFlow = closing
     ? closing.paymentsReceivedFromMerchants - closing.paymentsPaidToFarmers - closing.totalExpenses
@@ -53,7 +50,13 @@ export function DailyClosingPage() {
         <h1 className="text-2xl font-bold">الإغلاق اليومي</h1>
         <div className="flex items-center gap-2">
           <input type="date" className="input" value={date} onChange={(e) => setDate(e.target.value)} />
-          <button className="btn-secondary" onClick={handlePrint} disabled={!closing}>🖨️ تصدير PDF</button>
+          <PdfActions
+            fetchPdf={() => exportDailyClosingPdf(new Date(date).toISOString())}
+            fileName={`daily-closing-${date}.pdf`}
+            shareTitle="الإغلاق اليومي"
+            printLabel="🖨️ تصدير PDF"
+            disabled={!closing}
+          />
         </div>
       </div>
 

@@ -3,10 +3,11 @@ import { usePagination } from "../lib/usePagination";
 import { TablePagination } from "../components/TablePagination";
 import { Link } from "react-router-dom";
 import { getDebtsOverview, printDebtsOverviewPdf } from "../api/partners";
-import { triggerBlobDownload } from "../api/invoices";
+
 import { apiErrorMessage } from "../api/client";
 import { formatCurrency, todayLocalDateString } from "../lib/format";
 import type { PartnerDebtRow } from "../types";
+import { PdfActions } from "../components/PdfActions";
 
 /// <summary>
 /// "قيمة الديون" overview page: one screen, 3 sections (بائع/سائق/مشتري), each listing everyone of
@@ -22,8 +23,7 @@ export function DebtsOverviewPage() {
   const [merchants, setMerchants] = useState<PartnerDebtRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [printing, setPrinting] = useState(false);
-  const [printError, setPrintError] = useState<string | null>(null);
+
   // Explicit request: "بس لما بدي اشيك على شخص معين" — a name filter for checking one person,
   // defaulting to empty (blank = show everyone, exactly as before this filter existed). Purely
   // client-side over the already-fully-loaded arrays above — the dataset here is every non-zero-
@@ -42,18 +42,6 @@ export function DebtsOverviewPage() {
       .finally(() => setLoading(false));
   }, []);
 
-  async function handlePrint() {
-    setPrinting(true);
-    setPrintError(null);
-    try {
-      const blob = await printDebtsOverviewPdf();
-      triggerBlobDownload(blob, `debts-overview-${todayLocalDateString()}.pdf`);
-    } catch (err) {
-      setPrintError(apiErrorMessage(err, "فشل إنشاء ملف الطباعة"));
-    } finally {
-      setPrinting(false);
-    }
-  }
 
   if (loading) return <div className="text-gray-500">جاري التحميل...</div>;
 
@@ -67,9 +55,11 @@ export function DebtsOverviewPage() {
     <div>
       <div className="flex items-start justify-between flex-wrap gap-3 mb-1">
         <h1 className="text-2xl font-bold">قيمة الديون</h1>
-        <button className="btn-secondary" onClick={handlePrint} disabled={printing}>
-          {printing ? "جاري التجهيز..." : "🖨️ طباعة"}
-        </button>
+        <PdfActions
+          fetchPdf={printDebtsOverviewPdf}
+          fileName={`debts-overview-${todayLocalDateString()}.pdf`}
+          shareTitle="قيمة الديون"
+        />
       </div>
       <p className="text-sm text-gray-500 mb-4">
         الأشخاص اللي عندهم رصيد غير صفري حاليًا فقط — نفس الرقم الظاهر بكشف حساب كل شخص.
@@ -82,7 +72,7 @@ export function DebtsOverviewPage() {
         onChange={(e) => setSearch(e.target.value)}
       />
 
-      {printError && <div className="text-sm text-red-600 bg-red-50 rounded-md p-2 mb-4">{printError}</div>}
+
       {error && <div className="text-sm text-red-600 bg-red-50 rounded-md p-2 mb-4">{error}</div>}
 
       <div className="space-y-8">

@@ -6,6 +6,7 @@ import { formatCurrency, formatQuantity } from "../lib/format";
 import { useAuth } from "../auth/AuthContext";
 import type { DashboardSummaryDto, MerchantItemBreakdownRow, PartnerDebtRow } from "../types";
 import { PartnerLink } from "../components/RecordLinks";
+import { PdfActions } from "../components/PdfActions";
 
 export function DashboardPage() {
   const { hasPermission } = useAuth();
@@ -25,7 +26,7 @@ export function DashboardPage() {
   const [buyerDateTo, setBuyerDateTo] = useState("");
   const [buyerItemRows, setBuyerItemRows] = useState<MerchantItemBreakdownRow[]>([]);
   const [buyerLoading, setBuyerLoading] = useState(false);
-  const [buyerPrinting, setBuyerPrinting] = useState(false);
+
   // Nothing loads/shows until the user actually picks at least one side of the period —
   // no more defaulting to "show everything" the moment this section is visible.
   const buyerPeriodChosen = Boolean(buyerDateFrom || buyerDateTo);
@@ -78,19 +79,12 @@ export function DashboardPage() {
 
   const buyerValueTotal = buyerItemRows.reduce((sum, r) => sum + r.totalValue, 0);
 
-  // Prints اسم المشتري + المبلغ only (no عدد الفواتير) — see ExportService.GenerateBuyerStatementPdf.
-  async function handlePrintBuyerStatement() {
-    setBuyerPrinting(true);
-    try {
-      const blob = await printBuyerStatementPdf({
-        dateFrom: buyerDateFrom ? new Date(buyerDateFrom).toISOString() : undefined,
-        dateTo: buyerDateTo ? new Date(buyerDateTo).toISOString() : undefined,
-      });
-      const url = URL.createObjectURL(blob);
-      window.open(url, "_blank");
-    } finally {
-      setBuyerPrinting(false);
-    }
+  // اسم المشتري + المبلغ only (no عدد الفواتير) — see ExportService.GenerateBuyerStatementPdf.
+  function buildBuyerStatementPdf() {
+    return printBuyerStatementPdf({
+      dateFrom: buyerDateFrom ? new Date(buyerDateFrom).toISOString() : undefined,
+      dateTo: buyerDateTo ? new Date(buyerDateTo).toISOString() : undefined,
+    });
   }
 
   if (loading) return <div className="text-gray-500">جاري التحميل...</div>;
@@ -170,9 +164,12 @@ export function DashboardPage() {
               </button>
             )}
             {buyerPeriodChosen && buyerMerchantGroups.length > 0 && (
-              <button className="btn-secondary" disabled={buyerPrinting} onClick={handlePrintBuyerStatement}>
-                {buyerPrinting ? "جاري التجهيز..." : "🖨️ طباعة"}
-              </button>
+              <PdfActions
+                fetchPdf={buildBuyerStatementPdf}
+                fileName={`buyer-statement-${buyerDateFrom}-${buyerDateTo}.pdf`}
+                shareTitle="كشف المشتريين"
+                printMode="tab"
+              />
             )}
           </div>
           <div className="overflow-x-auto">

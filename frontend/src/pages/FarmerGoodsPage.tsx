@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { usePagination } from "../lib/usePagination";
 import { TablePagination } from "../components/TablePagination";
-import { getFarmerGoods, triggerBlobDownload } from "../api/invoices";
+import { getFarmerGoods } from "../api/invoices";
 import { createPartner } from "../api/partners";
 import { createGoodsEntry, deleteGoodsEntry, getFarmerGoodsStock, getGoodsGlobalStock, printFarmerGoodsStockPdf, updateGoodsEntry } from "../api/goods";
 import { apiErrorMessage } from "../api/client";
@@ -13,6 +13,7 @@ import { useAuth } from "../auth/AuthContext";
 import type { FarmerGoodsRow, FarmerGoodsStockDto, GoodsEntryDto, GoodsStockRow, UnitOfMeasure } from "../types";
 import { useSelection } from "../lib/useSelection";
 import { runBulkDelete, summarizeBulkDelete } from "../lib/bulkDelete";
+import { PdfActions } from "../components/PdfActions";
 
 const UNIT_OPTIONS: { value: UnitOfMeasure; label: string }[] = [
   { value: "Kg", label: "كيلو" },
@@ -69,8 +70,7 @@ export function FarmerGoodsPage() {
   const [stockData, setStockData] = useState<FarmerGoodsStockDto | null>(null);
   const [stockLoading, setStockLoading] = useState(false);
   const [stockError, setStockError] = useState<string | null>(null);
-  const [printingStock, setPrintingStock] = useState(false);
-  const [printStockError, setPrintStockError] = useState<string | null>(null);
+
 
   // "إضافة بضاعة" form.
   const [entryDate, setEntryDate] = useState(() => todayLocalDateString());
@@ -225,19 +225,6 @@ export function FarmerGoodsPage() {
     if (outcome.failedCount > 0) setStockError(summarizeBulkDelete(outcome));
   }
 
-  async function handlePrintStock() {
-    if (!farmerPick) return;
-    setPrintingStock(true);
-    setPrintStockError(null);
-    try {
-      const blob = await printFarmerGoodsStockPdf(farmerPick.id);
-      triggerBlobDownload(blob, `farmer-stock-${farmerPick.id}.pdf`);
-    } catch (err) {
-      setPrintStockError(apiErrorMessage(err, "فشل إنشاء ملف الطباعة"));
-    } finally {
-      setPrintingStock(false);
-    }
-  }
 
   async function handleSearch() {
     if (!farmerPick) return;
@@ -339,10 +326,11 @@ export function FarmerGoodsPage() {
             <div className="flex items-center justify-between flex-wrap gap-2 px-4 pt-4 pb-1">
               <div className="text-sm font-semibold text-gray-700">المخزون المتوفر حاليًا — {stockData?.farmerName ?? farmerPick.name}</div>
               <div className="flex items-center gap-2">
-                <button className="btn-secondary" onClick={handlePrintStock} disabled={printingStock}>
-                  {printingStock ? "جاري التجهيز..." : "🖨️ طباعة"}
-                </button>
-                {printStockError && <span className="text-sm text-red-600">{printStockError}</span>}
+                <PdfActions
+                  fetchPdf={() => printFarmerGoodsStockPdf(farmerPick.id)}
+                  fileName={`farmer-stock-${farmerPick.id}.pdf`}
+                  shareTitle={`مخزون ${farmerPick.name}`}
+                />
               </div>
             </div>
             {stockError && <div className="text-sm text-red-600 bg-red-50 rounded-md p-2 mx-4">{stockError}</div>}

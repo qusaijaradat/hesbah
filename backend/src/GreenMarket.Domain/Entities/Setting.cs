@@ -17,7 +17,13 @@ public class Setting
     {
         public const string DefaultCommissionRate = "commission.default_rate";
         public const string MarketName = "market.name";
-        public const string WhatsAppBusinessNumber = "whatsapp.business_number";
+        // No WhatsAppBusinessNumber key. It existed, was labelled "رقم WhatsApp Business لإرسال
+        // الفواتير", and sent nothing: the send path is a wa.me link that opens in the staff
+        // member's own WhatsApp, and this value was only ever written INTO the message text as
+        // the company's phone — which is what Phone below already is. Two settings for one fact,
+        // one of them promising a capability the app did not have. The real sender configuration
+        // (a phone number id and an access token) arrives with the WhatsApp Business API work,
+        // which is a different thing entirely and should not inherit a misleading key.
 
         /// <summary>Shown on the invoice/statement print header alongside the market name.</summary>
         public const string RegistrationNumber = "market.registration_number";

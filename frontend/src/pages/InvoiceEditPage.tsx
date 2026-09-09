@@ -290,71 +290,82 @@ export function InvoiceEditPage() {
       <div className="card p-5 mb-4">
         <h2 className="font-semibold mb-3">بنود البضاعة</h2>
         <div className="space-y-3 sm:space-y-2">
-          <div className="hidden sm:grid grid-cols-12 gap-2 text-xs text-gray-500 px-1">
-            <div className="col-span-3">الصنف</div>
-            <div className="col-span-2">الوحدة</div>
-            <div className="col-span-2">الكمية</div>
-            <div className="col-span-2">السعر (₪) — اختياري</div>
-            <div className="col-span-1">سعر الخشب</div>
-            <div className="col-span-1">الإجمالي</div>
+          <div className="hidden lg:flex gap-2 text-xs text-gray-500 px-1">
+            <div className="grid grid-cols-12 gap-2 flex-1">
+              <div className="col-span-3">الصنف</div>
+              <div className="col-span-2">الوحدة</div>
+              <div className="col-span-2">الكمية</div>
+              <div className="col-span-2">السعر (₪)</div>
+              <div className="col-span-2">سعر الخشب</div>
+              <div className="col-span-1">الإجمالي</div>
+            </div>
+            {/* Matches the delete button's own width below, so the columns stay lined up. */}
+            <div className="w-7 shrink-0"></div>
           </div>
           {rows.map((row, idx) => {
             const lineTotal = (parseFloat(row.quantity) || 0) * (parseFloat(row.pricePerUnit) || 0);
             return (
-              <div key={idx} className="grid grid-cols-2 sm:grid-cols-12 gap-2 sm:items-center border-b sm:border-0 pb-3 sm:pb-0">
-                <div className="col-span-2 sm:col-span-3">
-                  <label className="label sm:hidden">الصنف</label>
-                  <ItemAutocomplete value={row.itemName} placeholder="مثال: بندورة"
-                    onChange={(name) => updateRow(idx, { itemName: name })} />
+              <div key={idx} className="flex items-start gap-2 border-b lg:border-0 pb-3 lg:pb-0">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-2 lg:items-center flex-1">
+                  <div className="sm:col-span-2 lg:col-span-3">
+                    <label className="label lg:hidden">الصنف</label>
+                    <ItemAutocomplete value={row.itemName} placeholder="مثال: بندورة"
+                      onChange={(name) => updateRow(idx, { itemName: name })} />
+                  </div>
+                  <div className="lg:col-span-2">
+                    <label className="label lg:hidden">الوحدة</label>
+                    <select className="input" value={row.unit}
+                      onChange={(e) => updateRow(idx, { unit: e.target.value as UnitOfMeasure })}>
+                      {UNIT_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                    </select>
+                  </div>
+                  <div className="lg:col-span-2">
+                    <label className="label lg:hidden">{quantityLabel(row.unit)}</label>
+                    <input className="input" type="number" min="0" step="0.001" value={row.quantity}
+                      placeholder={row.unit === "Kg" ? "كغم" : "عدد"}
+                      onChange={(e) => updateRow(idx, { quantity: e.target.value })} />
+                  </div>
+                  <div className="lg:col-span-2">
+                    <label className="label lg:hidden">{priceLabel(row.unit)}</label>
+                    <input className="input" type="number" min="0" step="0.01" value={row.pricePerUnit}
+                      placeholder="اتركه فارغًا"
+                      onChange={(e) => updateRow(idx, { pricePerUnit: e.target.value })} />
+                  </div>
+                  <div className="lg:col-span-2">
+                    <label className="label lg:hidden">سعر الخشب (اختياري)</label>
+                    <select className="input" value={row.woodPrice}
+                      onChange={(e) => updateRow(idx, { woodPrice: e.target.value })}>
+                      <option value="">بدون</option>
+                      {WOOD_PRICE_OPTIONS.map((p) => <option key={p} value={p}>₪{p}</option>)}
+                      <option value={WOOD_PRICE_OTHER}>{WOOD_PRICE_OTHER}</option>
+                    </select>
+                    {row.woodPrice === WOOD_PRICE_OTHER && (
+                      <input className="input mt-1" type="number" min="0" step="0.01" value={row.woodPriceCustom}
+                        placeholder="القيمة"
+                        onChange={(e) => updateRow(idx, { woodPriceCustom: e.target.value })} />
+                    )}
+                  </div>
+                  <div className="lg:col-span-1 flex items-center justify-between lg:block">
+                    <label className="label lg:hidden">الإجمالي</label>
+                    {/* Same "not priced yet" convention as InvoiceNewPage/InvoiceDetailPage/the PDF —
+                        a blank/zero price flags the line instead of quietly reading as ₪0.00. */}
+                    {row.pricePerUnit.trim() === "" || (parseFloat(row.pricePerUnit) || 0) === 0 ? (
+                      <div className="text-xs font-medium text-amber-600 whitespace-nowrap">غير مسعّر</div>
+                    ) : (
+                      <div className="text-xs font-medium whitespace-nowrap">{formatCurrency(lineTotal)}</div>
+                    )}
+                  </div>
                 </div>
-                <div className="col-span-1 sm:col-span-2">
-                  <label className="label sm:hidden">الوحدة</label>
-                  <select className="input" value={row.unit}
-                    onChange={(e) => updateRow(idx, { unit: e.target.value as UnitOfMeasure })}>
-                    {UNIT_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-                  </select>
-                </div>
-                <div className="col-span-1 sm:col-span-2">
-                  <label className="label sm:hidden">{quantityLabel(row.unit)}</label>
-                  <input className="input" type="number" min="0" step="0.001" value={row.quantity}
-                    placeholder={row.unit === "Kg" ? "كغم" : "عدد"}
-                    onChange={(e) => updateRow(idx, { quantity: e.target.value })} />
-                </div>
-                <div className="col-span-1 sm:col-span-2">
-                  <label className="label sm:hidden">{priceLabel(row.unit)}</label>
-                  <input className="input" type="number" min="0" step="0.01" value={row.pricePerUnit}
-                    placeholder="اتركه فارغًا إذا لم يُسعَّر بعد"
-                    onChange={(e) => updateRow(idx, { pricePerUnit: e.target.value })} />
-                </div>
-                <div className="col-span-1 sm:col-span-1">
-                  <label className="label sm:hidden">سعر الخشب (اختياري)</label>
-                  <select className="input" value={row.woodPrice}
-                    onChange={(e) => updateRow(idx, { woodPrice: e.target.value })}>
-                    <option value="">بدون</option>
-                    {WOOD_PRICE_OPTIONS.map((p) => <option key={p} value={p}>₪{p}</option>)}
-                    <option value={WOOD_PRICE_OTHER}>{WOOD_PRICE_OTHER}</option>
-                  </select>
-                  {row.woodPrice === WOOD_PRICE_OTHER && (
-                    <input className="input mt-1" type="number" min="0" step="0.01" value={row.woodPriceCustom}
-                      placeholder="القيمة"
-                      onChange={(e) => updateRow(idx, { woodPriceCustom: e.target.value })} />
-                  )}
-                </div>
-                <div className="col-span-1 sm:col-span-1 flex items-center justify-between sm:block">
-                  <label className="label sm:hidden">الإجمالي</label>
-                  {/* Same "not priced yet" convention as InvoiceNewPage/InvoiceDetailPage/the PDF —
-                      a blank/zero price flags the line instead of quietly reading as ₪0.00. */}
-                  {row.pricePerUnit.trim() === "" || (parseFloat(row.pricePerUnit) || 0) === 0 ? (
-                    <div className="text-sm font-medium text-amber-600">غير مسعّر</div>
-                  ) : (
-                    <div className="text-sm font-medium">{formatCurrency(lineTotal)}</div>
-                  )}
-                </div>
-                <div className="col-span-2 sm:col-span-12 flex justify-end">
-                  <button className="text-red-500 text-sm" onClick={() => removeRow(idx)} title="حذف الصنف">
-                    ✕ حذف الصنف
-                  </button>
-                </div>
+                {/* Outside the grid, not a twelve-column row of its own underneath — that row was
+                    both wasted height and the reason every field above it was a column too narrow. */}
+                <button
+                  className="w-7 h-9 shrink-0 text-red-500 hover:bg-red-50 rounded-md lg:mt-0"
+                  onClick={() => removeRow(idx)}
+                  title="حذف الصنف"
+                  aria-label="حذف الصنف"
+                >
+                  ✕
+                </button>
               </div>
             );
           })}

@@ -186,7 +186,7 @@ public class InvoiceService : IInvoiceService
         // attached, or attached with neither a transport fee, a box-handling fee, nor a wood-price
         // total, means nothing to post yet (the driver's ledger only grows once there's an actual
         // amount owed to them for this invoice). Amount folds in driverBoxFeeTotal but NOT سعر الخشب
-        // (explicit requirement: the full wood-price amount is paid to the driver too, on top of what
+        // (سعر الخشب is NOT among them — the buyer pays it and the market keeps it, see MarketEarnings)
         // the merchant is separately charged for it) so the driver's account/statement/reports/manifest
         // automatically reflect both alongside the manual transport fee, without a separate ledger row.
         if (driver is not null && (invoice.TransportFee > 0 || driverBoxFeeTotal > 0))
@@ -463,8 +463,8 @@ public class InvoiceService : IInvoiceService
     /// <summary>
     /// "الرصيد السابق" on a printed invoice: this merchant's manually-entered "الرصيد الافتتاحي"
     /// (Partner.OpeningBalance — money already owed before this system was in use) PLUS what they
-    /// still owe from every one of their OTHER Active invoices (GrandTotal — TotalValue +
-    /// TransportFee + per-line WoodPrice, same as ToDto computes for a single invoice) minus every
+    /// still owe from every one of their OTHER Active invoices (GrandTotal — see InvoiceCharge
+    /// for exactly what a buyer is charged; transport is not part of it) minus every
     /// FromMerchant payment they've ever made, all-time — never date-scoped, since the point is
     /// "what's actually still owed right now", not a snapshot frozen at some past invoice date.
     /// Clamped to 0 so a merchant who has overpaid never shows a negative "balance owed" on their

@@ -210,7 +210,7 @@ public class ReportService : IReportService
     /// no "sale"/commission concept for a driver) in place of TotalSalesValue/TotalCommission.
     /// TotalTransportFee folds in each invoice's own automatic "أجرة الصناديق" box-handling fee
     /// (box-unit item count × Invoice.DriverBoxFeeApplied) AND its own "سعر الخشب" total (explicit
-    /// requirement: the driver is paid the full wood-price amount too) alongside the manual
+    /// no wood — that is the market's, not his) alongside the manual
     /// TransportFee — same "everything the driver earned" total the ledger (and Remaining below)
     /// already reflects, so this never drifts out of sync with the driver's own كشف حساب.</summary>
     public async Task<IReadOnlyList<DriverReportRow>> DriverReportAsync(ReportFilterRequest filter)
@@ -401,7 +401,16 @@ public class ReportService : IReportService
                 BoxFee: g.Sum(x => x.Boxes * x.BoxPriceApplied),
                 Wood: g.Sum(x => x.Wood),
                 DriverBoxFee: g.Sum(x => x.HasDriver ? x.Boxes * x.DriverBoxFeeApplied : 0m),
-                KeptPassThrough: g.Sum(x => x.HasDriver ? 0m : x.TransportFee)));
+                KeptPassThrough: g.Sum(x => x.HasDriver ? 0m : x.TransportFee),
+                // The TOTAL comes from MarketEarnings itself, one invoice at a time. The five
+                // terms above exist to be DISPLAYED; adding them back up here would be the same
+                // rule written a second time, which is how every figure this codebase has had to
+                // correct came to disagree with the ledger it described.
+                Earned: g.Sum(x => MarketEarnings.ForInvoice(
+                    CommissionCalculator.Calculate(x.TotalValue, x.CommissionRateApplied).Commission,
+                    x.Boxes * x.BoxPriceApplied,
+                    x.Boxes * x.DriverBoxFeeApplied,
+                    x.TransportFee, x.Wood, x.HasDriver))));
         var returnsCreditByPeriod = returns.GroupBy(r => PeriodKey(r.Date))
             .ToDictionary(g => g.Key, g => g.Sum(x => MarketEarnings.CommissionCreditOnReturn(x.TotalValue, x.CommissionRateApplied)));
         var expensesByPeriod = expenses.GroupBy(e => PeriodKey(e.Date))
@@ -411,15 +420,13 @@ public class ReportService : IReportService
 
         return periods.Select(p =>
         {
-            var agg = salesByPeriod.GetValueOrDefault(p, (Sales: 0m, Commission: 0m, BoxFee: 0m, Wood: 0m, DriverBoxFee: 0m, KeptPassThrough: 0m));
+            var agg = salesByPeriod.GetValueOrDefault(p, (Sales: 0m, Commission: 0m, BoxFee: 0m, Wood: 0m, DriverBoxFee: 0m, KeptPassThrough: 0m, Earned: 0m));
             var returnsCredit = returnsCreditByPeriod.GetValueOrDefault(p, 0m);
             var totalExpenses = expensesByPeriod.GetValueOrDefault(p, 0m);
-            // One formula, from MarketEarnings, so this and the daily closing can never drift.
-            var earned = agg.Commission + agg.BoxFee + agg.Wood - agg.DriverBoxFee + agg.KeptPassThrough;
             return new MarketReportRow(
                 p, agg.Sales, agg.Commission,
                 agg.BoxFee, agg.Wood, agg.DriverBoxFee, agg.KeptPassThrough, returnsCredit,
-                totalExpenses, earned - returnsCredit - totalExpenses);
+                totalExpenses, agg.Earned - returnsCredit - totalExpenses);
         }).ToList();
     }
 
@@ -554,6 +561,15 @@ public class ReportService : IReportService
             .Where(e => e.Date >= dayStart && e.Date < dayEnd)
             .SumAsync(e => e.Amount);
 
+        // Straight from MarketEarnings, one invoice at a time. The four figures above are the
+        // parts, shown so the total can be read back to them — but the total itself is never
+        // assembled from them here, or the rule would exist twice.
+        var earnedToday = invoicesToday.Sum(i => MarketEarnings.ForInvoice(
+            CommissionCalculator.Calculate(i.TotalValue, i.CommissionRateApplied).Commission,
+            i.Boxes * i.BoxPriceApplied,
+            i.Boxes * i.DriverBoxFeeApplied,
+            i.TransportFee, i.Wood, i.HasDriver));
+
         // Only cleared checks count (see PaymentRules) — this is the day's REAL cash flow, and a
         // check that hasn't been cashed yet (or came back) moved no cash at all.
         var paymentsFromMerchants = await _db.Payments
@@ -574,7 +590,7 @@ public class ReportService : IReportService
             dayStart, invoiceCount, totalSalesValue, totalCommission,
             boxFeeIncome, woodIncome, driverBoxFeeCost, keptPassThrough, returnsCommissionCredit,
             totalExpenses,
-            totalCommission + boxFeeIncome + woodIncome - driverBoxFeeCost + keptPassThrough - returnsCommissionCredit - totalExpenses,
+            earnedToday - returnsCommissionCredit - totalExpenses,
             paymentsFromMerchants, paymentsToFarmers);
     }
     /// <summary>How many names "أعلى المدينين" shows before sending you to قيمة الديون.</summary>

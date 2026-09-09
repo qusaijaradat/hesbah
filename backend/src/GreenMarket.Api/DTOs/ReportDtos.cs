@@ -15,8 +15,8 @@ public class ReportFilterRequest
 /// totals line. TotalBoxes sits alongside TotalWeightKg for the same reason InvoiceListItemDto's
 /// does (a box-only seller would otherwise show 0 weight and look empty). NetDue = TotalSalesValue
 /// - TotalCommission - TotalTransportFee, exactly what FarmerTransaction.Amount carries on their
-/// own ledger (InvoiceCharge.ForSeller). No wood: "سعر الخشب" is paid to the DRIVER, who supplies
-/// and handles the crates, so it is no part of what the market owes this seller. أجرة النقل is
+/// own ledger (InvoiceCharge.ForSeller). No wood: "سعر الخشب" is the MARKET's, so it is no part
+/// of what is owed to this seller. أجرة النقل is
 /// deducted: it is what it cost to bring the produce in — this is what the market owes them BEFORE
 /// payments/adjustments, kept alongside Remaining (which nets in OpeningBalance,
 /// every payment, and any Adjustment reversal) so both "how much did we owe from sales alone" and

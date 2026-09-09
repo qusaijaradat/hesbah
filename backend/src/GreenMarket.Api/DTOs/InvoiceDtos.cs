@@ -37,9 +37,10 @@ public record InvoiceItemDto(int Id, string ItemName, decimal Quantity, UnitOfMe
 /// §5's "the market's commission does not appear on the merchant's invoice" is honored by simply
 /// never printing/messaging Commission/NetDueToFarmer below on anything that reaches the merchant
 /// (see ExportService.GenerateInvoicePdf's own doc comment — still commission-free). GrandTotal =
-/// TotalValue + TransportFee + WoodTotal + BoxFeeTotal — the actual amount the merchant pays,
-/// including the pass-through transport/crate/box costs that are excluded from TotalValue
-/// specifically so they never inflate the commission base. PreviousBalance is computed
+/// TotalValue + WoodTotal + BoxFeeTotal, net of returns — the actual amount the merchant pays.
+/// Transport is NOT in it: that comes off the seller and goes to the driver. The crate and wood
+/// charges that ARE in it stay out of TotalValue specifically so they never inflate the
+/// commission base. PreviousBalance is computed
 /// (not stored) in InvoiceService — the merchant's manually-entered "الرصيد الافتتاحي"
 /// (Partner.OpeningBalance) plus what they still owed from every one of their OTHER Active
 /// invoices, minus every payment they've ever made, clamped to 0 (never shown negative even if

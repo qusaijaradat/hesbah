@@ -9,7 +9,8 @@ namespace GreenMarket.Domain.Services;
 /// forty-box invoice are worth more than they sound and were invisible on the day's profit.
 ///
 /// Derived from the three sides rather than guessed at. With C = commission, T = transport fee,
-/// W = wood total, BF = box fee charged to the buyer, DBF = crate handling paid to the driver,
+/// W = wood total charged to the buyer, BF = box fee charged to the buyer, DBF = crate handling
+/// paid to the driver,
 /// R = returned value and Cr = the commission that was charged on R:
 ///
 ///   buyer pays   = TV + W + BF − R        (transport is not his — see InvoiceCharge)

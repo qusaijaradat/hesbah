@@ -18,11 +18,10 @@ namespace GreenMarket.Domain.Services;
 ///     the market, so it comes off his due and goes to the driver — the buyer is not charged for
 ///     it at all. It used to sit in this total, which charged the buyer for a journey that
 ///     happened before he was involved.
-///   • woodTotal      — سعر الخشب, charged to the buyer once and paid in full to the DRIVER, who
-///                      supplies and handles the crates. Not the seller's: the crates are not his
-///                      to be paid for. It used to be added to BOTH ledgers, so a single charge
-///                      went out twice and the market lost money on every invoice that had a
-///                      seller and a driver on it.
+///   • woodTotal      — سعر الخشب, charged to the buyer and kept by the MARKET. Neither the
+///                      seller nor the driver has a claim on it. It has moved twice: it was once
+///                      paid to both of them at the same time, so a single charge went out twice
+///                      and the market lost money on any invoice carrying both.
 ///   • boxFeeTotal    — رسوم الصناديق, charged to the buyer only.
 ///   • − returnsTotal — قيمة المرتجع, goods the buyer sent back. This DOES
 ///                      reduce the farmer's due as well (they never sold those goods) — that side

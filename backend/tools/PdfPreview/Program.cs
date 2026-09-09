@@ -41,7 +41,9 @@ var invoice = new InvoiceDto(
     DriverBoxFeeApplied: 0.5m, DriverBoxFeeTotal: 20m,
     GrandTotal: 1329.19m,
     PreviousBalance: 2450m,
-    CommissionRateApplied: 0.10m, Commission: 110.87m, NetDueToFarmer: 997.82m,
+    // 1108.69 − 110.87 commission − 80 transport (InvoiceCharge.ForSeller); the fixture still
+    // had the pre-transport figure. DriverDue is 80 transport + 20 crate handling (ForDriver).
+    CommissionRateApplied: 0.10m, Commission: 110.87m, NetDueToFarmer: 917.82m, DriverDue: 100m,
     ReturnsTotal: 50m,
     PaidAmount: 500m, RemainingAmount: 829.19m, PaymentStatus: InvoicePaymentStatus.Partial,
     MarketProfit: 150.87m,

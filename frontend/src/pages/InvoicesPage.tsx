@@ -162,8 +162,7 @@ export function InvoicesPage() {
       else if (role === "driver" && invoice.driverId) previousBalance = (await getFarmerAccount(invoice.driverId)).remaining;
       // Commission is ONLY ever deducted on the farmer's own message — never merchant (§5), never
       // driver (no commission at all).
-      const commissionTotal = role === "farmer" ? invoice.commission : undefined;
-      const message = buildStatementMessage(companyName, companyPhone, name, [invoice], previousBalance, commissionTotal);
+      const message = buildStatementMessage(companyName, companyPhone, name, [invoice], previousBalance, role);
       window.open(buildWhatsAppLink(phone, message), "_blank");
     } finally {
       setSendingKey(null);

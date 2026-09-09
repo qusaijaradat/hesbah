@@ -197,7 +197,7 @@ public class InvoiceService : IInvoiceService
                 Type = FarmerTransactionType.TransportFee,
                 InvoiceId = invoice.Id,
                 Date = invoice.Date,
-                Amount = invoice.TransportFee + driverBoxFeeTotal,
+                Amount = InvoiceCharge.ForDriver(invoice.TransportFee, driverBoxFeeTotal),
                 Notes = $"أجرة نقل تلقائية من الفاتورة {invoice.InvoiceNumber}"
             });
             await _db.SaveChangesAsync();
@@ -387,7 +387,7 @@ public class InvoiceService : IInvoiceService
             // Amount folds in driverBoxFeeTotal but not سعر الخشب, same as CreateAsync — see its
             // own comment.
             existingTransportFee.Date = invoice.Date;
-            existingTransportFee.Amount = invoice.TransportFee + driverBoxFeeTotal;
+            existingTransportFee.Amount = InvoiceCharge.ForDriver(invoice.TransportFee, driverBoxFeeTotal);
             existingTransportFee.Notes = $"أجرة نقل تلقائية من الفاتورة {invoice.InvoiceNumber} (معدّلة)";
         }
         else
@@ -400,7 +400,7 @@ public class InvoiceService : IInvoiceService
                 Type = FarmerTransactionType.TransportFee,
                 InvoiceId = invoice.Id,
                 Date = invoice.Date,
-                Amount = invoice.TransportFee + driverBoxFeeTotal,
+                Amount = InvoiceCharge.ForDriver(invoice.TransportFee, driverBoxFeeTotal),
                 Notes = $"أجرة نقل تلقائية من الفاتورة {invoice.InvoiceNumber} (معدّلة)"
             });
         }
@@ -656,7 +656,7 @@ public class InvoiceService : IInvoiceService
                 x.FarmerId is not null ? sellerRemainingById.GetValueOrDefault(x.FarmerId.Value) : null,
                 x.DriverId is not null ? sellerRemainingById.GetValueOrDefault(x.DriverId.Value) : null,
                 commissionResult.Commission, InvoiceCharge.ForSeller(x.TotalValue, commissionResult.Commission, x.TransportFee),
-                driverBoxFeeTotal, x.TransportFee + driverBoxFeeTotal,
+                driverBoxFeeTotal, InvoiceCharge.ForDriver(x.TransportFee, driverBoxFeeTotal),
                 x.ReturnsTotal,
                 x.PaidAmount, x.GrandTotal - x.PaidAmount,
                 x.PaidAmount <= 0 ? InvoicePaymentStatus.Unpaid
@@ -800,7 +800,7 @@ public class InvoiceService : IInvoiceService
                 i.Date, it.ItemName, it.Quantity, it.Unit, it.PricePerUnit, it.WoodPrice, it.LineTotal, i.CommissionRateApplied)))
             .ToList();
 
-        return new FarmerStatementDto(farmer.Id, farmer.Name, lines);
+        return new FarmerStatementDto(farmer.Id, farmer.Name, invoices.Sum(i => i.TransportFee), lines);
     }
 
     /// <summary>
@@ -992,6 +992,7 @@ public class InvoiceService : IInvoiceService
             grandTotal,
             previousBalance,
             i.CommissionRateApplied, commissionResult.Commission, netDueToFarmer,
+            InvoiceCharge.ForDriver(i.TransportFee, driverBoxFeeTotal),
             returnsTotal,
             paidAmount, grandTotal - paidAmount, paymentStatus,
             MarketEarnings.ForInvoice(

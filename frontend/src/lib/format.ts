@@ -102,8 +102,26 @@ interface StatementInvoiceLike {
   totalValue: number;
   transportFee: number;
   woodTotal: number;
+  /** What the BUYER is charged. Never any other party's figure — see StatementSide. */
   grandTotal: number;
+  commission: number;
+  /** The seller's own due, straight off the invoice (backend InvoiceCharge.ForSeller). */
+  netDueToFarmer: number;
+  driverBoxFeeTotal: number;
+  /** The driver's own due, straight off the invoice (backend InvoiceCharge.ForDriver). */
+  driverDue: number;
 }
+
+/**
+ * Who the message is FOR. It picks which figure on the invoice is "the total", and getting it
+ * wrong is not cosmetic: grandTotal is the BUYER's charge — produce + سعر الخشب + رسوم الصناديق.
+ * Sending that to a seller (minus his commission) told him he was owed the wood and the crate fees
+ * too — neither of which is his — and never took off his أجرة النقل. Sending it to a driver told
+ * him the buyer's whole bill instead of his transport and crate handling. Both messages
+ * contradicted the printed copy of the very same invoice, which has always read these three sides
+ * off the invoice itself.
+ */
+export type StatementSide = "merchant" | "farmer" | "driver";
 
 /**
  * The ONE shared Arabic template for a partner statement — company name, company phone,
@@ -127,11 +145,9 @@ interface StatementInvoiceLike {
  * avoid double-counting when several of their invoices are bundled into one message; the
  * farmer's/driver's is simply their own account's current Remaining).
  *
- * commissionTotal, when passed (and nonzero), is the sum of every invoice's own commission
- * (InvoiceDto.commission) — ONLY ever passed for a farmer send (never merchant/driver, requirement
- * doc §5: commission never appears on anything the merchant sees; a driver has no commission at
- * all). Shown as its own deducted line, and "الإجمالي الكلي"/"الإجمالي المستحق" below switch to the
- * net-of-commission figure instead of the gross grandTotal once it's passed.
+ * The commission is shown ONLY on a farmer send (requirement doc §5: it never appears on anything
+ * the merchant sees, and a driver has none at all) — but which figure the message totals up is
+ * decided by <code>side</code>, not by whether a commission was passed in. See StatementSide.
  */
 export function buildStatementMessage(
   companyName: string,
@@ -139,7 +155,7 @@ export function buildStatementMessage(
   partnerName: string,
   invoices: StatementInvoiceLike[],
   previousBalance?: number,
-  commissionTotal?: number,
+  side: StatementSide = "merchant",
 ): string {
   const lines: string[] = [companyName];
   if (companyPhone) lines.push(`هاتف: ${companyPhone}`);
@@ -163,12 +179,32 @@ export function buildStatementMessage(
   }
 
   lines.push("");
-  lines.push(`الإجمالي الكلي: ${formatCurrency(grandTotal)}`);
-  let netTotal = grandTotal;
-  if (commissionTotal !== undefined && commissionTotal !== 0) {
-    netTotal = grandTotal - commissionTotal;
-    lines.push(`العمولة: - ${formatCurrency(commissionTotal)}`);
-    lines.push(`الصافي بعد العمولة: ${formatCurrency(netTotal)}`);
+  // Each side's own figure, summed straight off the invoices — never one side's total adjusted
+  // into another's, which is what this used to do.
+  const sum = (pick: (inv: StatementInvoiceLike) => number) => invoices.reduce((total, inv) => total + pick(inv), 0);
+  let netTotal: number;
+
+  if (side === "farmer") {
+    // His produce, then what comes off it: the market's commission and the أجرة النقل that
+    // brought the goods in. سعر الخشب and رسوم الصناديق are not his and never appear.
+    const commissionTotal = sum((inv) => inv.commission);
+    const transportTotal = sum((inv) => inv.transportFee);
+    netTotal = sum((inv) => inv.netDueToFarmer);
+    lines.push(`قيمة البضاعة: ${formatCurrency(sum((inv) => inv.totalValue))}`);
+    if (commissionTotal !== 0) lines.push(`العمولة: - ${formatCurrency(commissionTotal)}`);
+    if (transportTotal !== 0) lines.push(`أجرة النقل: - ${formatCurrency(transportTotal)}`);
+    lines.push(`الصافي المستحق لك: ${formatCurrency(netTotal)}`);
+  } else if (side === "driver") {
+    // Transport plus crate handling — the two things a driver is paid for, and nothing else.
+    const transportTotal = sum((inv) => inv.transportFee);
+    const boxHandlingTotal = sum((inv) => inv.driverBoxFeeTotal);
+    netTotal = sum((inv) => inv.driverDue);
+    if (transportTotal !== 0) lines.push(`أجرة النقل: ${formatCurrency(transportTotal)}`);
+    if (boxHandlingTotal !== 0) lines.push(`أجرة الصناديق: ${formatCurrency(boxHandlingTotal)}`);
+    lines.push(`الإجمالي المستحق لك: ${formatCurrency(netTotal)}`);
+  } else {
+    netTotal = grandTotal;
+    lines.push(`الإجمالي الكلي: ${formatCurrency(grandTotal)}`);
   }
   if (previousBalance !== undefined && previousBalance !== 0) {
     lines.push(`الرصيد السابق: ${formatCurrency(previousBalance)}`);

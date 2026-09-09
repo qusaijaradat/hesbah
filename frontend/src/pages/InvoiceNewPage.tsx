@@ -6,6 +6,8 @@ import { createInvoice } from "../api/invoices";
 
 import { getMerchantAccount } from "../api/partners";
 import { apiErrorMessage } from "../api/client";
+import { listSettings } from "../api/settings";
+import { InvoiceCharge } from "../lib/invoiceCharge";
 import { formatCurrency, formatQuantity, todayLocalDateString } from "../lib/format";
 import type { MerchantAccountDto, UnitOfMeasure } from "../types";
 import { CREDIT_LIMIT_UI_ENABLED } from "../lib/featureFlags";
@@ -103,10 +105,27 @@ export function InvoiceNewPage() {
   const woodTotal = parsedRows.reduce((sum, r) => sum + r.woodPrice, 0);
   const transportFeeValue = parseFloat(transportFee) || 0;
 
+  // The crate rate the backend will apply on save (Setting "boxes.price"). Read once — a preview
+  // of a figure the server owns, not a second source for it.
+  const [boxPrice, setBoxPrice] = useState(0);
+
+  useEffect(() => {
+    listSettings().then((settings) => {
+      const raw = settings.find((s) => s.key === "boxes.price")?.value;
+      setBoxPrice(raw ? parseFloat(raw) || 0 : 0);
+    });
+  }, []);
+
+  // رسوم الصناديق, at the rate in settings — the buyer is charged it per crate the moment this is
+  // saved, so the form has to show it. It did not, and "الإجمالي الكلي" here came out lower than the
+  // invoice the same click produced: on 400 crates at ₪1, four hundred shekels lower.
+  const boxCount = parsedRows.filter((r) => r.unit === "Box").reduce((sum, r) => sum + r.quantity, 0);
+  const boxFeeTotal = boxCount * boxPrice;
+
   // أجرة النقل is not in the buyer's total: it comes off the SELLER and goes to the driver (see
   // the backend InvoiceCharge). Kept in the form because it is entered here and drives both the
   // seller's deduction and the driver's due.
-  const grandTotal = totalValue + woodTotal;
+  const grandTotal = InvoiceCharge.forMerchant(totalValue, woodTotal, boxFeeTotal);
 
 
   useEffect(() => {
@@ -117,7 +136,7 @@ export function InvoiceNewPage() {
   }, [merchant]);
 
   // Projected: what the merchant's remaining balance would be if this invoice is saved as-is.
-  const projectedRemaining = (merchantAccount?.remaining ?? 0) + totalValue;
+  const projectedRemaining = (merchantAccount?.remaining ?? 0) + grandTotal;
   const wouldExceedCreditLimit = merchantAccount?.creditLimit != null && projectedRemaining > merchantAccount.creditLimit;
 
   function updateRow(index: number, patch: Partial<Row>) {
@@ -353,6 +372,12 @@ export function InvoiceNewPage() {
             <div>
               <div className="text-gray-500">إجمالي الخشب</div>
               <div className="font-medium">{formatCurrency(woodTotal)}</div>
+            </div>
+          )}
+          {boxFeeTotal > 0 && (
+            <div>
+              <div className="text-gray-500">رسوم الصناديق</div>
+              <div className="font-medium">{formatCurrency(boxFeeTotal)}</div>
             </div>
           )}
           {transportFeeValue > 0 && (

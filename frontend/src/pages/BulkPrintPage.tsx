@@ -376,10 +376,12 @@ function SectionFilters({ section }: { section: RoleSection }) {
  * Now each tab names only its own counterparty and shows only its own money — the same figures
  * that role's printed copy carries (see backend ExportService.InvoiceCard):
  *   مشتري — القيمة، سعر الخشب، رسوم الصناديق، الإجمالي
- *   بائع  — قيمة المبيعات، سعر الخشب، العمولة، الصافي المستحق
- *   سائق  — أجرة النقل، أجرة الصناديق، سعر الخشب، المستحق للسائق
+ *   بائع  — قيمة المبيعات، سعر الخشب (للمصلحة)، العمولة، الصافي المستحق
+ *   سائق  — أجرة النقل، أجرة الصناديق، سعر الخشب (للمصلحة)، المستحق للسائق
  * سعر الخشب stays its own column on all three (never folded silently into a total), as does the
- * role-relevant "متبقي ..." balance — both per the earlier explicit requirement.
+ * role-relevant "متبقي ..." balance — both per the earlier explicit requirement. On the بائع and
+ * سائق tabs it is labelled "(للمصلحة)": it is cargo detail sitting beside their money, not part of
+ * it, and an unlabelled سعر الخشب column next to "الصافي المستحق" reads like it is theirs.
  */
 function SectionTable({ section }: { section: RoleSection }) {
   const { role } = section;
@@ -418,7 +420,8 @@ function SectionTable({ section }: { section: RoleSection }) {
       : role === "Farmer"
       ? [
           { label: "قيمة المبيعات", value: (i) => i.totalValue, bold: true },
-          { label: "سعر الخشب", value: (i) => i.woodTotal },
+          // Cargo detail, not his money — same as on the سائق tab below.
+          { label: "سعر الخشب (للمصلحة)", value: (i) => i.woodTotal },
           { label: "العمولة", value: (i) => i.commission, red: true },
           { label: "الصافي المستحق", value: (i) => i.netDueToFarmer, bold: true },
         ]
@@ -813,7 +816,7 @@ export function BulkPrintPage() {
         getInvoicesBatch(invoiceIds),
         getMerchantGroupPreviousBalance(merchantId, invoiceIds),
       ]);
-      const message = buildStatementMessage(companyName, companyPhone, name, invoices, previousBalance);
+      const message = buildStatementMessage(companyName, companyPhone, name, invoices, previousBalance, "merchant");
       window.open(buildWhatsAppLink(phone, message), "_blank");
     } catch {
       merchantSection.setError("فشل تجهيز رسالة واتساب");
@@ -854,11 +857,9 @@ export function BulkPrintPage() {
     farmerSection.setError(null);
     try {
       const [invoices, account] = await Promise.all([getInvoicesBatch(invoiceIds), getFarmerAccount(farmerId)]);
-      // Sum every invoice's own commission — this is the farmer's own message, so (unlike the
-      // merchant/driver sends) the commission is shown and deducted (§5 only ever hides it from
-      // the merchant; a driver has none at all).
-      const commissionTotal = invoices.reduce((sum, inv) => sum + inv.commission, 0);
-      const message = buildStatementMessage(companyName, companyPhone, name, invoices, account.remaining, commissionTotal);
+      // "farmer" makes the message total up HIS due (produce − commission − transport), not the
+      // buyer's bill; it also turns on the commission line, which §5 shows only to him.
+      const message = buildStatementMessage(companyName, companyPhone, name, invoices, account.remaining, "farmer");
       window.open(buildWhatsAppLink(phone, message), "_blank");
     } catch {
       farmerSection.setError("فشل تجهيز رسالة واتساب");
@@ -894,7 +895,7 @@ export function BulkPrintPage() {
     driverSection.setError(null);
     try {
       const [invoices, account] = await Promise.all([getInvoicesBatch(invoiceIds), getFarmerAccount(driverId)]);
-      const message = buildStatementMessage(companyName, companyPhone, name, invoices, account.remaining);
+      const message = buildStatementMessage(companyName, companyPhone, name, invoices, account.remaining, "driver");
       window.open(buildWhatsAppLink(phone, message), "_blank");
     } catch {
       driverSection.setError("فشل تجهيز رسالة واتساب");

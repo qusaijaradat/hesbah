@@ -98,6 +98,67 @@ Console.WriteLine("== InvoiceCalculator ==");
     }
 }
 
+Console.WriteLine("== The money identity: buyer - seller - driver == market ==");
+{
+    // The one invariant every money rule in this system has to satisfy, and the one that kept
+    // quietly breaking: whatever the buyer hands over, minus what the seller is due, minus what
+    // the driver is due, is exactly what stays with the market. Every past bug — سعر الخشب paid
+    // to the seller and the driver at once, أجرة النقل charged to the buyer, crate fees missing
+    // from the day profit — shows up here as the two sides failing to meet.
+    //
+    // Checked from the domain helpers themselves, never from a formula retyped here, so a rule
+    // that changes in one of them and not the others fails this instead of shipping.
+    void Identity(string name, decimal totalValue, decimal rate, decimal wood, decimal boxes,
+                  decimal boxPrice, decimal driverBoxFee, decimal transport, bool hasDriver)
+    {
+        var commission = CommissionCalculator.Calculate(totalValue, rate).Commission;
+        var boxFeeTotal = boxes * boxPrice;
+        var driverBoxFeeTotal = boxes * driverBoxFee;
+
+        var buyerPays = InvoiceCharge.ForMerchant(totalValue, wood, boxFeeTotal, returnsTotal: 0m);
+        var sellerDue = InvoiceCharge.ForSeller(totalValue, commission, transport); // off the seller either way
+        var driverDue = hasDriver ? InvoiceCharge.ForDriver(transport, driverBoxFeeTotal) : 0m;
+        var market = MarketEarnings.ForInvoice(commission, boxFeeTotal, driverBoxFeeTotal, transport, wood, hasDriver);
+
+        Check($"{name}: buyer - seller - driver == market",
+              buyerPays - sellerDue - driverDue == market,
+              $"buyer {buyerPays} - seller {sellerDue} - driver {driverDue} = {buyerPays - sellerDue - driverDue}, market says {market}");
+    }
+
+    // 400 boxes at ₪1 from the buyer and 0.3 to the driver — the split the owner set: the market
+    // keeps 0.7 a box, ₪280 on this invoice, which is the figure that used to vanish entirely.
+    Identity("with a driver", totalValue: 10_000m, rate: 0.10m, wood: 150m, boxes: 400m,
+             boxPrice: 1m, driverBoxFee: 0.3m, transport: 200m, hasDriver: true);
+    Identity("no driver (transport stays here)", totalValue: 10_000m, rate: 0.10m, wood: 150m, boxes: 400m,
+             boxPrice: 1m, driverBoxFee: 0.3m, transport: 200m, hasDriver: false);
+    Identity("nothing but produce", totalValue: 500m, rate: 0.10m, wood: 0m, boxes: 0m,
+             boxPrice: 1m, driverBoxFee: 0.3m, transport: 0m, hasDriver: false);
+
+    // The crate split itself, stated as its own fact rather than left implicit in the identity:
+    // the buyer pays 1 a crate, the driver gets 0.3, and the remaining 0.7 is the market's.
+    var kept = MarketEarnings.ForInvoice(commission: 0m, boxFeeTotal: 400m * 1m, driverBoxFeeTotal: 400m * 0.3m,
+                                         transportFee: 0m, woodTotal: 0m, hasDriver: true);
+    Check("400 crates at 1 out / 0.3 to the driver leaves the market 280", kept == 280m, $"got {kept}");
+
+    // سعر الخشب is the market's outright — on the buyer's bill, on nobody else's.
+    Check("wood is charged to the buyer",
+          InvoiceCharge.ForMerchant(1_000m, woodTotal: 150m, boxFeeTotal: 0m, returnsTotal: 0m) == 1_150m);
+    Check("wood is not deducted from the seller",
+          InvoiceCharge.ForSeller(1_000m, commission: 100m, transportFee: 0m) == 900m);
+    Check("wood stays with the market",
+          MarketEarnings.ForInvoice(0m, 0m, 0m, 0m, woodTotal: 150m, hasDriver: true) == 150m);
+
+    // أجرة النقل comes off the seller and goes to the driver — the buyer is not charged for it.
+    Check("transport is not on the buyer's bill",
+          InvoiceCharge.ForMerchant(1_000m, 0m, 0m, 0m) == 1_000m);
+    Check("transport comes off the seller's due",
+          InvoiceCharge.ForSeller(1_000m, commission: 100m, transportFee: 200m) == 700m);
+
+    // A return hands back only the commission that had been earned on goods that did not sell.
+    Check("a 1,000 return at 10% credits 100 of commission",
+          MarketEarnings.CommissionCreditOnReturn(1_000m, 0.10m) == 100m);
+}
+
 Console.WriteLine("== AccountStatementBuilder ==");
 {
     var baseDate = new DateTimeOffset(2026, 8, 1, 0, 0, 0, TimeSpan.Zero);

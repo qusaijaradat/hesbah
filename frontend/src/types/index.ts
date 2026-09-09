@@ -235,8 +235,13 @@ export interface InvoiceDto {
    * "نسخة البائع" print, the "إرسال للبائع" WhatsApp message) — never on anything the merchant
    * sees (requirement doc §5). Meaningless/unused when farmerId is null. */
   commission: number;
-  /** totalValue − commission — what's actually due to the farmer for this one invoice. */
+  /** totalValue − commission − transportFee (backend InvoiceCharge.ForSeller) — what is actually
+   * due to the seller for this one invoice. Not the wood or the crate fees: the buyer pays those
+   * and the market keeps them. */
   netDueToFarmer: number;
+  /** transportFee + driverBoxFeeTotal (backend InvoiceCharge.ForDriver) — what is due to the
+   * driver, and the only figure a driver-facing print or message may total up. */
+  driverDue: number;
   /** "قيمة المرتجع" — already subtracted inside grandTotal, broken out so the screen can show
    * why the total is lower than the lines add up to. */
   returnsTotal: number;
@@ -291,13 +296,14 @@ export interface InvoiceListItemDto {
    * no farmer/driver attached. */
   farmerRemaining?: number | null;
   driverRemaining?: number | null;
-  /** Farmer-side money for this invoice — the same figures its printed "فاتورة بائع" shows.
-   * netDueToFarmer = totalValue − commission + woodTotal (the seller is paid the full wood price
-   * on top, never taxed by the commission). See backend InvoiceListItemDto. */
+  /** Seller-side money for this invoice — the same figures its printed "فاتورة بائع" shows.
+   * netDueToFarmer = totalValue − commission − transportFee (backend InvoiceCharge.ForSeller).
+   * سعر الخشب is NOT in it: the buyer pays it and the market keeps it. */
   commission: number;
   netDueToFarmer: number;
   /** Driver-side money — same figures its printed "فاتورة سائق" and the driver's كشف أجرة نقل
-   * show. driverDue = transportFee + driverBoxFeeTotal + woodTotal. */
+   * show. driverDue = transportFee + driverBoxFeeTotal (backend InvoiceCharge.ForDriver). No wood:
+   * that stopped being the driver's. */
   driverBoxFeeTotal: number;
   driverDue: number;
   /** "قيمة المرتجع" — already subtracted inside grandTotal, broken out so the screen can show

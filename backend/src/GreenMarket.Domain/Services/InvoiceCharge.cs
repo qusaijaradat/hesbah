@@ -49,4 +49,18 @@ public static class InvoiceCharge
     /// </summary>
     public static decimal ForSeller(decimal totalValue, decimal commission, decimal transportFee) =>
         totalValue - commission - transportFee;
+
+    /// <summary>
+    /// What this invoice owes the DRIVER: the أجرة النقل taken off the seller, plus أجرة الصناديق
+    /// for handling the crates — a share of the crate fee the buyer paid, not a charge on top of it.
+    /// The third side, here beside the other two for the same reason they are together: it was
+    /// spelled out by hand in five places (the ledger row on create, the two on edit, the invoice
+    /// list row, the printed copy), and the driver's share of a crate is exactly the kind of rate
+    /// that gets changed in one place and missed in four.
+    ///
+    /// Only meaningful when a driver is attached. With nobody to pay, the transport stays with the
+    /// market instead — see <see cref="MarketEarnings.ForInvoice"/>, which owns that decision.
+    /// </summary>
+    public static decimal ForDriver(decimal transportFee, decimal driverBoxFeeTotal) =>
+        transportFee + driverBoxFeeTotal;
 }

@@ -63,14 +63,16 @@ public record InvoiceItemDto(int Id, string ItemName, decimal Quantity, UnitOfMe
 /// Commission is this one invoice's own commission math (CommissionCalculator over
 /// TotalValue/CommissionRateApplied — never TotalValue+WoodTotal/TransportFee/BoxFeeTotal, same
 /// base the linked FarmerTransaction.Commission already uses, so this can never drift from the
-/// farmer's own ledger). NetDueToFarmer = TotalValue - Commission + WoodTotal (explicit
-/// requirement: the farmer is paid the FULL wood-price amount too, on top of what the merchant is
-/// separately charged for it above — never reduced by the commission, same flat treatment
-/// FarmerTransaction.Amount already gets) — this is the actual amount the farmer is owed for this
-/// invoice, matching FarmerTransaction.Amount on their Sale row exactly. Both are computed even
-/// when FarmerId is null (harmless, just meaningless/unused by the frontend then) — only ever
-/// shown on farmer-facing surfaces (the "نسخة البائع" print, and the "إرسال للبائع" WhatsApp
-/// message), never on anything the merchant sees.
+/// farmer's own ledger). NetDueToFarmer is InvoiceCharge.ForSeller: TotalValue − Commission −
+/// TransportFee. Neither سعر الخشب nor رسوم الصناديق is in it — the buyer pays both and the market
+/// keeps both — and the أجرة النقل that brought the goods in comes off his side. It matches
+/// FarmerTransaction.Amount on his Sale row exactly, because both call the same function.
+///
+/// DriverDue is the third side, InvoiceCharge.ForDriver: TransportFee + DriverBoxFeeTotal, matching
+/// his own TransportFee ledger row. All three are computed even when FarmerId/DriverId is null
+/// (harmless and unused then) — and each is only ever shown on that party's own surfaces: the
+/// "نسخة البائع" print and "إرسال للبائع" message, the "نسخة السائق" print and "إرسال للسائق"
+/// message, never on anything the merchant sees.
 /// </summary>
 public record InvoiceDto(
     int Id, string InvoiceNumber, DateTimeOffset Date,
@@ -83,7 +85,7 @@ public record InvoiceDto(
     decimal DriverBoxFeeApplied, decimal DriverBoxFeeTotal,
     decimal GrandTotal,
     decimal PreviousBalance,
-    decimal CommissionRateApplied, decimal Commission, decimal NetDueToFarmer,
+    decimal CommissionRateApplied, decimal Commission, decimal NetDueToFarmer, decimal DriverDue,
     // "قيمة المرتجع" — already subtracted inside GrandTotal above, broken out on its own so the
     // invoice can show WHY the total is lower than the lines add up to, same "never let a figure
     // disappear silently into a total" convention as WoodTotal/BoxFeeTotal.
@@ -292,8 +294,13 @@ public record MergedInvoiceGroupDto(
 public record FarmerStatementLineDto(DateTimeOffset Date, string ItemName, decimal Quantity, UnitOfMeasure Unit, decimal PricePerUnit, decimal WoodPrice, decimal LineTotal, decimal CommissionRateApplied);
 
 /// <summary>Wraps the itemized lines above with the farmer's own name, resolved once in
-/// InvoiceService so the PDF header can show "البائع: ..." without a second round trip.</summary>
-public record FarmerStatementDto(int FarmerId, string FarmerName, IReadOnlyList<FarmerStatementLineDto> Lines);
+/// InvoiceService so the PDF header can show "البائع: ..." without a second round trip.
+///
+/// TransportTotal is the أجرة النقل across the same invoices, summed once here rather than per
+/// line: transport is charged per INVOICE, not per item, so it cannot be attributed to one item's
+/// row — but it comes off the seller (InvoiceCharge.ForSeller), so a statement that never
+/// subtracted it was overstating what he is owed.</summary>
+public record FarmerStatementDto(int FarmerId, string FarmerName, decimal TransportTotal, IReadOnlyList<FarmerStatementLineDto> Lines);
 
 /// <summary>
 /// One row of the standalone "بضاعة الباعة" page — aggregated by day + item + unit across all of

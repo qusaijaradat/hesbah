@@ -7,6 +7,8 @@ import type { InvoicePaymentsEditorHandle } from "../components/InvoicePaymentsE
 import { getInvoice, updateInvoice } from "../api/invoices";
 import { getMerchantAccount } from "../api/partners";
 import { apiErrorMessage } from "../api/client";
+import { listSettings } from "../api/settings";
+import { InvoiceCharge } from "../lib/invoiceCharge";
 import { formatCurrency, formatQuantity, localDateInputValue } from "../lib/format";
 import type { MerchantAccountDto, UnitOfMeasure } from "../types";
 import { useAuth } from "../auth/AuthContext";
@@ -94,10 +96,12 @@ export function InvoiceEditPage() {
   const [transportFee, setTransportFee] = useState("");
 
   const [rows, setRows] = useState<Row[]>([]);
-  // The invoice's total BEFORE this edit — captured once when it loads, not derived from the
-  // (now-editable) rows — so the credit-limit projection below can subtract out this invoice's
-  // own existing contribution to the merchant's balance before adding back the edited total.
-  const [originalTotalValue, setOriginalTotalValue] = useState(0);
+  // What this invoice CHARGED the buyer before this edit — captured once when it loads, not
+  // derived from the (now-editable) rows — so the credit-limit projection below can subtract out
+  // its existing contribution to the merchant's balance before adding the edited charge back.
+  // GrandTotal, not TotalValue: the balance carries the crate and wood charges too, so using the
+  // produce value alone left the projection short by both, in both directions.
+  const [originalGrandTotal, setOriginalGrandTotal] = useState(0);
   const [originalMerchantId, setOriginalMerchantId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -137,7 +141,7 @@ export function InvoiceEditPage() {
         pricePerUnit: String(it.pricePerUnit),
         ...woodPriceFieldsFromValue(it.woodPrice),
       })));
-      setOriginalTotalValue(invoice.totalValue);
+      setOriginalGrandTotal(invoice.grandTotal);
       setOriginalMerchantId(invoice.merchantId);
       setLoading(false);
     });
@@ -158,10 +162,27 @@ export function InvoiceEditPage() {
   const woodTotal = parsedRows.reduce((sum, r) => sum + r.woodPrice, 0);
   const transportFeeValue = parseFloat(transportFee) || 0;
 
+  // The crate rate the backend will apply on save (Setting "boxes.price"). Read once — a preview
+  // of a figure the server owns, not a second source for it.
+  const [boxPrice, setBoxPrice] = useState(0);
+
+  useEffect(() => {
+    listSettings().then((settings) => {
+      const raw = settings.find((s) => s.key === "boxes.price")?.value;
+      setBoxPrice(raw ? parseFloat(raw) || 0 : 0);
+    });
+  }, []);
+
+  // رسوم الصناديق, at the rate in settings — the buyer is charged it per crate the moment this is
+  // saved, so the form has to show it. It did not, and "الإجمالي الكلي" here came out lower than the
+  // invoice the same click produced: on 400 crates at ₪1, four hundred shekels lower.
+  const boxCount = parsedRows.filter((r) => r.unit === "Box").reduce((sum, r) => sum + r.quantity, 0);
+  const boxFeeTotal = boxCount * boxPrice;
+
   // أجرة النقل is not in the buyer's total: it comes off the SELLER and goes to the driver (see
   // the backend InvoiceCharge). Kept in the form because it is entered here and drives both the
   // seller's deduction and the driver's due.
-  const grandTotal = totalValue + woodTotal;
+  const grandTotal = InvoiceCharge.forMerchant(totalValue, woodTotal, boxFeeTotal);
 
   useEffect(() => {
     if (!merchant) { setMerchantAccount(null); return; }
@@ -176,7 +197,7 @@ export function InvoiceEditPage() {
   // merchant hasn't been changed — if it has, the invoice was never part of the NEW merchant's
   // balance to begin with, so nothing needs to be subtracted out.
   const stillSameMerchant = merchant?.id === originalMerchantId;
-  const projectedRemaining = (merchantAccount?.remaining ?? 0) - (stillSameMerchant ? originalTotalValue : 0) + totalValue;
+  const projectedRemaining = (merchantAccount?.remaining ?? 0) - (stillSameMerchant ? originalGrandTotal : 0) + grandTotal;
   const wouldExceedCreditLimit = merchantAccount?.creditLimit != null && projectedRemaining > merchantAccount.creditLimit;
 
   function updateRow(index: number, patch: Partial<Row>) {
@@ -400,6 +421,12 @@ export function InvoiceEditPage() {
             <div>
               <div className="text-gray-500">إجمالي الخشب</div>
               <div className="font-medium">{formatCurrency(woodTotal)}</div>
+            </div>
+          )}
+          {boxFeeTotal > 0 && (
+            <div>
+              <div className="text-gray-500">رسوم الصناديق</div>
+              <div className="font-medium">{formatCurrency(boxFeeTotal)}</div>
             </div>
           )}
           {transportFeeValue > 0 && (

@@ -1091,10 +1091,12 @@ public class ExportService : IExportService
     /// invoice's CommissionRateApplied — never +wood, same base as everywhere else commission is
     /// computed) is summed per item, then all of it is summarized once more at the very end (grand
     /// sales total, grand commission, net due, then previousBalance added on top same as every
-    /// other statement PDF in this app). Net/netDue both add the wood subtotal back in on top of
-    /// subtotal-minus-commission (explicit requirement: the farmer is paid the full wood-price
-    /// amount too, never taxed by the commission) — same total FarmerTransaction.Amount already
-    /// reflects on this farmer's own ledger, so this print can never drift from it.
+    /// other statement PDF in this app). Net per item is subtotal − commission; the grand net then
+    /// takes off the أجرة النقل once (it is charged per invoice, not per item), giving
+    /// InvoiceCharge.ForSeller across the range — the same total FarmerTransaction.Amount holds on
+    /// this seller's ledger, so the print cannot drift from it. سعر الخشب is still SHOWN, per line
+    /// and per item, because it is part of what he brought — but it is no longer ADDED to his net:
+    /// the buyer pays it and the market keeps it. This print was still paying it to him.
     /// </summary>
     public byte[] GenerateFarmerStatementPdf(FarmerStatementDto statement, DateTimeOffset? dateFrom, DateTimeOffset? dateTo, CompanyInfo company, decimal previousBalance)
     {
@@ -1113,7 +1115,7 @@ public class ExportService : IExportService
                     Subtotal = subtotal,
                     WoodSubtotal = woodSubtotal,
                     Commission = commission,
-                    Net = subtotal - commission + woodSubtotal,
+                    Net = subtotal - commission,
                 };
             })
             .OrderBy(g => g.ItemName, StringComparer.CurrentCulture)
@@ -1124,7 +1126,7 @@ public class ExportService : IExportService
         var woodTotal = statement.Lines.Sum(l => l.WoodPrice);
         var itemsTotal = statement.Lines.Sum(l => l.LineTotal);
         var totalCommission = itemGroups.Sum(g => g.Commission);
-        var netDue = itemsTotal - totalCommission + woodTotal;
+        var netDue = itemsTotal - totalCommission - statement.TransportTotal;
 
         var document = Document.Create(container =>
         {
@@ -1259,7 +1261,11 @@ public class ExportService : IExportService
                                 table.Cell().Element(c => DataCell(c, true)).AlignRight().Text("الإجمالي").Bold();
                                 table.Cell().Element(c => DataCell(c, true)).AlignRight().Text(itemsTotal.ToString("0.##")).Bold();
                                 table.Cell().Element(c => DataCell(c, true)).AlignRight().Text($"- {totalCommission:0.##}").Bold();
-                                table.Cell().Element(c => DataCell(c, true)).AlignRight().Text(netDue.ToString("0.##")).Bold();
+                                // The per-item الصافي column sums to sales − commission, so the total
+                                // row has to say that and nothing else. أجرة النقل is charged per
+                                // invoice, not per item, so it comes off once in the footer instead —
+                                // putting it here would leave this column not adding up.
+                                table.Cell().Element(c => DataCell(c, true)).AlignRight().Text((itemsTotal - totalCommission).ToString("0.##")).Bold();
                             });
                         });
                     }
@@ -1272,10 +1278,13 @@ public class ExportService : IExportService
                         col.Item().AlignRight().Text($"إجمالي الوزن: {totalWeightKg:0.###} كغم");
                     if (totalBoxes > 0)
                         col.Item().AlignRight().Text($"إجمالي الصناديق: {totalBoxes:0.###}");
+                    // Shown, not added: سعر الخشب is on the buyer's bill and stays with the market.
                     if (woodTotal > 0)
-                        col.Item().AlignRight().Text($"إجمالي الخشب: ₪ {woodTotal:0.##}").FontSize(9);
+                        col.Item().AlignRight().Text($"إجمالي الخشب (على المشتري): ₪ {woodTotal:0.##}").FontSize(9);
                     col.Item().PaddingTop(4).AlignRight().Text($"إجمالي المبيعات: ₪ {itemsTotal:0.##}").Bold().FontSize(12);
                     col.Item().AlignRight().Text($"إجمالي العمولة: - ₪ {totalCommission:0.##}").FontColor(PrintInk.Deduction).FontSize(11);
+                    if (statement.TransportTotal != 0)
+                        col.Item().AlignRight().Text($"أجرة النقل: - ₪ {statement.TransportTotal:0.##}").FontColor(PrintInk.Deduction).FontSize(11);
                     col.Item().PaddingTop(2).AlignRight().Text($"الصافي المستحق للبائع: ₪ {netDue:0.##}").Bold().FontSize(13);
                     if (previousBalance != 0)
                     {
@@ -1304,10 +1313,11 @@ public class ExportService : IExportService
     ///  • Merchant — "فاتورة مشتري": what the buyer owes. Product + خشب + رسوم الصناديق folded into
     ///    GrandTotal, plus their الرصيد السابق. Commission stays invisible here (requirement §5),
     ///    and so do البائع/السائق (same reasoning as GenerateInvoicePdf).
-    ///  • Farmer — "فاتورة بائع": what the seller is owed. Sale value, the commission deducted off
-    ///    it, and سعر الخشب added back on top — the same math as GenerateFarmerInvoicePdf's
-    ///    "نسخة البائع". Deliberately carries NO merchant grand total, no رسوم الصناديق (that's
-    ///    charged to the buyer, never deducted from the seller) and no merchant الرصيد السابق.
+    ///  • Farmer — "فاتورة بائع": what the seller is owed — InvoiceCharge.ForSeller, the same math
+    ///    as GenerateFarmerInvoicePdf's "نسخة البائع": sale value, less the commission, less the
+    ///    أجرة النقل. سعر الخشب is NOT added on top (it used to be, and was being paid to him and
+    ///    the driver at once); nor is رسوم الصناديق — the buyer pays both and the market keeps both.
+    ///    Deliberately carries no merchant grand total and no merchant الرصيد السابق either.
     ///  • Driver — "فاتورة سائق": what the driver is owed. Cargo (عدد/وزن, no per-item price — a
     ///    driver has no per-item price at all) plus أجرة النقل + أجرة الصناديق + سعر الخشب, the
     ///    exact same three components GenerateDriverManifestPdf sums, so the two documents can
@@ -1405,7 +1415,7 @@ public class ExportService : IExportService
                         col.Item().AlignRight().Text($"أجرة الصناديق: ₪ {invoice.DriverBoxFeeTotal:0.##}").FontSize(7);
                     if (invoice.WoodTotal > 0)
                         col.Item().AlignRight().Text($"سعر الخشب (لا يُضاف للمستحق): ₪ {invoice.WoodTotal:0.##}").FontSize(7).FontColor(PrintInk.Secondary);
-                    var driverDue = invoice.TransportFee + invoice.DriverBoxFeeTotal;
+                    var driverDue = InvoiceCharge.ForDriver(invoice.TransportFee, invoice.DriverBoxFeeTotal);
                     col.Item().PaddingTop(2).AlignRight().Text($"الإجمالي المستحق للسائق: ₪ {driverDue:0.##}").Bold().FontSize(10);
                     break;
                 }

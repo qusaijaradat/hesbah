@@ -155,7 +155,10 @@ export function buildStatementMessage(
       lines.push(`- ${it.itemName}: ${formatQuantity(it.quantity, it.unit)} × ${formatCurrency(it.pricePerUnit)} = ${formatCurrency(it.lineTotal)}${woodNote}`);
     }
     if (inv.woodTotal > 0) lines.push(`  إجمالي سعر الخشب لهذه الفاتورة: ${formatCurrency(inv.woodTotal)}`);
-    if (inv.transportFee > 0) lines.push(`  أجرة النقل: ${formatCurrency(inv.transportFee)}`);
+    // Not part of the total below: أجرة النقل comes off the SELLER and goes to the driver, so the
+    // buyer is not charged for it (see the backend InvoiceCharge). Named so whoever is reading
+    // this — buyer, seller or driver — can tell whose it is.
+    if (inv.transportFee > 0) lines.push(`  أجرة النقل (على البائع، للسائق): ${formatCurrency(inv.transportFee)}`);
     grandTotal += inv.grandTotal;
   }
 

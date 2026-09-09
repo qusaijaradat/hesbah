@@ -185,11 +185,11 @@ public class InvoiceService : IInvoiceService
         // Same idea as the farmer's Sale row above, but for the driver's transport fee — no driver
         // attached, or attached with neither a transport fee, a box-handling fee, nor a wood-price
         // total, means nothing to post yet (the driver's ledger only grows once there's an actual
-        // amount owed to them for this invoice). Amount folds in driverBoxFeeTotal AND totals.WoodTotal
+        // amount owed to them for this invoice). Amount folds in driverBoxFeeTotal but NOT سعر الخشب
         // (explicit requirement: the full wood-price amount is paid to the driver too, on top of what
         // the merchant is separately charged for it) so the driver's account/statement/reports/manifest
         // automatically reflect both alongside the manual transport fee, without a separate ledger row.
-        if (driver is not null && (invoice.TransportFee > 0 || driverBoxFeeTotal > 0 || totals.WoodTotal > 0))
+        if (driver is not null && (invoice.TransportFee > 0 || driverBoxFeeTotal > 0))
         {
             _db.FarmerTransactions.Add(new FarmerTransaction
             {
@@ -197,7 +197,7 @@ public class InvoiceService : IInvoiceService
                 Type = FarmerTransactionType.TransportFee,
                 InvoiceId = invoice.Id,
                 Date = invoice.Date,
-                Amount = invoice.TransportFee + driverBoxFeeTotal + totals.WoodTotal,
+                Amount = invoice.TransportFee + driverBoxFeeTotal,
                 Notes = $"أجرة نقل تلقائية من الفاتورة {invoice.InvoiceNumber}"
             });
             await _db.SaveChangesAsync();
@@ -375,7 +375,7 @@ public class InvoiceService : IInvoiceService
         var existingTransportFee = await _db.FarmerTransactions
             .SingleOrDefaultAsync(t => t.InvoiceId == invoice.Id && t.Type == FarmerTransactionType.TransportFee);
 
-        if (driver is null || (invoice.TransportFee <= 0 && driverBoxFeeTotal <= 0 && totals.WoodTotal <= 0))
+        if (driver is null || (invoice.TransportFee <= 0 && driverBoxFeeTotal <= 0))
         {
             // Driver removed, or the transport fee, box-handling fee, AND wood-price total all
             // zeroed out — nothing left to post.
@@ -384,10 +384,10 @@ public class InvoiceService : IInvoiceService
         else if (existingTransportFee is not null && previousDriverId == driver.Id)
         {
             // Same driver as before — just correct the fee/date on their existing ledger row.
-            // Amount folds in driverBoxFeeTotal and totals.WoodTotal, same as CreateAsync — see its
+            // Amount folds in driverBoxFeeTotal but not سعر الخشب, same as CreateAsync — see its
             // own comment.
             existingTransportFee.Date = invoice.Date;
-            existingTransportFee.Amount = invoice.TransportFee + driverBoxFeeTotal + totals.WoodTotal;
+            existingTransportFee.Amount = invoice.TransportFee + driverBoxFeeTotal;
             existingTransportFee.Notes = $"أجرة نقل تلقائية من الفاتورة {invoice.InvoiceNumber} (معدّلة)";
         }
         else
@@ -400,7 +400,7 @@ public class InvoiceService : IInvoiceService
                 Type = FarmerTransactionType.TransportFee,
                 InvoiceId = invoice.Id,
                 Date = invoice.Date,
-                Amount = invoice.TransportFee + driverBoxFeeTotal + totals.WoodTotal,
+                Amount = invoice.TransportFee + driverBoxFeeTotal,
                 Notes = $"أجرة نقل تلقائية من الفاتورة {invoice.InvoiceNumber} (معدّلة)"
             });
         }
@@ -656,7 +656,7 @@ public class InvoiceService : IInvoiceService
                 x.FarmerId is not null ? sellerRemainingById.GetValueOrDefault(x.FarmerId.Value) : null,
                 x.DriverId is not null ? sellerRemainingById.GetValueOrDefault(x.DriverId.Value) : null,
                 commissionResult.Commission, InvoiceCharge.ForSeller(x.TotalValue, commissionResult.Commission, x.TransportFee),
-                driverBoxFeeTotal, x.TransportFee + driverBoxFeeTotal + x.WoodTotal,
+                driverBoxFeeTotal, x.TransportFee + driverBoxFeeTotal,
                 x.ReturnsTotal,
                 x.PaidAmount, x.GrandTotal - x.PaidAmount,
                 x.PaidAmount <= 0 ? InvoicePaymentStatus.Unpaid

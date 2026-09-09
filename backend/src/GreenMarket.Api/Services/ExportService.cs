@@ -242,7 +242,7 @@ public class ExportService : IExportService
         var sheet = workbook.Worksheets.Add("Market Report");
         var headers = new[]
         {
-            "Period", "Total Sales (₪)", "Total Commission (₪)", "Box Fee Income (₪)",
+            "Period", "Total Sales (₪)", "Total Commission (₪)", "Box Fee Income (₪)", "Wood Income (₪)",
             "Driver Box Fee (₪)", "Kept Pass-Through (₪)", "Returns Commission Credit (₪)",
             "Total Expenses (₪)", "Net Profit (₪)"
         };
@@ -256,11 +256,12 @@ public class ExportService : IExportService
             sheet.Cell(row, 2).Value = (double)r.TotalSalesValue;
             sheet.Cell(row, 3).Value = (double)r.TotalCommission;
             sheet.Cell(row, 4).Value = (double)r.BoxFeeIncome;
-            sheet.Cell(row, 5).Value = (double)r.DriverBoxFeeCost;
-            sheet.Cell(row, 6).Value = (double)r.KeptPassThrough;
-            sheet.Cell(row, 7).Value = (double)r.ReturnsCommissionCredit;
-            sheet.Cell(row, 8).Value = (double)r.TotalExpenses;
-            sheet.Cell(row, 9).Value = (double)r.NetProfit;
+            sheet.Cell(row, 5).Value = (double)r.WoodIncome;
+            sheet.Cell(row, 6).Value = (double)r.DriverBoxFeeCost;
+            sheet.Cell(row, 7).Value = (double)r.KeptPassThrough;
+            sheet.Cell(row, 8).Value = (double)r.ReturnsCommissionCredit;
+            sheet.Cell(row, 9).Value = (double)r.TotalExpenses;
+            sheet.Cell(row, 10).Value = (double)r.NetProfit;
             row++;
         }
         sheet.Columns().AdjustToContents();
@@ -531,13 +532,12 @@ public class ExportService : IExportService
                         col.Item().AlignRight().Text($"إجمالي الوزن: {invoice.TotalWeightKg:0.###} كغم");
                     if (totalBoxes > 0)
                         col.Item().AlignRight().Text($"إجمالي الصناديق: {totalBoxes:0.###}");
-                    // Wood/crate price is charged to the merchant (see GrandTotal) and paid to the
-                    // DRIVER, who supplies and handles the crates — not to the seller. Shown here
-                    // only as cargo detail, and labelled so the seller is not left wondering why a
-                    // figure on his own invoice is missing from his total: "الصافي المستحق" below
-                    // is TotalValue − Commission, with no wood in it.
+                    // Wood/crate price is charged to the merchant (see GrandTotal) and kept by the
+                    // market — neither the seller nor the driver has a claim on it. Shown here only
+                    // as cargo detail, and labelled so the seller is not left wondering why a figure
+                    // on his own invoice is missing from his total.
                     if (invoice.WoodTotal > 0)
-                        col.Item().AlignRight().Text($"سعر الخشب (لا يُضاف للمستحق — يُدفع للسائق): ₪ {invoice.WoodTotal:0.##}").FontSize(9).FontColor(PrintInk.Secondary);
+                        col.Item().AlignRight().Text($"سعر الخشب (لا يُضاف للمستحق): ₪ {invoice.WoodTotal:0.##}").FontSize(9).FontColor(PrintInk.Secondary);
                     // Same informational-only treatment as WoodTotal above — رسوم الصناديق is
                     // charged to the MERCHANT (see InvoiceDto.BoxFeeTotal), never deducted from
                     // what's owed to the farmer, so it's shown here as cargo detail but kept OUT
@@ -695,22 +695,19 @@ public class ExportService : IExportService
     /// "—" for whichever one doesn't apply to that invoice's items). Quantity stays purely
     /// informational cargo detail, never added into grandTotal/الرصيد السابق below.
     ///
-    /// أجرة الصناديق and سعر الخشب (both explicit requests): unlike the box count/weight columns
-    /// above, these two ARE real money owed to the driver — سعر الخشب is paid to the driver in FULL
-    /// (same amount the merchant is separately charged for it, not split — explicit requirement),
-    /// on top of أجرة الصناديق (DriverBoxFeeTotal) — both shown per invoice and explained/summed in
-    /// the footer, then folded into grandTotal alongside the transport fee, so "الإجمالي المستحق
-    /// للسائق" below is the actual total this manifest represents.
+    /// أجرة الصناديق IS money owed to the driver and is folded into grandTotal alongside the
+    /// transport fee, so "الإجمالي المستحق للسائق" below is the actual total this manifest
+    /// represents. سعر الخشب is NOT: the buyer pays it and the market keeps it, so it stays here
+    /// as cargo detail and is labelled as not his, the same way the quantity columns are.
     /// </summary>
     public byte[] GenerateDriverManifestPdf(string driverName, IReadOnlyList<InvoiceDto> invoices, CompanyInfo company, decimal previousBalance)
     {
         var orderedInvoices = invoices.OrderBy(i => i.Date).ToList();
         var totalDriverBoxFee = orderedInvoices.Sum(i => i.DriverBoxFeeTotal);
-        // Explicit requirement: the driver is paid the full wood-price amount too (same amount the
-        // merchant is separately charged for it, not split) — folded into grandTotal alongside the
-        // transport fee and the box-handling fee, same treatment as totalDriverBoxFee.
+        // Shown, not owed: the buyer pays سعر الخشب and the market keeps it. Summed only so the
+        // manifest can state the load's crate value alongside its weight and box count.
         var woodTotal = orderedInvoices.Sum(i => i.WoodTotal);
-        var grandTotal = orderedInvoices.Sum(i => i.TransportFee) + totalDriverBoxFee + woodTotal;
+        var grandTotal = orderedInvoices.Sum(i => i.TransportFee) + totalDriverBoxFee;
         var totalBoxes = orderedInvoices.Sum(i => i.Items.Where(it => it.Unit == UnitOfMeasure.Box).Sum(it => it.Quantity));
         var totalWeightKg = orderedInvoices.Sum(i => i.TotalWeightKg);
 
@@ -780,10 +777,10 @@ public class ExportService : IExportService
                     if (totalWeightKg > 0)
                         col.Item().AlignRight().Text($"إجمالي الوزن: {totalWeightKg:0.###} كغم").FontSize(9);
                     if (woodTotal > 0)
-                        col.Item().AlignRight().Text($"إجمالي سعر الخشب (تُضاف لمستحقات السائق): ₪ {woodTotal:0.##}").FontSize(9);
+                        col.Item().AlignRight().Text($"إجمالي سعر الخشب (لا يُضاف لمستحقات السائق): ₪ {woodTotal:0.##}").FontSize(9).FontColor(PrintInk.Secondary);
                     if (totalDriverBoxFee > 0)
                         col.Item().AlignRight().Text($"إجمالي أجرة الصناديق (تُضاف لمستحقات السائق): ₪ {totalDriverBoxFee:0.##}").FontSize(9);
-                    col.Item().PaddingTop(4).AlignRight().Text($"الإجمالي المستحق للسائق (أجرة النقل + أجرة الصناديق + سعر الخشب): ₪ {grandTotal:0.##}").Bold().FontSize(13);
+                    col.Item().PaddingTop(4).AlignRight().Text($"الإجمالي المستحق للسائق (أجرة النقل + أجرة الصناديق): ₪ {grandTotal:0.##}").Bold().FontSize(13);
                     if (previousBalance != 0)
                     {
                         col.Item().PaddingTop(2).AlignRight().Text($"الرصيد السابق (رصيد حساب السائق الحالي): ₪ {previousBalance:0.##}").FontSize(10);
@@ -1384,7 +1381,7 @@ public class ExportService : IExportService
                     // the wood line is labelled as such and the box fee has no place here at all.
                     col.Item().AlignRight().Text($"إجمالي المبيعات: ₪ {invoice.TotalValue:0.##}").FontSize(8);
                     if (invoice.WoodTotal > 0)
-                        col.Item().AlignRight().Text($"سعر الخشب (يُدفع للسائق): ₪ {invoice.WoodTotal:0.##}").FontSize(7);
+                        col.Item().AlignRight().Text($"سعر الخشب (لا يُضاف للمستحق): ₪ {invoice.WoodTotal:0.##}").FontSize(7);
                     col.Item().AlignRight().Text($"العمولة ({invoice.CommissionRateApplied:0.##%}): - ₪ {invoice.Commission:0.##}").FontSize(7).FontColor(PrintInk.Deduction);
                     if (invoice.TransportFee > 0)
                         col.Item().AlignRight().Text($"أجرة النقل: - ₪ {invoice.TransportFee:0.##}").FontSize(7).FontColor(PrintInk.Deduction);
@@ -1407,8 +1404,8 @@ public class ExportService : IExportService
                     if (invoice.DriverBoxFeeTotal > 0)
                         col.Item().AlignRight().Text($"أجرة الصناديق: ₪ {invoice.DriverBoxFeeTotal:0.##}").FontSize(7);
                     if (invoice.WoodTotal > 0)
-                        col.Item().AlignRight().Text($"سعر الخشب: ₪ {invoice.WoodTotal:0.##}").FontSize(7);
-                    var driverDue = invoice.TransportFee + invoice.DriverBoxFeeTotal + invoice.WoodTotal;
+                        col.Item().AlignRight().Text($"سعر الخشب (لا يُضاف للمستحق): ₪ {invoice.WoodTotal:0.##}").FontSize(7).FontColor(PrintInk.Secondary);
+                    var driverDue = invoice.TransportFee + invoice.DriverBoxFeeTotal;
                     col.Item().PaddingTop(2).AlignRight().Text($"الإجمالي المستحق للسائق: ₪ {driverDue:0.##}").Bold().FontSize(10);
                     break;
                 }
@@ -1647,8 +1644,9 @@ public class ExportService : IExportService
             ("Total sales value", $"₪ {closing.TotalSalesValue:0.##}"),
             ("Total commission earned", $"₪ {closing.TotalCommission:0.##}"),
             ("Box fee income", $"₪ {closing.BoxFeeIncome:0.##}"),
+            ("Wood income", $"₪ {closing.WoodIncome:0.##}"),
             ("Driver box fee paid", $"- ₪ {closing.DriverBoxFeeCost:0.##}"),
-            ("Kept pass-through (invoices with no driver)", $"₪ {closing.KeptPassThrough:0.##}"),
+            ("Transport kept (invoices with no driver)", $"₪ {closing.KeptPassThrough:0.##}"),
             ("Commission credited back on returns", $"- ₪ {closing.ReturnsCommissionCredit:0.##}"),
             ("Total expenses", $"- ₪ {closing.TotalExpenses:0.##}"),
             ("Net profit", $"₪ {closing.NetProfit:0.##}"),

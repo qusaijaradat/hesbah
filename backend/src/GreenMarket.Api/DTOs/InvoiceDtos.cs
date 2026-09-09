@@ -139,10 +139,11 @@ public record InvoiceListItemDto(
     // exact same numbers the matching printed copy shows (see ExportService.InvoiceCard), so the
     // screen and the paper can't disagree:
     //   Commission / NetDueToFarmer — TotalValue × the invoice's own locked-in rate, and
-    //     TotalValue − Commission + WoodTotal (the seller is paid the full wood price on top,
-    //     never taxed by the commission). Same math as InvoiceService.ToDto.
+    //     InvoiceCharge.ForSeller: TotalValue − Commission − TransportFee. No wood — that is the
+    //     market's. Same math as InvoiceService.ToDto.
     //   DriverBoxFeeTotal / DriverDue — TotalBoxes × the invoice's own locked-in أجرة الصناديق
-    //     rate, and TransportFee + that + WoodTotal, matching the driver's own ledger row.
+    //     rate, and TransportFee + that, matching the driver's own ledger row. No wood either:
+    //     the buyer pays سعر الخشب and the market keeps it.
     // All four are computed even when no farmer/driver is attached (harmless and unused then),
     // same convention as InvoiceDto's own Commission/NetDueToFarmer.
     decimal Commission, decimal NetDueToFarmer,

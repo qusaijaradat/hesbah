@@ -12,23 +12,26 @@ namespace GreenMarket.Domain.Services;
 /// W = wood total, BF = box fee charged to the buyer, DBF = crate handling paid to the driver,
 /// R = returned value and Cr = the commission that was charged on R:
 ///
-///   buyer pays   = TV + T + W + BF − R
-///   seller is due= TV − C − (R − Cr)      (the return posts −(R − Cr) to their ledger)
-///   driver is due= T + DBF + W            (when a driver is attached)
+///   buyer pays   = TV + W + BF − R        (transport is not his — see InvoiceCharge)
+///   seller is due= TV − C − T − (R − Cr)  (transport off his due; the return posts −(R − Cr))
+///   driver is due= T + DBF                (when a driver is attached)
 ///
-/// so what is left with the market is  C − Cr + BF − DBF.
+/// so what is left with the market is  C − Cr + BF + W − DBF.
 ///
-/// When NO driver is attached, there is nobody to hand T and W to, so the market keeps both —
-/// which is real income, and worth seeing rather than hiding: a driver missing from an invoice is
-/// usually a data-entry slip, and this makes it show up as money instead of vanishing.
+/// سعر الخشب is the market's: the buyer pays it and nobody else has a claim on it. It used to go
+/// to the driver, and before that to the seller and the driver at once.
+///
+/// When NO driver is attached, there is nobody to hand T to, so the market keeps that as well —
+/// real income, and worth seeing rather than hiding: a driver missing from an invoice is usually a
+/// data-entry slip, and this makes it show up as money instead of vanishing.
 /// </summary>
 public static class MarketEarnings
 {
     /// <summary>
     /// What the market keeps from one invoice, before returns and before expenses.
-    /// <paramref name="hasDriver"/> decides the transport/crate side: with a driver, transport and
-    /// wood are collected and paid straight back out (netting to nothing) and the crate handling
-    /// fee is a real cost; with no driver, nothing is paid out and both are kept.
+    /// <paramref name="hasDriver"/> decides the transport side only: with a driver, transport comes
+    /// off the seller and goes straight to him (netting to nothing) while the crate handling fee is
+    /// a real cost; with no driver, nothing is paid out and the transport stays here too.
     /// </summary>
     public static decimal ForInvoice(
         decimal commission,
@@ -37,7 +40,7 @@ public static class MarketEarnings
         decimal transportFee,
         decimal woodTotal,
         bool hasDriver) =>
-        commission + boxFeeTotal + (hasDriver ? -driverBoxFeeTotal : transportFee + woodTotal);
+        commission + boxFeeTotal + woodTotal + (hasDriver ? -driverBoxFeeTotal : transportFee);
 
     /// <summary>
     /// What a goods return takes back off the market: the commission it had charged on those

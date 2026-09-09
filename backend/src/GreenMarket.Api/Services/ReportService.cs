@@ -229,9 +229,9 @@ public class ReportService : IReportService
                 DriverId = g.Key.DriverId,
                 DriverName = g.Key.Name,
                 InvoiceCount = g.Count(),
+                // No wood: سعر الخشب is the market's, not the driver's (see MarketEarnings).
                 TotalTransportFee = g.Sum(i => i.TransportFee
-                    + i.Items.Where(it => it.Unit == UnitOfMeasure.Box).Sum(it => it.Quantity) * i.DriverBoxFeeApplied
-                    + i.Items.Sum(it => it.WoodPrice)),
+                    + i.Items.Where(it => it.Unit == UnitOfMeasure.Box).Sum(it => it.Quantity) * i.DriverBoxFeeApplied),
                 LastInvoiceDate = (DateTimeOffset?)g.Max(i => i.Date)
             })
             .ToList();
@@ -336,9 +336,9 @@ public class ReportService : IReportService
 
         var feeByDriver = invoices
             .GroupBy(i => i.DriverId!.Value)
+            // No wood — see the driver report above.
             .ToDictionary(g => g.Key, g => g.Sum(i => i.TransportFee
-                + i.Items.Where(it => it.Unit == UnitOfMeasure.Box).Sum(it => it.Quantity) * i.DriverBoxFeeApplied
-                + i.Items.Sum(it => it.WoodPrice)));
+                + i.Items.Where(it => it.Unit == UnitOfMeasure.Box).Sum(it => it.Quantity) * i.DriverBoxFeeApplied));
 
         return invoices
             .SelectMany(i => i.Items.Select(it => new { DriverId = i.DriverId!.Value, DriverName = i.Driver!.Name, it.ItemName, it.Unit, it.Quantity }))
@@ -396,8 +396,9 @@ public class ReportService : IReportService
                 Sales: g.Sum(x => x.TotalValue),
                 Commission: g.Sum(x => CommissionCalculator.Calculate(x.TotalValue, x.CommissionRateApplied).Commission),
                 BoxFee: g.Sum(x => x.Boxes * x.BoxPriceApplied),
+                Wood: g.Sum(x => x.Wood),
                 DriverBoxFee: g.Sum(x => x.HasDriver ? x.Boxes * x.DriverBoxFeeApplied : 0m),
-                KeptPassThrough: g.Sum(x => x.HasDriver ? 0m : x.TransportFee + x.Wood)));
+                KeptPassThrough: g.Sum(x => x.HasDriver ? 0m : x.TransportFee)));
         var returnsCreditByPeriod = returns.GroupBy(r => PeriodKey(r.Date))
             .ToDictionary(g => g.Key, g => g.Sum(x => MarketEarnings.CommissionCreditOnReturn(x.TotalValue, x.CommissionRateApplied)));
         var expensesByPeriod = expenses.GroupBy(e => PeriodKey(e.Date))
@@ -407,14 +408,14 @@ public class ReportService : IReportService
 
         return periods.Select(p =>
         {
-            var agg = salesByPeriod.GetValueOrDefault(p, (Sales: 0m, Commission: 0m, BoxFee: 0m, DriverBoxFee: 0m, KeptPassThrough: 0m));
+            var agg = salesByPeriod.GetValueOrDefault(p, (Sales: 0m, Commission: 0m, BoxFee: 0m, Wood: 0m, DriverBoxFee: 0m, KeptPassThrough: 0m));
             var returnsCredit = returnsCreditByPeriod.GetValueOrDefault(p, 0m);
             var totalExpenses = expensesByPeriod.GetValueOrDefault(p, 0m);
             // One formula, from MarketEarnings, so this and the daily closing can never drift.
-            var earned = agg.Commission + agg.BoxFee - agg.DriverBoxFee + agg.KeptPassThrough;
+            var earned = agg.Commission + agg.BoxFee + agg.Wood - agg.DriverBoxFee + agg.KeptPassThrough;
             return new MarketReportRow(
                 p, agg.Sales, agg.Commission,
-                agg.BoxFee, agg.DriverBoxFee, agg.KeptPassThrough, returnsCredit,
+                agg.BoxFee, agg.Wood, agg.DriverBoxFee, agg.KeptPassThrough, returnsCredit,
                 totalExpenses, earned - returnsCredit - totalExpenses);
         }).ToList();
     }
@@ -530,9 +531,12 @@ public class ReportService : IReportService
         var totalCommission = invoicesToday.Sum(i => CommissionCalculator.Calculate(i.TotalValue, i.CommissionRateApplied).Commission);
 
         // The margins the day's profit used to ignore — see MarketEarnings for why each belongs.
+        // سعر الخشب is the market's outright now, so it is income on every invoice, not only the
+        // driverless ones.
         var boxFeeIncome = invoicesToday.Sum(i => i.Boxes * i.BoxPriceApplied);
+        var woodIncome = invoicesToday.Sum(i => i.Wood);
         var driverBoxFeeCost = invoicesToday.Sum(i => i.HasDriver ? i.Boxes * i.DriverBoxFeeApplied : 0m);
-        var keptPassThrough = invoicesToday.Sum(i => i.HasDriver ? 0m : i.TransportFee + i.Wood);
+        var keptPassThrough = invoicesToday.Sum(i => i.HasDriver ? 0m : i.TransportFee);
 
         // Goods that came back TODAY, whichever day their invoice was written: the commission on
         // them was earned on a sale that partly un-happened.
@@ -565,9 +569,9 @@ public class ReportService : IReportService
 
         return new DailyClosingDto(
             dayStart, invoiceCount, totalSalesValue, totalCommission,
-            boxFeeIncome, driverBoxFeeCost, keptPassThrough, returnsCommissionCredit,
+            boxFeeIncome, woodIncome, driverBoxFeeCost, keptPassThrough, returnsCommissionCredit,
             totalExpenses,
-            totalCommission + boxFeeIncome - driverBoxFeeCost + keptPassThrough - returnsCommissionCredit - totalExpenses,
+            totalCommission + boxFeeIncome + woodIncome - driverBoxFeeCost + keptPassThrough - returnsCommissionCredit - totalExpenses,
             paymentsFromMerchants, paymentsToFarmers);
     }
     /// <summary>How many names "أعلى المدينين" shows before sending you to قيمة الديون.</summary>

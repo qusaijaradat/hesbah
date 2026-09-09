@@ -531,6 +531,42 @@ using (var scope = app.Services.CreateScope())
         app.Logger.LogError(ex, "Failed to move أجرة النقل from the buyer's total onto the seller's ledger — buyers stay over-billed and sellers over-credited by the transport fee until this is fixed.");
     }
 
+    // سعر الخشب is the market's now: the buyer pays it and neither the seller nor the driver has
+    // a claim on it. It used to be paid to the driver (and before that to the seller as well), so
+    // driver ledger rows written earlier are overstated by it.
+    //
+    // RECOMPUTED, not adjusted: a driver row is his transport fee plus his crate handling on that
+    // invoice, both derivable from the invoice itself, so this is right however many times it runs.
+    // Type 2 = TransportFee (the driver's row). Unit 2 = Box.
+    try
+    {
+        var trimmed = await db.Database.ExecuteSqlRawAsync("""
+            WITH due AS (
+                SELECT i."Id",
+                       i."TransportFee"
+                     + COALESCE((
+                         SELECT SUM(ii."Quantity") FROM invoice_items ii
+                         WHERE ii."InvoiceId" = i."Id" AND ii."Unit" = 2
+                       ), 0) * i."DriverBoxFeeApplied" AS amount
+                FROM invoices i
+            )
+            UPDATE farmer_transactions ft
+            SET "Amount" = due.amount
+            FROM due
+            WHERE ft."InvoiceId" = due."Id"
+              AND ft."Type" = 2
+              AND ft."Amount" <> due.amount;
+            """);
+        if (trimmed > 0)
+            app.Logger.LogWarning(
+                "Corrected {Count} driver ledger row(s) after سعر الخشب stopped being paid to the driver — those drivers were credited with money that is the market's.",
+                trimmed);
+    }
+    catch (Exception ex)
+    {
+        app.Logger.LogError(ex, "Failed to take سعر الخشب off the driver ledger rows — affected drivers stay over-credited by it until this is fixed.");
+    }
+
     // Correction for the wood price having been paid out twice. سعر الخشب is charged to the buyer
     // once, and it belongs to the DRIVER, who supplies and handles the crates (see InvoiceCharge).
     // It used to be added to the SELLER's ledger row as well, so every invoice carrying both a

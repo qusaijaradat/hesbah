@@ -433,7 +433,9 @@ function SectionTable({ section }: { section: RoleSection }) {
       : [
           { label: "أجرة النقل", value: (i) => i.transportFee, bold: true },
           { label: "أجرة الصناديق", value: (i) => i.driverBoxFeeTotal },
-          { label: "سعر الخشب", value: (i) => i.woodTotal },
+          // Cargo detail, not his money — the buyer pays سعر الخشب and the market keeps it, so it
+          // is deliberately outside "المستحق للسائق" beside it.
+          { label: "سعر الخشب (للمصلحة)", value: (i) => i.woodTotal },
           { label: "المستحق للسائق", value: (i) => i.driverDue, bold: true },
         ];
 

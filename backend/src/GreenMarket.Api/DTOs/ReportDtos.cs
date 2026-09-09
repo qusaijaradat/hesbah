@@ -121,7 +121,7 @@ public record DriverItemBreakdownRow(
 /// </summary>
 public record MarketReportRow(
     string Period, decimal TotalSalesValue, decimal TotalCommission,
-    decimal BoxFeeIncome, decimal DriverBoxFeeCost, decimal KeptPassThrough, decimal ReturnsCommissionCredit,
+    decimal BoxFeeIncome, decimal WoodIncome, decimal DriverBoxFeeCost, decimal KeptPassThrough, decimal ReturnsCommissionCredit,
     decimal TotalExpenses, decimal NetProfit);
 
 /// <summary>
@@ -156,11 +156,14 @@ public record DailyClosingDto(
     decimal TotalCommission,
     /// <summary>رسوم الصناديق charged to buyers on the day's invoices — the market keeps this.</summary>
     decimal BoxFeeIncome,
+    /// <summary>سعر الخشب charged to buyers — the market keeps this too; neither the seller nor
+    /// the driver has a claim on it.</summary>
+    decimal WoodIncome,
     /// <summary>أجرة الصناديق paid out to drivers on those same invoices — a real cost.</summary>
     decimal DriverBoxFeeCost,
-    /// <summary>أجرة النقل and سعر الخشب collected on invoices with NO driver attached, so there
-    /// was nobody to pay them to. Normally zero; a non-zero figure here is usually a driver
-    /// missing from an invoice, which is worth seeing as money rather than losing silently.</summary>
+    /// <summary>أجرة النقل taken off the seller on invoices with NO driver attached, so there was
+    /// nobody to pass it to. Normally zero; a non-zero figure here is usually a driver missing from
+    /// an invoice, which is worth seeing as money rather than losing silently.</summary>
     decimal KeptPassThrough,
     /// <summary>Commission handed back on goods returned on this date.</summary>
     decimal ReturnsCommissionCredit,

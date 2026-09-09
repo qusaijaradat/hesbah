@@ -107,9 +107,20 @@ public record DriverItemBreakdownRow(
     int DriverId, string DriverName, string ItemName, UnitOfMeasure Unit,
     decimal TotalQuantity, decimal TotalTransportFee);
 
-/// <summary>Requirement doc §8: market reports — daily/monthly profits/commissions, or a specified period.</summary>
+/// <summary>
+/// Requirement doc §8: market reports — daily/monthly profits/commissions, or a specified period.
+///
+/// NetProfit is everything the market keeps, not just commission minus expenses (see
+/// MarketEarnings for the derivation): commission, plus the crate fee charged to buyers, minus
+/// the crate handling paid to drivers, plus transport/wood on any invoice that has no driver to
+/// pay them to, minus the commission handed back on goods returned, minus expenses. The four
+/// middle terms are broken out on their own rather than folded into the total — same "never let
+/// a figure disappear silently into a total" convention as the invoice DTOs.
+/// </summary>
 public record MarketReportRow(
-    string Period, decimal TotalSalesValue, decimal TotalCommission, decimal TotalExpenses, decimal NetProfit);
+    string Period, decimal TotalSalesValue, decimal TotalCommission,
+    decimal BoxFeeIncome, decimal DriverBoxFeeCost, decimal KeptPassThrough, decimal ReturnsCommissionCredit,
+    decimal TotalExpenses, decimal NetProfit);
 
 /// <summary>
 /// Roadmap feature: outstanding merchant balances bucketed by how long they've been owed —
@@ -123,16 +134,34 @@ public record AgingReportRow(
     decimal Current, decimal Days30To59, decimal Days60To89, decimal Days90Plus, decimal Total);
 
 /// <summary>
-/// End-of-day summary for closing out the market's books for a single date. NetProfit is the
-/// accounting figure (commission earned minus expenses, regardless of what's actually been
-/// collected yet). PaymentsReceivedFromMerchants/PaymentsPaidToFarmers are the day's actual cash
-/// movements — a separate, equally important number for someone physically closing a cash drawer.
+/// End-of-day summary for closing out the market's books for a single date.
+///
+/// NetProfit is the accounting figure — what the day earned, whether or not it has been
+/// collected yet — and it is everything the market keeps, not just commission minus expenses:
+/// see MarketEarnings for the derivation. It used to be exactly "commission − expenses", which
+/// left the crate margin out of the day's profit entirely; on a forty-box invoice that is more
+/// money than it sounds, and over a day of them it was the difference between a real number and
+/// a rough one. The four middle terms are broken out rather than folded in, so the total can be
+/// read back to its parts.
+///
+/// PaymentsReceivedFromMerchants/PaymentsPaidToFarmers are the day's actual cash movements — a
+/// separate, equally important number for someone physically closing a cash drawer.
 /// </summary>
 public record DailyClosingDto(
     DateTimeOffset Date,
     int InvoiceCount,
     decimal TotalSalesValue,
     decimal TotalCommission,
+    /// <summary>رسوم الصناديق charged to buyers on the day's invoices — the market keeps this.</summary>
+    decimal BoxFeeIncome,
+    /// <summary>أجرة الصناديق paid out to drivers on those same invoices — a real cost.</summary>
+    decimal DriverBoxFeeCost,
+    /// <summary>أجرة النقل and سعر الخشب collected on invoices with NO driver attached, so there
+    /// was nobody to pay them to. Normally zero; a non-zero figure here is usually a driver
+    /// missing from an invoice, which is worth seeing as money rather than losing silently.</summary>
+    decimal KeptPassThrough,
+    /// <summary>Commission handed back on goods returned on this date.</summary>
+    decimal ReturnsCommissionCredit,
     decimal TotalExpenses,
     decimal NetProfit,
     decimal PaymentsReceivedFromMerchants,

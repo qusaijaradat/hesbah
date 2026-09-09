@@ -254,15 +254,21 @@ function MarketTable({ rows }: { rows: MarketReportRow[] }) {
   return (
     <div className="card overflow-x-auto">
       <table className="table-base">
-        <thead><tr><th>الفترة</th><th>المبيعات</th><th>العمولة</th><th>المصاريف</th><th>الربح الصافي</th></tr></thead>
+        {/* Every term of the profit, not just commission and expenses — the crate fees are real
+            margin and used to be missing from it (see the backend MarketEarnings). */}
+        <thead><tr><th>الفترة</th><th>المبيعات</th><th>العمولة</th><th>رسوم الصناديق</th><th>أجرة صناديق السائق</th><th>نقل وخشب بدون سائق</th><th>عمولة مرتجعة</th><th>المصاريف</th><th>الربح الصافي</th></tr></thead>
         <tbody>
           {rows.length === 0 ? (
-            <tr><td colSpan={5} className="text-center text-gray-400 py-6">لا توجد بيانات</td></tr>
+            <tr><td colSpan={9} className="text-center text-gray-400 py-6">لا توجد بيانات</td></tr>
           ) : pager.pageRows.map((r) => (
             <tr key={r.period}>
               <td className="font-medium">{r.period}</td>
               <td>{formatCurrency(r.totalSalesValue)}</td>
               <td>{formatCurrency(r.totalCommission)}</td>
+              <td>{formatCurrency(r.boxFeeIncome)}</td>
+              <td>{formatCurrency(r.driverBoxFeeCost)}</td>
+              <td>{r.keptPassThrough !== 0 ? formatCurrency(r.keptPassThrough) : "—"}</td>
+              <td>{formatCurrency(r.returnsCommissionCredit)}</td>
               <td>{formatCurrency(r.totalExpenses)}</td>
               <td className={`font-semibold ${r.netProfit >= 0 ? "text-brand-700" : "text-red-600"}`}>{formatCurrency(r.netProfit)}</td>
             </tr>

@@ -356,7 +356,22 @@ public class ReportService : IReportService
         var salesQuery = _db.Invoices.Where(i => i.Status == InvoiceStatus.Active).AsQueryable();
         if (filter.DateFrom is not null) salesQuery = salesQuery.Where(i => i.Date >= filter.DateFrom);
         if (filter.DateTo is not null) salesQuery = salesQuery.Where(i => i.Date <= filter.DateTo);
-        var sales = await salesQuery.Select(i => new { i.Date, i.TotalValue, i.CommissionRateApplied }).ToListAsync();
+        // Every term MarketEarnings needs, not just the commission base: the crate fees are real
+        // margin and were missing from this report's profit entirely.
+        var sales = await salesQuery.Select(i => new
+        {
+            i.Date, i.TotalValue, i.CommissionRateApplied, i.TransportFee,
+            i.BoxPriceApplied, i.DriverBoxFeeApplied, HasDriver = i.DriverId != null,
+            Boxes = i.Items.Where(it => it.Unit == UnitOfMeasure.Box).Sum(it => (decimal?)it.Quantity) ?? 0,
+            Wood = i.Items.Sum(it => (decimal?)it.WoodPrice) ?? 0
+        }).ToListAsync();
+
+        // Returns are attributed to the day they came back on, not the day the invoice was
+        // written — the money leaves the market when the goods do.
+        var returnsQuery = _db.GoodsReturns.Where(r => r.Invoice.Status == InvoiceStatus.Active).AsQueryable();
+        if (filter.DateFrom is not null) returnsQuery = returnsQuery.Where(r => r.Date >= filter.DateFrom);
+        if (filter.DateTo is not null) returnsQuery = returnsQuery.Where(r => r.Date <= filter.DateTo);
+        var returns = await returnsQuery.Select(r => new { r.Date, r.TotalValue, r.CommissionRateApplied }).ToListAsync();
 
         var expenseQuery = _db.Expenses.AsQueryable();
         if (filter.DateFrom is not null) expenseQuery = expenseQuery.Where(e => e.Date >= filter.DateFrom);
@@ -373,17 +388,28 @@ public class ReportService : IReportService
         var salesByPeriod = sales.GroupBy(s => PeriodKey(s.Date))
             .ToDictionary(g => g.Key, g => (
                 Sales: g.Sum(x => x.TotalValue),
-                Commission: g.Sum(x => CommissionCalculator.Calculate(x.TotalValue, x.CommissionRateApplied).Commission)));
+                Commission: g.Sum(x => CommissionCalculator.Calculate(x.TotalValue, x.CommissionRateApplied).Commission),
+                BoxFee: g.Sum(x => x.Boxes * x.BoxPriceApplied),
+                DriverBoxFee: g.Sum(x => x.HasDriver ? x.Boxes * x.DriverBoxFeeApplied : 0m),
+                KeptPassThrough: g.Sum(x => x.HasDriver ? 0m : x.TransportFee + x.Wood)));
+        var returnsCreditByPeriod = returns.GroupBy(r => PeriodKey(r.Date))
+            .ToDictionary(g => g.Key, g => g.Sum(x => MarketEarnings.CommissionCreditOnReturn(x.TotalValue, x.CommissionRateApplied)));
         var expensesByPeriod = expenses.GroupBy(e => PeriodKey(e.Date))
             .ToDictionary(g => g.Key, g => g.Sum(x => x.Amount));
 
-        var periods = salesByPeriod.Keys.Union(expensesByPeriod.Keys).OrderBy(p => p);
+        var periods = salesByPeriod.Keys.Union(expensesByPeriod.Keys).Union(returnsCreditByPeriod.Keys).OrderBy(p => p);
 
         return periods.Select(p =>
         {
-            var (totalSales, totalCommission) = salesByPeriod.GetValueOrDefault(p, (0m, 0m));
+            var agg = salesByPeriod.GetValueOrDefault(p, (Sales: 0m, Commission: 0m, BoxFee: 0m, DriverBoxFee: 0m, KeptPassThrough: 0m));
+            var returnsCredit = returnsCreditByPeriod.GetValueOrDefault(p, 0m);
             var totalExpenses = expensesByPeriod.GetValueOrDefault(p, 0m);
-            return new MarketReportRow(p, totalSales, totalCommission, totalExpenses, totalCommission - totalExpenses);
+            // One formula, from MarketEarnings, so this and the daily closing can never drift.
+            var earned = agg.Commission + agg.BoxFee - agg.DriverBoxFee + agg.KeptPassThrough;
+            return new MarketReportRow(
+                p, agg.Sales, agg.Commission,
+                agg.BoxFee, agg.DriverBoxFee, agg.KeptPassThrough, returnsCredit,
+                totalExpenses, earned - returnsCredit - totalExpenses);
         }).ToList();
     }
 
@@ -478,12 +504,32 @@ public class ReportService : IReportService
         // TotalValue/CommissionRateApplied (see MarketReportAsync above for the same fix).
         var invoicesToday = await _db.Invoices
             .Where(i => i.Status == InvoiceStatus.Active && i.Date >= dayStart && i.Date < dayEnd)
-            .Select(i => new { i.TotalValue, i.CommissionRateApplied })
+            .Select(i => new
+            {
+                i.TotalValue, i.CommissionRateApplied, i.TransportFee,
+                i.BoxPriceApplied, i.DriverBoxFeeApplied, HasDriver = i.DriverId != null,
+                Boxes = i.Items.Where(it => it.Unit == UnitOfMeasure.Box).Sum(it => (decimal?)it.Quantity) ?? 0,
+                Wood = i.Items.Sum(it => (decimal?)it.WoodPrice) ?? 0
+            })
             .ToListAsync();
 
         var invoiceCount = invoicesToday.Count;
         var totalSalesValue = invoicesToday.Sum(i => i.TotalValue);
         var totalCommission = invoicesToday.Sum(i => CommissionCalculator.Calculate(i.TotalValue, i.CommissionRateApplied).Commission);
+
+        // The margins the day's profit used to ignore — see MarketEarnings for why each belongs.
+        var boxFeeIncome = invoicesToday.Sum(i => i.Boxes * i.BoxPriceApplied);
+        var driverBoxFeeCost = invoicesToday.Sum(i => i.HasDriver ? i.Boxes * i.DriverBoxFeeApplied : 0m);
+        var keptPassThrough = invoicesToday.Sum(i => i.HasDriver ? 0m : i.TransportFee + i.Wood);
+
+        // Goods that came back TODAY, whichever day their invoice was written: the commission on
+        // them was earned on a sale that partly un-happened.
+        var returnsToday = await _db.GoodsReturns
+            .Where(r => r.Invoice.Status == InvoiceStatus.Active && r.Date >= dayStart && r.Date < dayEnd)
+            .Select(r => new { r.TotalValue, r.CommissionRateApplied })
+            .ToListAsync();
+        var returnsCommissionCredit = returnsToday
+            .Sum(r => MarketEarnings.CommissionCreditOnReturn(r.TotalValue, r.CommissionRateApplied));
 
         var totalExpenses = await _db.Expenses
             .Where(e => e.Date >= dayStart && e.Date < dayEnd)
@@ -506,8 +552,11 @@ public class ReportService : IReportService
             .SumAsync(p => p.Amount);
 
         return new DailyClosingDto(
-            dayStart, invoiceCount, totalSalesValue, totalCommission, totalExpenses,
-            totalCommission - totalExpenses, paymentsFromMerchants, paymentsToFarmers);
+            dayStart, invoiceCount, totalSalesValue, totalCommission,
+            boxFeeIncome, driverBoxFeeCost, keptPassThrough, returnsCommissionCredit,
+            totalExpenses,
+            totalCommission + boxFeeIncome - driverBoxFeeCost + keptPassThrough - returnsCommissionCredit - totalExpenses,
+            paymentsFromMerchants, paymentsToFarmers);
     }
     /// <summary>How many names "أعلى المدينين" shows before sending you to قيمة الديون.</summary>
     private const int TopDebtorRows = 5;

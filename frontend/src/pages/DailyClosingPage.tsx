@@ -69,12 +69,29 @@ export function DailyClosingPage() {
             <StatCard label="المصاريف" value={formatCurrency(closing.totalExpenses)} tone="negative" />
           </div>
 
+          {/* The parts, then the total — the day's profit used to be commission minus expenses
+              and left the crate margin out entirely (see the backend MarketEarnings). */}
           <h2 className="text-sm font-semibold text-gray-500 mb-2">صافي الربح (محاسبي)</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-3">
+            <StatCard label="رسوم الصناديق (من المشترين)" value={formatCurrency(closing.boxFeeIncome)} tone="positive" />
+            <StatCard label="أجرة الصناديق (للسائقين)" value={formatCurrency(closing.driverBoxFeeCost)} tone="negative" />
+            <StatCard label="عمولة مرتجعة" value={formatCurrency(closing.returnsCommissionCredit)} tone="negative" />
+            {/* Only worth a card when it is not zero: a non-zero value here is almost always a
+                driver missing from an invoice, not a real earning. */}
+            {closing.keptPassThrough !== 0 && (
+              <StatCard
+                label="نقل وخشب بدون سائق"
+                value={formatCurrency(closing.keptPassThrough)}
+                hint="فواتير ما إلها سائق — تأكد إذا كان السائق ناسي"
+              />
+            )}
+          </div>
           <div className="mb-6">
             <StatCard
-              label="عمولة اليوم − مصاريف اليوم"
+              label="صافي ربح اليوم"
               value={formatCurrency(closing.netProfit)}
               tone={closing.netProfit >= 0 ? "positive" : "negative"}
+              hint="العمولة + رسوم الصناديق − أجرة صناديق السائق − العمولة المرتجعة − المصاريف"
             />
           </div>
 

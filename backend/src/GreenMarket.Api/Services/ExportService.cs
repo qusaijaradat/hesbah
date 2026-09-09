@@ -240,7 +240,12 @@ public class ExportService : IExportService
     {
         using var workbook = new XLWorkbook();
         var sheet = workbook.Worksheets.Add("Market Report");
-        var headers = new[] { "Period", "Total Sales (₪)", "Total Commission (₪)", "Total Expenses (₪)", "Net Profit (₪)" };
+        var headers = new[]
+        {
+            "Period", "Total Sales (₪)", "Total Commission (₪)", "Box Fee Income (₪)",
+            "Driver Box Fee (₪)", "Kept Pass-Through (₪)", "Returns Commission Credit (₪)",
+            "Total Expenses (₪)", "Net Profit (₪)"
+        };
         for (var c = 0; c < headers.Length; c++) sheet.Cell(1, c + 1).Value = headers[c];
         sheet.Row(1).Style.Font.Bold = true;
 
@@ -250,8 +255,12 @@ public class ExportService : IExportService
             sheet.Cell(row, 1).Value = r.Period;
             sheet.Cell(row, 2).Value = (double)r.TotalSalesValue;
             sheet.Cell(row, 3).Value = (double)r.TotalCommission;
-            sheet.Cell(row, 4).Value = (double)r.TotalExpenses;
-            sheet.Cell(row, 5).Value = (double)r.NetProfit;
+            sheet.Cell(row, 4).Value = (double)r.BoxFeeIncome;
+            sheet.Cell(row, 5).Value = (double)r.DriverBoxFeeCost;
+            sheet.Cell(row, 6).Value = (double)r.KeptPassThrough;
+            sheet.Cell(row, 7).Value = (double)r.ReturnsCommissionCredit;
+            sheet.Cell(row, 8).Value = (double)r.TotalExpenses;
+            sheet.Cell(row, 9).Value = (double)r.NetProfit;
             row++;
         }
         sheet.Columns().AdjustToContents();
@@ -1631,8 +1640,12 @@ public class ExportService : IExportService
             ("Invoices today", closing.InvoiceCount.ToString()),
             ("Total sales value", $"₪ {closing.TotalSalesValue:0.##}"),
             ("Total commission earned", $"₪ {closing.TotalCommission:0.##}"),
-            ("Total expenses", $"₪ {closing.TotalExpenses:0.##}"),
-            ("Net profit (commission - expenses)", $"₪ {closing.NetProfit:0.##}"),
+            ("Box fee income", $"₪ {closing.BoxFeeIncome:0.##}"),
+            ("Driver box fee paid", $"- ₪ {closing.DriverBoxFeeCost:0.##}"),
+            ("Kept pass-through (invoices with no driver)", $"₪ {closing.KeptPassThrough:0.##}"),
+            ("Commission credited back on returns", $"- ₪ {closing.ReturnsCommissionCredit:0.##}"),
+            ("Total expenses", $"- ₪ {closing.TotalExpenses:0.##}"),
+            ("Net profit", $"₪ {closing.NetProfit:0.##}"),
             ("Payments received from merchants", $"₪ {closing.PaymentsReceivedFromMerchants:0.##}"),
             ("Payments paid to farmers", $"₪ {closing.PaymentsPaidToFarmers:0.##}"),
             ("Net cash flow today", $"₪ {netCashFlow:0.##}"),

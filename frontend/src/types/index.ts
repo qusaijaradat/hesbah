@@ -462,6 +462,11 @@ export interface MarketReportRow {
   period: string;
   totalSalesValue: number;
   totalCommission: number;
+  /** See DailyClosingDto below — the same four terms, over a period instead of a day. */
+  boxFeeIncome: number;
+  driverBoxFeeCost: number;
+  keptPassThrough: number;
+  returnsCommissionCredit: number;
   totalExpenses: number;
   netProfit: number;
 }
@@ -498,7 +503,17 @@ export interface DailyClosingDto {
   invoiceCount: number;
   totalSalesValue: number;
   totalCommission: number;
+  /** رسوم الصناديق charged to buyers — the market keeps it. */
+  boxFeeIncome: number;
+  /** أجرة الصناديق paid out to drivers — a real cost. */
+  driverBoxFeeCost: number;
+  /** أجرة النقل and سعر الخشب collected on invoices with no driver to pay them to. Normally 0;
+   *  anything here usually means a driver was left off an invoice. */
+  keptPassThrough: number;
+  /** Commission handed back on goods returned that day. */
+  returnsCommissionCredit: number;
   totalExpenses: number;
+  /** commission + boxFee − driverBoxFee + keptPassThrough − returnsCredit − expenses. */
   netProfit: number;
   paymentsReceivedFromMerchants: number;
   paymentsPaidToFarmers: number;

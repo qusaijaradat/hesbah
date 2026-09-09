@@ -18,15 +18,15 @@ public class PartnersController : ControllerBase
     private readonly IExportService _exportService;
     private readonly ISettingsService _settingsService;
     private readonly ICompanyLogoService _logoService;
-    private readonly IBoxReturnService _boxReturnService;
+    private readonly IContainerService _containerService;
 
-    public PartnersController(IPartnerService partnerService, IExportService exportService, ISettingsService settingsService, ICompanyLogoService logoService, IBoxReturnService boxReturnService)
+    public PartnersController(IPartnerService partnerService, IExportService exportService, ISettingsService settingsService, ICompanyLogoService logoService, IContainerService containerService)
     {
         _partnerService = partnerService;
         _exportService = exportService;
         _settingsService = settingsService;
         _logoService = logoService;
-        _boxReturnService = boxReturnService;
+        _containerService = containerService;
     }
 
     [HttpGet]
@@ -108,20 +108,23 @@ public class PartnersController : ControllerBase
     public async Task<ActionResult<AdjustmentDto>> CreateAdjustment(int id, CreateAdjustmentRequest request) =>
         Ok(await _partnerService.CreateAdjustmentAsync(id, request));
 
-    [HttpGet("{id:int}/box-returns")]
+    /// <summary>"الصناديق والمخالات" for one person — a balance per kind plus the movements
+    /// behind it. Works for a buyer, a seller or a driver alike; see IContainerService.</summary>
+    [HttpGet("{id:int}/containers")]
     [RequirePermission(PermissionKeys.BoxesView)]
-    public async Task<ActionResult<IReadOnlyList<BoxReturnDto>>> BoxReturns(int id) => Ok(await _boxReturnService.ListAsync(id));
+    public async Task<ActionResult<PartnerContainersDto>> Containers(int id) =>
+        Ok(await _containerService.GetForPartnerAsync(id));
 
-    [HttpPost("{id:int}/box-returns")]
+    [HttpPost("{id:int}/containers")]
     [RequirePermission(PermissionKeys.BoxesCreate)]
-    public async Task<ActionResult<BoxReturnDto>> CreateBoxReturn(int id, CreateBoxReturnRequest request) =>
-        Ok(await _boxReturnService.CreateAsync(id, request, CurrentUserId.Require(User)));
+    public async Task<ActionResult<ContainerMovementDto>> CreateContainerMovement(int id, CreateContainerMovementRequest request) =>
+        Ok(await _containerService.CreateAsync(id, request, CurrentUserId.Require(User)));
 
-    [HttpDelete("box-returns/{returnId:int}")]
+    [HttpDelete("containers/{movementId:int}")]
     [RequirePermission(PermissionKeys.BoxesDelete)]
-    public async Task<IActionResult> DeleteBoxReturn(int returnId)
+    public async Task<IActionResult> DeleteContainerMovement(int movementId)
     {
-        await _boxReturnService.DeleteAsync(returnId);
+        await _containerService.DeleteAsync(movementId);
         return NoContent();
     }
 

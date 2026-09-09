@@ -83,19 +83,48 @@ export interface StatementLineDto {
   notes?: string | null;
 }
 
-/** One "empty crate return" record — see backend BoxReturn's own doc comment. */
-export interface BoxReturnDto {
+/** Crates ("صندوق") and sacks ("مخلاة") are counted apart — one balance each per person. */
+export type ContainerType = "Box" | "Sack";
+/** Out = the market handed them over; In = they came back. */
+export type ContainerDirection = "Out" | "In";
+
+export interface ContainerMovementDto {
   id: number;
   partnerId: number;
+  type: ContainerType;
+  direction: ContainerDirection;
   date: string;
   quantity: number;
   notes?: string | null;
 }
 
-export interface CreateBoxReturnRequest {
+export interface CreateContainerMovementRequest {
+  type: ContainerType;
+  direction: ContainerDirection;
   date: string;
   quantity: number;
   notes?: string | null;
+}
+
+/**
+ * One kind of container's standing with one person. fromInvoices is non-zero only for crates
+ * against someone buying — a crate leaves with every box-unit line, so that side is read from
+ * their invoices instead of being re-typed, net of produce sent back (which arrives in its
+ * crates). remaining = fromInvoices + handedOut − cameBack; positive means they hold that many.
+ */
+export interface ContainerBalanceDto {
+  type: ContainerType;
+  fromInvoices: number;
+  handedOut: number;
+  cameBack: number;
+  remaining: number;
+}
+
+export interface PartnerContainersDto {
+  partnerId: number;
+  partnerName: string;
+  balances: ContainerBalanceDto[];
+  movements: ContainerMovementDto[];
 }
 
 export interface MerchantAccountDto {
@@ -108,14 +137,8 @@ export interface MerchantAccountDto {
   isOverCreditLimit: boolean;
   /** Already folded into `remaining` — shown separately so the numbers stay traceable. */
   openingBalance?: number | null;
-  /** "صناديق مطلوبة من المشتري" — a crate COUNT, entirely separate from the money figures above.
-   * boxesGiven is derived live from this merchant's own Active invoices; boxesRemaining =
-   * boxesGiven − boxesReturned (never clamped — can legitimately go slightly negative if
-   * over-returned, same tolerance as the farmer-goods "available" figure). */
-  boxesGiven: number;
-  boxesReturned: number;
-  boxesRemaining: number;
-  boxReturns: BoxReturnDto[];
+  /** Containers live on their own screen (see PartnerContainersDto) — they are counts, they
+   *  apply to sellers and drivers too, and there is more than one kind of them. */
   statement: StatementLineDto[];
 }
 

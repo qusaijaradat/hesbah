@@ -32,18 +32,15 @@ public record UpdatePartnerRequest(string Name, PartnerType? Type, string? Whats
 /// OpeningBalance is the partner's manually-entered starting balance (0/null shown as null here) —
 /// already folded INTO Remaining, shown separately too so the statement's numbers are traceable.
 ///
-/// BoxesGiven/BoxesReturned/BoxesRemaining (explicit request, entirely separate from the money
-/// figures above — a crate count, not currency): BoxesGiven is the sum of box-unit item quantities
-/// across every one of this merchant's own Active invoices; BoxesReturned is the sum of Quantity
-/// across every BoxReturn row recorded against them; BoxesRemaining = BoxesGiven − BoxesReturned
-/// (never clamped — same "can legitimately show a small negative if over-returned" tolerance as
-/// FarmerGoodsEntry's own available-stock figure). BoxReturns is the raw history list so the
-/// account page can show/delete individual return records, not just the running totals.</summary>
+/// Containers (crates and sacks) are NOT here. They are counts, not currency, they are tracked
+/// for sellers and drivers too, and there is now more than one kind of them — so they live on
+/// their own screen and their own endpoint (see IContainerService / PartnerContainersDto)
+/// instead of riding along on the buyer's money DTO, where sacks and hand-recorded hand-outs
+/// would have had nowhere to go.</summary>
 public record MerchantAccountDto(
     int PartnerId, string Name,
     decimal TotalPurchases, decimal TotalPaid, decimal Remaining,
     decimal? CreditLimit, bool IsOverCreditLimit, decimal? OpeningBalance,
-    decimal BoxesGiven, decimal BoxesReturned, decimal BoxesRemaining, IReadOnlyList<BoxReturnDto> BoxReturns,
     IReadOnlyList<StatementLineDto> Statement);
 
 /// <summary>Requirement doc §6: farmer/driver account = value sold or transport fees earned,

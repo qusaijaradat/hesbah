@@ -303,11 +303,6 @@ public record FarmerGoodsRow(DateTime Date, string ItemName, UnitOfMeasure Unit,
 
 public record FarmerGoodsDto(int FarmerId, string FarmerName, IReadOnlyList<FarmerGoodsRow> Rows);
 
-/// <summary>One "empty crate return" record — see BoxReturn's own doc comment. Quantity must be
-/// greater than zero (a correction is made by deleting the wrong row, not recording a negative one).</summary>
-public record CreateBoxReturnRequest(DateTimeOffset Date, decimal Quantity, string? Notes);
-
-public record BoxReturnDto(int Id, int PartnerId, DateTimeOffset Date, decimal Quantity, string? Notes);
 
 /// <summary>One "مرتجع بضاعة" document raised against an invoice — see Domain GoodsReturn.</summary>
 public record GoodsReturnDto(

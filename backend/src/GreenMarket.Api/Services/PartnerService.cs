@@ -346,43 +346,13 @@ public class PartnerService : IPartnerService
         var remaining = openingBalance + totalPurchases - totalPaid;
         var isOverLimit = partner.CreditLimit is not null && remaining > partner.CreditLimit;
 
-        // "صناديق مطلوبة من المشتري" (explicit request) — a completely separate crate-count
-        // ledger, never mixed into the money figures above. BoxesGiven is derived live from this
-        // merchant's own Active invoices (same "never a separate mutable running-balance column"
-        // approach FarmerGoodsEntry/GoodsService already use for stock) rather than stored — see
-        // BoxReturn's own doc comment for BoxesReturned/BoxesRemaining.
-        var boxesIssued = await _db.Invoices
-            .Where(i => i.MerchantId == id && i.Status == InvoiceStatus.Active)
-            .SelectMany(i => i.Items)
-            .Where(it => it.Unit == UnitOfMeasure.Box)
-            .SumAsync(it => (decimal?)it.Quantity) ?? 0;
-
-        // Produce sent back on a مرتجع comes back IN its crates — the buyer hands over the boxes
-        // along with what was in them. Counting those crates as still out meant chasing a buyer
-        // for crates already sitting in the market, and it disagreed with both of the other views
-        // of the same event: the money side credits the return, and the seller's stock un-sells
-        // it (see GoodsService). Only box-unit return lines count; a kilo of tomatoes coming back
-        // says nothing about crates.
-        var boxesBackWithReturns = await _db.GoodsReturns
-            .Where(r => r.Invoice.MerchantId == id && r.Invoice.Status == InvoiceStatus.Active)
-            .SelectMany(r => r.Items)
-            .Where(ri => ri.Unit == UnitOfMeasure.Box)
-            .SumAsync(ri => (decimal?)ri.Quantity) ?? 0;
-
-        var boxesGiven = boxesIssued - boxesBackWithReturns;
-
-        var boxReturns = await _db.BoxReturns
-            .Where(b => b.PartnerId == id)
-            .OrderByDescending(b => b.Date)
-            .Select(b => new BoxReturnDto(b.Id, b.PartnerId, b.Date, b.Quantity, b.Notes))
-            .ToListAsync();
-        var boxesReturned = boxReturns.Sum(b => b.Quantity);
-
+        // Containers (crates, sacks) used to be computed here and carried on this DTO. They moved
+        // to their own service and screen once sellers and drivers needed them too and once there
+        // was more than one kind — see IContainerService.
         return new MerchantAccountDto(
             partner.Id, partner.Name,
             totalPurchases, totalPaid, remaining,
             partner.CreditLimit, isOverLimit, partner.OpeningBalance,
-            boxesGiven, boxesReturned, boxesGiven - boxesReturned, boxReturns,
             statement.Select(ToStatementLineDto).ToList());
     }
 

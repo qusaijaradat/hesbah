@@ -3,18 +3,17 @@ import { usePagination } from "../lib/usePagination";
 import { TablePagination } from "../components/TablePagination";
 import { Link, useParams } from "react-router-dom";
 import {
-  createAdjustment, createBoxReturn, deleteBoxReturn, getFarmerAccount, getMerchantAccount,
+  createAdjustment, getFarmerAccount, getMerchantAccount,
   printFarmerAccountPdf, printMerchantAccountPdf,
 } from "../api/partners";
 import { triggerBlobDownload } from "../api/invoices";
 import { apiErrorMessage } from "../api/client";
 import type { FarmerAccountDto, MerchantAccountDto, StatementLineDto } from "../types";
-import { formatCurrency, formatDate, formatQuantity, todayLocalDateString } from "../lib/format";
+import { formatCurrency, formatDate } from "../lib/format";
 import { StatCard } from "../components/StatCard";
 import { CREDIT_LIMIT_UI_ENABLED } from "../lib/featureFlags";
 import { useAuth } from "../auth/AuthContext";
-import { useSelection } from "../lib/useSelection";
-import { runBulkDelete, summarizeBulkDelete } from "../lib/bulkDelete";
+
 
 /** Shared "🖨️ طباعة" button for both account pages below — each just passes its own fetcher/filename. */
 function PrintAccountButton({ fetchPdf, fileNamePrefix }: { fetchPdf: () => Promise<Blob>; fileNamePrefix: string }) {
@@ -220,179 +219,13 @@ export function MerchantAccountPage() {
         <div className="text-sm text-gray-500 mb-4">رصيد افتتاحي مدرج ضمن المتبقي: <span className="font-medium text-gray-800">{formatCurrency(account.openingBalance)}</span></div>
       )}
 
-      <BoxBalanceSection partnerId={Number(id)} account={account} onChanged={refresh} />
+      {/* Crates and sacks have their own screen now — they are counts, they apply to sellers and
+          drivers too, and there is more than one kind. */}
+      <Link to={`/containers?partner=${id}`} className="text-sm text-brand-700 hover:underline">
+        📦 الصناديق والمخالات لهذا المشتري
+      </Link>
 
       <StatementTable statement={account.statement} />
-    </div>
-  );
-}
-
-/// <summary>
-/// "صناديق مطلوبة من المشتري" (explicit request) — a crate COUNT, entirely separate from the money
-/// StatCards above: boxesGiven/boxesReturned/boxesRemaining come straight off the same
-/// getMerchantAccount() call the rest of this page already uses (see backend
-/// PartnerService.GetMerchantAccountAsync), so no second round trip. The record-a-return form below
-/// is this page's own inline mini-form (unlike Payments, which only has a "تسجيل دفعة" form on its
-/// own separate /payments page) — a crate return is small/frequent enough that navigating away just
-/// to log "5 صناديق رجعت" would be annoying friction.
-/// </summary>
-function BoxBalanceSection({ partnerId, account, onChanged }: { partnerId: number; account: MerchantAccountDto; onChanged: () => void }) {
-  const { hasPermission } = useAuth();
-  const canCreate = hasPermission("boxes.create");
-  const canDelete = hasPermission("boxes.delete");
-
-  const [showForm, setShowForm] = useState(false);
-  const [quantity, setQuantity] = useState("");
-  const [date, setDate] = useState(todayLocalDateString());
-  const [notes, setNotes] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [deletingId, setDeletingId] = useState<number | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const selection = useSelection();
-  const [bulkDeleting, setBulkDeleting] = useState(false);
-
-  async function handleSave() {
-    const parsed = Number(quantity);
-    if (!parsed || parsed <= 0) {
-      setError("أدخل عدد صناديق أكبر من صفر");
-      return;
-    }
-    setSaving(true);
-    setError(null);
-    try {
-      await createBoxReturn(partnerId, { date, quantity: parsed, notes: notes || undefined });
-      setQuantity("");
-      setNotes("");
-      setShowForm(false);
-      onChanged();
-    } catch (err) {
-      setError(apiErrorMessage(err, "فشل تسجيل الإرجاع"));
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function handleDelete(returnId: number) {
-    setDeletingId(returnId);
-    setError(null);
-    try {
-      await deleteBoxReturn(returnId);
-      onChanged();
-    } catch (err) {
-      setError(apiErrorMessage(err, "فشل حذف السجل"));
-    } finally {
-      setDeletingId(null);
-    }
-  }
-
-  async function handleBulkDelete() {
-    const selected = account.boxReturns.filter((r) => selection.selected.has(r.id));
-    if (selected.length === 0) return;
-    if (!window.confirm(`حذف ${selected.length} سجل إرجاع محدد؟ لا يمكن التراجع عن هذا.`)) return;
-    setBulkDeleting(true);
-    setError(null);
-    const outcome = await runBulkDelete(selected, (r) => r.id, (r) => `${formatQuantity(r.quantity, "Box")} — ${formatDate(r.date)}`, deleteBoxReturn);
-    setBulkDeleting(false);
-    selection.clear();
-    onChanged();
-    if (outcome.failedCount > 0) setError(summarizeBulkDelete(outcome));
-  }
-
-  return (
-    <div className="card p-4 mb-6">
-      <div className="flex items-center justify-between flex-wrap gap-3 mb-3">
-        <h2 className="font-semibold">صناديق مطلوبة من المشتري</h2>
-        {canCreate && !showForm && (
-          <button className="btn-secondary" onClick={() => setShowForm(true)}>+ تسجيل إرجاع صناديق</button>
-        )}
-      </div>
-
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
-        <div className="text-center">
-          <div className="text-xs text-gray-500">صناديق مُسلَّمة له</div>
-          <div className="text-lg font-bold">{formatQuantity(account.boxesGiven, "Box")}</div>
-        </div>
-        <div className="text-center">
-          <div className="text-xs text-gray-500">صناديق أُرجعت</div>
-          <div className="text-lg font-bold text-brand-700">{formatQuantity(account.boxesReturned, "Box")}</div>
-        </div>
-        <div className="text-center">
-          <div className="text-xs text-gray-500">المتبقي عليه</div>
-          <div className="text-lg font-bold text-red-700">{formatQuantity(account.boxesRemaining, "Box")}</div>
-        </div>
-      </div>
-
-      {showForm && (
-        <div className="border-t pt-3 mt-1 flex flex-wrap items-end gap-2">
-          <div>
-            <label className="label text-xs">التاريخ</label>
-            <input type="date" className="input" value={date} onChange={(e) => setDate(e.target.value)} />
-          </div>
-          <div>
-            <label className="label text-xs">عدد الصناديق المُرجعة</label>
-            <input type="number" min="1" className="input w-32" value={quantity} onChange={(e) => setQuantity(e.target.value)} />
-          </div>
-          <div className="flex-1 min-w-[10rem]">
-            <label className="label text-xs">ملاحظات (اختياري)</label>
-            <input className="input" value={notes} onChange={(e) => setNotes(e.target.value)} />
-          </div>
-          <button className="btn-primary" disabled={saving} onClick={handleSave}>{saving ? "..." : "حفظ"}</button>
-          <button className="btn-secondary" disabled={saving} onClick={() => { setShowForm(false); setError(null); }}>إلغاء</button>
-        </div>
-      )}
-      {error && <div className="text-sm text-red-600 bg-red-50 rounded-md p-2 mt-3 whitespace-pre-line">{error}</div>}
-
-      {account.boxReturns.length > 0 && (
-        <div className="mt-4">
-          {canDelete && selection.selected.size > 0 && (
-            <div className="flex items-center gap-3 mb-2">
-              <span className="text-sm text-gray-600">محدد: <span className="font-semibold">{selection.selected.size}</span></span>
-              <button className="btn-danger text-sm" disabled={bulkDeleting} onClick={handleBulkDelete}>
-                {bulkDeleting ? "جاري الحذف..." : `حذف المحدد (${selection.selected.size})`}
-              </button>
-            </div>
-          )}
-          <div className="overflow-x-auto">
-            <table className="table-base">
-              <thead>
-                <tr>
-                  {canDelete && (
-                    <th className="w-8">
-                      <input
-                        type="checkbox"
-                        checked={account.boxReturns.every((r) => selection.selected.has(r.id))}
-                        onChange={() => selection.toggleAll(account.boxReturns.map((r) => r.id))}
-                      />
-                    </th>
-                  )}
-                  <th>التاريخ</th><th>العدد</th><th>ملاحظات</th>{canDelete && <th></th>}
-                </tr>
-              </thead>
-              <tbody>
-                {account.boxReturns.map((r) => (
-                  <tr key={r.id}>
-                    {canDelete && (
-                      <td>
-                        <input type="checkbox" checked={selection.selected.has(r.id)} onChange={() => selection.toggleOne(r.id)} />
-                      </td>
-                    )}
-                    <td className="whitespace-nowrap">{formatDate(r.date)}</td>
-                    <td>{formatQuantity(r.quantity, "Box")}</td>
-                    <td className="text-xs text-gray-500">{r.notes || "—"}</td>
-                    {canDelete && (
-                      <td>
-                        <button className="text-xs text-red-600 hover:underline" disabled={deletingId === r.id} onClick={() => handleDelete(r.id)}>
-                          {deletingId === r.id ? "..." : "حذف"}
-                        </button>
-                      </td>
-                    )}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

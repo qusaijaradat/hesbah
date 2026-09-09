@@ -41,7 +41,7 @@ builder.Services.AddScoped<IPartnerService, PartnerService>();
 builder.Services.AddScoped<IItemService, ItemService>();
 builder.Services.AddScoped<IInvoiceService, InvoiceService>();
 builder.Services.AddScoped<IPaymentService, PaymentService>();
-builder.Services.AddScoped<IBoxReturnService, BoxReturnService>();
+builder.Services.AddScoped<IContainerService, ContainerService>();
 builder.Services.AddScoped<IGoodsReturnService, GoodsReturnService>();
 builder.Services.AddScoped<IExpenseService, ExpenseService>();
 builder.Services.AddScoped<IEmployeeService, EmployeeService>();
@@ -448,6 +448,29 @@ using (var scope = app.Services.CreateScope())
     {
         app.Logger.LogError(ex, "Failed to add the invoices.GrandTotal column, drop the obsolete Discount column, or create the goods-return tables — per-invoice payment status and مرتجع بضاعة will not work until this is fixed.");
     }
+    // "صناديق مطلوبة من المشتري" grew into "الصناديق والمخالات": the same idea, but tracked for
+    // sellers and drivers as well as buyers, in both directions, and for more than one kind of
+    // container. That is the SAME table with two more columns, not a new one beside it — a second
+    // table for one idea is how two views of it end up disagreeing.
+    //
+    // Every existing row is a crate coming back from a buyer, which is exactly what the defaults
+    // below say, so nothing needs converting. Renaming first and adding columns second is
+    // idempotent in either order on a re-run: the rename is skipped once the new name exists, and
+    // ADD COLUMN IF NOT EXISTS is a no-op after the first time.
+    try
+    {
+        await db.Database.ExecuteSqlRawAsync("""
+            ALTER TABLE IF EXISTS box_returns RENAME TO container_movements;
+            ALTER TABLE IF EXISTS container_movements ADD COLUMN IF NOT EXISTS "Type" integer NOT NULL DEFAULT 1;
+            ALTER TABLE IF EXISTS container_movements ADD COLUMN IF NOT EXISTS "Direction" integer NOT NULL DEFAULT 2;
+            CREATE INDEX IF NOT EXISTS ix_container_movements_partnerid_type ON container_movements ("PartnerId", "Type");
+            """);
+    }
+    catch (Exception ex)
+    {
+        app.Logger.LogError(ex, "Failed to migrate box_returns into container_movements — the الصناديق والمخالات screen will not work until this is fixed.");
+    }
+
     // Correction for the wood price having been paid out twice. سعر الخشب is charged to the buyer
     // once, and it belongs to the DRIVER, who supplies and handles the crates (see InvoiceCharge).
     // It used to be added to the SELLER's ledger row as well, so every invoice carrying both a

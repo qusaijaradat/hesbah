@@ -2,7 +2,7 @@ import { apiClient } from "./client";
 import type {
   PartnerDto, PartnerSuggestionDto, PagedResult, PartnerType,
   MerchantAccountDto, FarmerAccountDto, DebtsOverviewDto, PartnerInvoiceDetailDto,
-  BoxReturnDto, CreateBoxReturnRequest, AdjustmentDto,
+  PartnerContainersDto, ContainerMovementDto, CreateContainerMovementRequest, AdjustmentDto,
 } from "../types";
 
 export async function listPartners(params: { search?: string; type?: PartnerType; page?: number; pageSize?: number }) {
@@ -105,22 +105,21 @@ export async function deletePartner(id: number) {
   await apiClient.delete(`/partners/${id}`);
 }
 
-// "صناديق مطلوبة من المشتري" — recording/undoing an empty-crate return (explicit request, entirely
-// separate from money/Payments). getMerchantAccount above already returns the running given/
-// returned/remaining balance in one round trip; these three are only needed for the return-history
-// list + record/undo actions on the merchant account page.
-export async function listBoxReturns(partnerId: number) {
-  const { data } = await apiClient.get<BoxReturnDto[]>(`/partners/${partnerId}/box-returns`);
+// "الصناديق والمخالات" — empty containers the market lends out, counted per person and per kind,
+// for buyers, sellers and drivers alike. Deliberately no money anywhere: see the backend
+// IContainerService.
+export async function getPartnerContainers(partnerId: number) {
+  const { data } = await apiClient.get<PartnerContainersDto>(`/partners/${partnerId}/containers`);
   return data;
 }
 
-export async function createBoxReturn(partnerId: number, payload: CreateBoxReturnRequest) {
-  const { data } = await apiClient.post<BoxReturnDto>(`/partners/${partnerId}/box-returns`, payload);
+export async function createContainerMovement(partnerId: number, payload: CreateContainerMovementRequest) {
+  const { data } = await apiClient.post<ContainerMovementDto>(`/partners/${partnerId}/containers`, payload);
   return data;
 }
 
-export async function deleteBoxReturn(returnId: number) {
-  await apiClient.delete(`/partners/box-returns/${returnId}`);
+export async function deleteContainerMovement(movementId: number) {
+  await apiClient.delete(`/partners/containers/${movementId}`);
 }
 
 /**

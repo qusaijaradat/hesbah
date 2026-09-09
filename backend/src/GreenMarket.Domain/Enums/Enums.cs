@@ -30,6 +30,28 @@ public enum UnitOfMeasure
     Box = 2
 }
 
+/// <summary>
+/// A kind of empty container the market lends out and expects back — counted, never priced here.
+/// Each type keeps its OWN balance per person: handing someone ten crates and ten sacks leaves
+/// them owing ten of each, not twenty of something.
+/// </summary>
+public enum ContainerType
+{
+    /// <summary>"صندوق" — the crate produce is sold in.</summary>
+    Box = 1,
+    /// <summary>"مخلاة" — its own kind, its own balance.</summary>
+    Sack = 2
+}
+
+/// <summary>Which way containers moved on one record.</summary>
+public enum ContainerDirection
+{
+    /// <summary>The market handed them out — this person now holds that many.</summary>
+    Out = 1,
+    /// <summary>They came back, or the person brought their own in.</summary>
+    In = 2
+}
+
 /// <summary>Lifecycle state of an invoice. Requirement doc §2 calls out cancel/delete as a permission.</summary>
 public enum InvoiceStatus
 {
@@ -188,7 +210,7 @@ public static class PermissionKeys
     public const string FarmerGoodsEdit = "farmerGoods.edit";
     public const string FarmerGoodsDelete = "farmerGoods.delete";
 
-    /// <summary>"صناديق مطلوبة من المشتري" (empty-crate return tracking, see BoxReturn) — separate
+    /// <summary>"الصناديق والمخالات" (empty-container tracking, see ContainerMovement) — separate
     /// from Partners*/Invoices* so a role can record/view crate returns without also being able to
     /// edit partner records or invoices, or vice versa. View also covers seeing the computed
     /// given/returned/remaining crate balance on the merchant's own account page.</summary>

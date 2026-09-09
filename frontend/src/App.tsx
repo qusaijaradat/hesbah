@@ -23,6 +23,7 @@ import { ChecksPage } from "./pages/ChecksPage";
 import { EmployeesPage } from "./pages/EmployeesPage";
 import { ReportsPage } from "./pages/ReportsPage";
 import { DailyClosingPage } from "./pages/DailyClosingPage";
+import { ContainersPage } from "./pages/ContainersPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { UsersPage } from "./pages/UsersPage";
 import { RolesPage } from "./pages/RolesPage";
@@ -69,6 +70,7 @@ export default function App() {
           <Route path="/employees" element={<Protected permission="employees.view"><EmployeesPage /></Protected>} />
           <Route path="/reports" element={<Protected permission="reports.view"><ReportsPage /></Protected>} />
           <Route path="/daily-closing" element={<Protected permission="reports.view"><DailyClosingPage /></Protected>} />
+          <Route path="/containers" element={<Protected permission="boxes.view"><ContainersPage /></Protected>} />
           <Route path="/settings" element={<Protected permission="settings.view"><SettingsPage /></Protected>} />
           <Route path="/users" element={<Protected permission="users.view"><UsersPage /></Protected>} />
           <Route path="/roles" element={<Protected permission="roles.view"><RolesPage /></Protected>} />

@@ -22,7 +22,7 @@ namespace GreenMarket.Domain.Entities;
 ///
 /// سعر الخشب is deliberately NOT pro-rated on a return: it's a flat per-line crate charge, not a
 /// per-kilo one, and the crates don't come back just because some of what was in them did. If
-/// crates are physically returned that's the separate <see cref="BoxReturn"/> ledger's job.
+/// crates are physically returned that's the separate <see cref="ContainerMovement"/> ledger's job.
 /// </summary>
 public class GoodsReturn : AuditableEntity
 {

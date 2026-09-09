@@ -351,11 +351,25 @@ public class PartnerService : IPartnerService
         // merchant's own Active invoices (same "never a separate mutable running-balance column"
         // approach FarmerGoodsEntry/GoodsService already use for stock) rather than stored — see
         // BoxReturn's own doc comment for BoxesReturned/BoxesRemaining.
-        var boxesGiven = await _db.Invoices
+        var boxesIssued = await _db.Invoices
             .Where(i => i.MerchantId == id && i.Status == InvoiceStatus.Active)
             .SelectMany(i => i.Items)
             .Where(it => it.Unit == UnitOfMeasure.Box)
             .SumAsync(it => (decimal?)it.Quantity) ?? 0;
+
+        // Produce sent back on a مرتجع comes back IN its crates — the buyer hands over the boxes
+        // along with what was in them. Counting those crates as still out meant chasing a buyer
+        // for crates already sitting in the market, and it disagreed with both of the other views
+        // of the same event: the money side credits the return, and the seller's stock un-sells
+        // it (see GoodsService). Only box-unit return lines count; a kilo of tomatoes coming back
+        // says nothing about crates.
+        var boxesBackWithReturns = await _db.GoodsReturns
+            .Where(r => r.Invoice.MerchantId == id && r.Invoice.Status == InvoiceStatus.Active)
+            .SelectMany(r => r.Items)
+            .Where(ri => ri.Unit == UnitOfMeasure.Box)
+            .SumAsync(ri => (decimal?)ri.Quantity) ?? 0;
+
+        var boxesGiven = boxesIssued - boxesBackWithReturns;
 
         var boxReturns = await _db.BoxReturns
             .Where(b => b.PartnerId == id)

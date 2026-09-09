@@ -27,6 +27,10 @@ Show("returns netted out across every seller (GoodsService global stock)",
     db.GoodsReturns.Where(r => r.Invoice.FarmerId != null && r.Invoice.Status == InvoiceStatus.Active)
         .SelectMany(r => r.Items.Select(ri => new { FarmerId = r.Invoice.FarmerId!.Value, ri.ItemName, ri.Unit, ri.Quantity })));
 
+Show("crates coming back with a buyer's returns (PartnerService crate balance)",
+    db.GoodsReturns.Where(r => r.Invoice.MerchantId == 7 && r.Invoice.Status == InvoiceStatus.Active)
+        .SelectMany(r => r.Items).Where(ri => ri.Unit == UnitOfMeasure.Box).Select(ri => ri.Quantity));
+
 void Show<T>(string label, IQueryable<T> query)
 {
     Console.WriteLine($"--- {label}");

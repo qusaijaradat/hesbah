@@ -216,7 +216,10 @@ public static class PermissionKeys
     /// given/returned/remaining crate balance on the merchant's own account page.</summary>
     public const string BoxesView = "boxes.view";
     public const string BoxesCreate = "boxes.create";
-    public const string BoxesEdit = "boxes.edit";
+    // No BoxesEdit: a container movement is never edited. A wrong one is deleted and entered
+    // again, which leaves both the mistake and the correction in the audit trail rather than
+    // quietly rewriting a count. The key existed, granted nothing anywhere, and still showed on
+    // the roles screen as a capability someone could hand out.
     public const string BoxesDelete = "boxes.delete";
 
     public const string ReportsView = "reports.view";
@@ -260,7 +263,7 @@ public static class PermissionKeys
         ExpensesView, ExpensesCreate, ExpensesEdit, ExpensesDelete,
         EmployeesView, EmployeesCreate, EmployeesEdit, EmployeesDelete,
         FarmerGoodsView, FarmerGoodsCreate, FarmerGoodsEdit, FarmerGoodsDelete,
-        BoxesView, BoxesCreate, BoxesEdit, BoxesDelete,
+        BoxesView, BoxesCreate, BoxesDelete,
         ReportsView, ReportsExport,
         SettingsView, SettingsEdit,
         UsersView, UsersCreate, UsersEdit,

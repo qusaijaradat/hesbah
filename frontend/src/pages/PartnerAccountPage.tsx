@@ -85,6 +85,13 @@ export function FarmerAccountPage() {
 
       <AdjustmentSection partnerId={Number(id)} roleLabel={roleLabel} onChanged={refresh} />
 
+      {/* Sellers and drivers hold crates and sacks too — the wooden crates that arrive with a
+          seller's produce are already counted there. */}
+      <Link to={`/containers?partner=${id}`} className="text-sm text-brand-700 hover:underline">
+        📦 الصناديق والمخالات لهذا ال{roleLabel}
+      </Link>
+
+
       <StatementTable statement={account.statement} />
     </div>
   );

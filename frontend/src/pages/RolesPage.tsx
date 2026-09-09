@@ -20,6 +20,7 @@ const PERMISSION_LABELS: Record<string, string> = {
   "partners.create": "إضافة شخص جديد",
   "partners.edit": "تعديل بيانات شخص",
   "partners.delete": "حذف شخص (فقط إن لم يكن له أي تعامل سابق)",
+  "partners.adjust": "تسجيل تسوية/تعويض على حساب بائع أو سائق",
 
   "items.view": "إظهار قائمة الأصناف",
   "items.create": "إضافة صنف",
@@ -46,6 +47,10 @@ const PERMISSION_LABELS: Record<string, string> = {
   "farmerGoods.edit": "تعديل بضاعة مضافة",
   "farmerGoods.delete": "حذف بضاعة مضافة",
 
+  "boxes.view": "إظهار الصناديق والمخالات",
+  "boxes.create": "تسجيل حركة صناديق أو مخالات",
+  "boxes.delete": "حذف حركة صناديق أو مخالات",
+
   "reports.view": "عرض التقارير",
   "reports.export": "تصدير التقارير (Excel/PDF)",
 
@@ -55,6 +60,8 @@ const PERMISSION_LABELS: Record<string, string> = {
   "users.view": "إظهار المستخدمين",
   "users.create": "إضافة مستخدم",
   "users.edit": "تعديل مستخدم (وتعطيله)",
+
+  "backup.download": "تنزيل نسخة احتياطية كاملة من البيانات",
 
   "roles.view": "إظهار الأدوار والصلاحيات",
   "roles.create": "إضافة دور",

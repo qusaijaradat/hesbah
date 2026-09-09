@@ -89,7 +89,7 @@ public static class DbSeeder
                 PermissionKeys.ItemsView, PermissionKeys.ItemsCreate, PermissionKeys.ItemsEdit,
                 PermissionKeys.PaymentsView, PermissionKeys.PaymentsCreate, PermissionKeys.PaymentsEdit,
                 PermissionKeys.FarmerGoodsView, PermissionKeys.FarmerGoodsCreate, PermissionKeys.FarmerGoodsEdit,
-                PermissionKeys.BoxesView, PermissionKeys.BoxesCreate, PermissionKeys.BoxesEdit,
+                PermissionKeys.BoxesView, PermissionKeys.BoxesCreate,
                 PermissionKeys.ReportsView
             },
             [SeedRoleNames.Accountant] = new[]

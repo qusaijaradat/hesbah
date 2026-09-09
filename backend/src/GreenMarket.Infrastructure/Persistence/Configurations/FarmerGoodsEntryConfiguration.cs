@@ -13,6 +13,7 @@ public class FarmerGoodsEntryConfiguration : IEntityTypeConfiguration<FarmerGood
         builder.Property(x => x.Unit).HasConversion<int>();
         builder.Property(x => x.Quantity).HasColumnType("numeric(14,3)");
         builder.Property(x => x.WoodQuantity).HasColumnType("numeric(14,3)");
+        builder.Property(x => x.SackQuantity).HasColumnType("numeric(14,3)");
         builder.Property(x => x.Notes).HasMaxLength(500);
 
         // One-way reference to Partner (the farmer) — no collection navigation added on Partner

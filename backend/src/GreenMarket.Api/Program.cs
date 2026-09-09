@@ -332,6 +332,7 @@ using (var scope = app.Services.CreateScope())
                 "Unit" integer NOT NULL,
                 "Quantity" numeric(14,3) NOT NULL DEFAULT 0,
                 "WoodQuantity" numeric(14,3) NOT NULL DEFAULT 0,
+                "SackQuantity" numeric(14,3) NOT NULL DEFAULT 0,
                 "Notes" character varying(500) NULL,
                 "CreatedAt" timestamp with time zone NOT NULL DEFAULT now(),
                 "CreatedByUserId" integer NULL,
@@ -448,6 +449,21 @@ using (var scope = app.Services.CreateScope())
     {
         app.Logger.LogError(ex, "Failed to add the invoices.GrandTotal column, drop the obsolete Discount column, or create the goods-return tables — per-invoice payment status and مرتجع بضاعة will not work until this is fixed.");
     }
+    // "مخالات" on the goods-intake form. Sellers bring produce in sacks as well as crates, and
+    // the form only ever had a crate count — so a sack arriving with a delivery had nowhere to be
+    // recorded except by hand on the containers screen. Defaults to 0, which is what every
+    // existing row honestly is: nobody could have entered one.
+    try
+    {
+        await db.Database.ExecuteSqlRawAsync("""
+            ALTER TABLE IF EXISTS farmer_goods_entries ADD COLUMN IF NOT EXISTS "SackQuantity" numeric(14,3) NOT NULL DEFAULT 0;
+            """);
+    }
+    catch (Exception ex)
+    {
+        app.Logger.LogError(ex, "Failed to add farmer_goods_entries.SackQuantity — recording مخالات on a goods entry will not work until this is fixed.");
+    }
+
     // "صناديق مطلوبة من المشتري" grew into "الصناديق والمخالات": the same idea, but tracked for
     // sellers and drivers as well as buyers, in both directions, and for more than one kind of
     // container. That is the SAME table with two more columns, not a new one beside it — a second

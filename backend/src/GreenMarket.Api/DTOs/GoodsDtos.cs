@@ -10,18 +10,18 @@ namespace GreenMarket.Api.DTOs;
 /// GoodsService.ValidateLine and FarmerGoodsPage.tsx.</summary>
 public record GoodsEntryDto(
     int Id, int FarmerId, string FarmerName, DateTimeOffset Date,
-    string ItemName, UnitOfMeasure Unit, decimal Quantity, decimal WoodQuantity, string? Notes);
+    string ItemName, UnitOfMeasure Unit, decimal Quantity, decimal WoodQuantity, decimal SackQuantity, string? Notes);
 
 /// <summary>FarmerId is required — unlike an invoice, a goods intake entry is always logged
 /// against an already-known farmer (the page's own farmer picker doesn't allow typing a brand
 /// new name), so there's no FarmerName find-or-create fallback here.</summary>
 public record CreateGoodsEntryRequest(
     int FarmerId, DateTimeOffset Date, string ItemName, UnitOfMeasure Unit,
-    decimal Quantity, decimal WoodQuantity = 0, string? Notes = null);
+    decimal Quantity, decimal WoodQuantity = 0, decimal SackQuantity = 0, string? Notes = null);
 
 public record UpdateGoodsEntryRequest(
     DateTimeOffset Date, string ItemName, UnitOfMeasure Unit,
-    decimal Quantity, decimal WoodQuantity = 0, string? Notes = null);
+    decimal Quantity, decimal WoodQuantity = 0, decimal SackQuantity = 0, string? Notes = null);
 
 /// <summary>
 /// One row of the "المتوفر حاليًا" (currently available) stock summary — per item + unit, across
@@ -46,7 +46,7 @@ public record UpdateGoodsEntryRequest(
 /// page already shows the farmer's name once in its own header — repeating it on every row there
 /// would be redundant.
 /// </summary>
-public record GoodsStockRow(string ItemName, UnitOfMeasure Unit, decimal TotalReceived, decimal TotalSold, decimal Available, decimal WoodReceived, int? FarmerId = null, string? FarmerName = null);
+public record GoodsStockRow(string ItemName, UnitOfMeasure Unit, decimal TotalReceived, decimal TotalSold, decimal Available, decimal WoodReceived, decimal SackReceived, int? FarmerId = null, string? FarmerName = null);
 
 /// <summary>Wraps a farmer's own name with both halves of the "بضاعة الباعة" page: the raw intake
 /// log (Entries, newest first — editable/deletable) and the computed per-item stock summary

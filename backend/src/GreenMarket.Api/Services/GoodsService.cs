@@ -60,7 +60,7 @@ public class GoodsService : IGoodsService
         // compared against Quantity/Unit — see GoodsStockRow's doc comment).
         var receivedByKey = entries
             .GroupBy(e => (Name: e.ItemName.Trim().ToLowerInvariant(), e.Unit))
-            .ToDictionary(g => g.Key, g => (Display: g.First().ItemName.Trim(), Total: g.Sum(e => e.Quantity), Wood: g.Sum(e => e.WoodQuantity)));
+            .ToDictionary(g => g.Key, g => (Display: g.First().ItemName.Trim(), Total: g.Sum(e => e.Quantity), Wood: g.Sum(e => e.WoodQuantity), Sack: g.Sum(e => e.SackQuantity)));
 
         // Same "materialize then group in memory" choice as GetFarmerGoodsAsync — only ever this
         // one farmer's Active invoices, so it's cheap and side-steps translating a correlated
@@ -95,15 +95,16 @@ public class GoodsService : IGoodsService
             var receivedAgg = receivedByKey.GetValueOrDefault(key);
             var received = receivedAgg.Total;
             var wood = receivedAgg.Wood;
+            var sack = receivedAgg.Sack;
             var sold = soldByKey.GetValueOrDefault(key).Total - returnedByKey.GetValueOrDefault(key);
             var display = receivedByKey.TryGetValue(key, out var r) ? r.Display : soldByKey[key].Display;
-            return new GoodsStockRow(display, key.Unit, received, sold, received - sold, wood);
+            return new GoodsStockRow(display, key.Unit, received, sold, received - sold, wood, sack);
         })
         .OrderBy(r => r.ItemName)
         .ToList();
 
         var entryDtos = entries.Select(e => new GoodsEntryDto(
-            e.Id, e.FarmerId, farmer.Name, e.Date, e.ItemName, e.Unit, e.Quantity, e.WoodQuantity, e.Notes)).ToList();
+            e.Id, e.FarmerId, farmer.Name, e.Date, e.ItemName, e.Unit, e.Quantity, e.WoodQuantity, e.SackQuantity, e.Notes)).ToList();
 
         return new FarmerGoodsStockDto(farmer.Id, farmer.Name, entryDtos, stock);
     }
@@ -127,7 +128,7 @@ public class GoodsService : IGoodsService
     public async Task<IReadOnlyList<GoodsStockRow>> GetGlobalStockAsync()
     {
         var entries = await _db.FarmerGoodsEntries
-            .Select(e => new { e.FarmerId, FarmerName = e.Farmer.Name, e.ItemName, e.Unit, e.Quantity, e.WoodQuantity })
+            .Select(e => new { e.FarmerId, FarmerName = e.Farmer.Name, e.ItemName, e.Unit, e.Quantity, e.WoodQuantity, e.SackQuantity })
             .ToListAsync();
 
         var receivedByKey = entries
@@ -136,7 +137,8 @@ public class GoodsService : IGoodsService
                 FarmerName: g.First().FarmerName,
                 Display: g.First().ItemName.Trim(),
                 Total: g.Sum(e => e.Quantity),
-                Wood: g.Sum(e => e.WoodQuantity)));
+                Wood: g.Sum(e => e.WoodQuantity),
+                Sack: g.Sum(e => e.SackQuantity)));
 
         var soldLines = await _db.Invoices
             .Where(i => i.FarmerId != null && i.Status == InvoiceStatus.Active)
@@ -163,10 +165,11 @@ public class GoodsService : IGoodsService
             var receivedAgg = receivedByKey.GetValueOrDefault(key);
             var received = receivedAgg.Total;
             var wood = receivedAgg.Wood;
+            var sack = receivedAgg.Sack;
             var sold = soldByKey.GetValueOrDefault(key).Total - returnedByKey.GetValueOrDefault(key);
             var display = receivedByKey.TryGetValue(key, out var r) ? r.Display : soldByKey[key].Display;
             var farmerName = receivedByKey.TryGetValue(key, out var r2) ? r2.FarmerName : soldByKey[key].FarmerName;
-            return new GoodsStockRow(display, key.Unit, received, sold, received - sold, wood, key.FarmerId, farmerName);
+            return new GoodsStockRow(display, key.Unit, received, sold, received - sold, wood, sack, key.FarmerId, farmerName);
         })
         // "البضاعة المتوفرة حاليًا" means exactly that: an item a farmer brought in and has since
         // sold out of (Available == 0) is finished business and just pads the table — explicit
@@ -191,7 +194,7 @@ public class GoodsService : IGoodsService
         // added across this pass (see PaymentService.PartnerTypeMatches's doc comment).
         if (farmer.Type is not (null or PartnerType.Farmer or PartnerType.Both))
             throw new ValidationAppException($"الشخص المحدد ({farmer.Name}) ليس بائعًا — لا يمكن تسجيل بضاعة له.");
-        ValidateLine(request.ItemName, request.Quantity, request.WoodQuantity);
+        ValidateLine(request.ItemName, request.Quantity, request.WoodQuantity, request.SackQuantity);
 
         // Same "type it once, pick it from a list every time after" growth as InvoiceService.
         await _items.FindOrCreateAsync(request.ItemName);
@@ -204,19 +207,20 @@ public class GoodsService : IGoodsService
             Unit = request.Unit,
             Quantity = request.Quantity,
             WoodQuantity = request.WoodQuantity,
+            SackQuantity = request.SackQuantity,
             Notes = request.Notes,
             CreatedByUserId = recordedByUserId
         };
         _db.FarmerGoodsEntries.Add(entry);
         await _db.SaveChangesAsync();
 
-        return new GoodsEntryDto(entry.Id, entry.FarmerId, farmer.Name, entry.Date, entry.ItemName, entry.Unit, entry.Quantity, entry.WoodQuantity, entry.Notes);
+        return new GoodsEntryDto(entry.Id, entry.FarmerId, farmer.Name, entry.Date, entry.ItemName, entry.Unit, entry.Quantity, entry.WoodQuantity, entry.SackQuantity, entry.Notes);
     }
 
     public async Task<GoodsEntryDto> UpdateAsync(int id, UpdateGoodsEntryRequest request)
     {
         var entry = await _db.FarmerGoodsEntries.FindAsync(id) ?? throw new NotFoundAppException("FarmerGoodsEntry", id);
-        ValidateLine(request.ItemName, request.Quantity, request.WoodQuantity);
+        ValidateLine(request.ItemName, request.Quantity, request.WoodQuantity, request.SackQuantity);
 
         await _items.FindOrCreateAsync(request.ItemName);
 
@@ -225,11 +229,12 @@ public class GoodsService : IGoodsService
         entry.Unit = request.Unit;
         entry.Quantity = request.Quantity;
         entry.WoodQuantity = request.WoodQuantity;
+        entry.SackQuantity = request.SackQuantity;
         entry.Notes = request.Notes;
         await _db.SaveChangesAsync();
 
         var farmer = await _db.Partners.FindAsync(entry.FarmerId);
-        return new GoodsEntryDto(entry.Id, entry.FarmerId, farmer?.Name ?? "", entry.Date, entry.ItemName, entry.Unit, entry.Quantity, entry.WoodQuantity, entry.Notes);
+        return new GoodsEntryDto(entry.Id, entry.FarmerId, farmer?.Name ?? "", entry.Date, entry.ItemName, entry.Unit, entry.Quantity, entry.WoodQuantity, entry.SackQuantity, entry.Notes);
     }
 
     /// <summary>Soft-delete, same convention as every other AuditableEntity — a mistaken intake
@@ -246,12 +251,14 @@ public class GoodsService : IGoodsService
     // tomatoes carried in 3 wooden crates is a perfectly valid entry, and "3 > 50" was never a
     // meaningful comparison to begin with (comparing a crate count to a weight). There is
     // deliberately no upper bound tying it to Quantity — see GoodsEntryDto's doc comment.
-    private static void ValidateLine(string itemName, decimal quantity, decimal woodQuantity)
+    private static void ValidateLine(string itemName, decimal quantity, decimal woodQuantity, decimal sackQuantity)
     {
         if (string.IsNullOrWhiteSpace(itemName))
             throw new ValidationAppException("An item name is required.");
         if (quantity <= 0)
             throw new ValidationAppException("Quantity must be greater than zero.");
+        if (sackQuantity < 0)
+            throw new ValidationAppException("عدد المخالات لا يمكن أن يكون سالبًا.");
         if (woodQuantity < 0)
             throw new ValidationAppException("Wood quantity cannot be negative.");
     }

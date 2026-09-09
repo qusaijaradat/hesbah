@@ -78,6 +78,7 @@ export function FarmerGoodsPage() {
   const [entryUnit, setEntryUnit] = useState<UnitOfMeasure>("Kg");
   const [entryQuantity, setEntryQuantity] = useState("");
   const [entryWoodQuantity, setEntryWoodQuantity] = useState("");
+  const [entrySackQuantity, setEntrySackQuantity] = useState("");
   const [entryNotes, setEntryNotes] = useState("");
   const [savingEntry, setSavingEntry] = useState(false);
   const [entryError, setEntryError] = useState<string | null>(null);
@@ -140,6 +141,7 @@ export function FarmerGoodsPage() {
     setEntryUnit("Kg");
     setEntryQuantity("");
     setEntryWoodQuantity("");
+    setEntrySackQuantity("");
     setEntryNotes("");
     setEditingEntry(null);
     setEntryError(null);
@@ -152,6 +154,7 @@ export function FarmerGoodsPage() {
     setEntryUnit(entry.unit);
     setEntryQuantity(String(entry.quantity));
     setEntryWoodQuantity(entry.woodQuantity > 0 ? String(entry.woodQuantity) : "");
+    setEntrySackQuantity(entry.sackQuantity > 0 ? String(entry.sackQuantity) : "");
     setEntryNotes(entry.notes ?? "");
     setEntryError(null);
   }
@@ -160,6 +163,7 @@ export function FarmerGoodsPage() {
     if (!farmerPick) return;
     const quantity = Number(entryQuantity);
     const woodQuantity = entryWoodQuantity ? Number(entryWoodQuantity) : 0;
+    const sackQuantity = entrySackQuantity ? Number(entrySackQuantity) : 0;
     if (!entryItem.trim() || !quantity || quantity <= 0) {
       setEntryError("الصنف والكمية مطلوبان");
       return;
@@ -173,6 +177,7 @@ export function FarmerGoodsPage() {
         unit: entryUnit,
         quantity,
         woodQuantity,
+        sackQuantity,
         notes: entryNotes.trim() || null,
       };
       if (editingEntry) {
@@ -309,6 +314,12 @@ export function FarmerGoodsPage() {
                   <label className="label">صناديق خشب (اختياري)</label>
                   <input type="number" step="1" min="0" className="input w-32" value={entryWoodQuantity} onChange={(e) => setEntryWoodQuantity(e.target.value)} placeholder="0" />
                 </div>
+                <div>
+                  {/* نفس فكرة صناديق الخشب — عدد المخالات الي إجت مع البضاعة، مستقل عن الكمية
+                      وعن الصناديق، وبنحسب برصيده لحاله بشاشة الصناديق والمخالات. */}
+                  <label className="label">مخالات (اختياري)</label>
+                  <input type="number" step="1" min="0" className="input w-32" value={entrySackQuantity} onChange={(e) => setEntrySackQuantity(e.target.value)} placeholder="0" />
+                </div>
                 <div className="w-full max-w-xs">
                   <label className="label">ملاحظات (اختياري)</label>
                   <input className="input" value={entryNotes} onChange={(e) => setEntryNotes(e.target.value)} />
@@ -340,13 +351,13 @@ export function FarmerGoodsPage() {
                 {/* صناديق خشب فيلد مستقل تمامًا عن الوارد/المباع/المتوفر (اللي هني بوحدة الصنف
                     نفسها كيلو أو صندوق) — هاد عدد صناديق الخشب الفعلي المسجّل، دايمًا "صندوق"
                     بغض النظر عن وحدة الصنف. */}
-                <tr><th>الصنف</th><th>الوحدة</th><th>الوارد</th><th>المباع</th><th>المتوفر</th><th>صناديق خشب</th></tr>
+                <tr><th>الصنف</th><th>الوحدة</th><th>الوارد</th><th>المباع</th><th>المتوفر</th><th>صناديق خشب</th><th>مخالات</th></tr>
               </thead>
               <tbody>
                 {stockLoading ? (
                   <tr><td colSpan={6} className="text-center text-gray-400 py-6">جاري التحميل...</td></tr>
                 ) : !stockData || stockData.stock.length === 0 ? (
-                  <tr><td colSpan={6} className="text-center text-gray-400 py-6">لا توجد بضاعة مسجلة لهذا البائع بعد</td></tr>
+                  <tr><td colSpan={7} className="text-center text-gray-400 py-6">لا توجد بضاعة مسجلة لهذا البائع بعد</td></tr>
                 ) : (
                   stockPager.pageRows.map((r, idx) => (
                     <tr key={idx}>
@@ -356,6 +367,7 @@ export function FarmerGoodsPage() {
                       <td>{formatQuantity(r.totalSold, r.unit)}</td>
                       <td className={`font-semibold ${r.available < 0 ? "text-red-600" : ""}`}>{formatQuantity(r.available, r.unit)}</td>
                       <td>{r.woodReceived > 0 ? formatQuantity(r.woodReceived, "Box") : "—"}</td>
+                      <td>{r.sackReceived > 0 ? r.sackReceived.toLocaleString("en-US") : "—"}</td>
                     </tr>
                   ))
                 )}
@@ -392,7 +404,7 @@ export function FarmerGoodsPage() {
                       />
                     </th>
                   )}
-                  <th>التاريخ</th><th>الصنف</th><th>الكمية</th><th>صناديق خشب</th><th>ملاحظات</th>
+                  <th>التاريخ</th><th>الصنف</th><th>الكمية</th><th>صناديق خشب</th><th>مخالات</th><th>ملاحظات</th>
                   {(canEdit || canDelete) && <th></th>}
                 </tr>
               </thead>
@@ -411,6 +423,7 @@ export function FarmerGoodsPage() {
                       <td className="font-medium">{e.itemName}</td>
                       <td>{formatQuantity(e.quantity, e.unit)}</td>
                       <td>{e.woodQuantity > 0 ? formatQuantity(e.woodQuantity, "Box") : "—"}</td>
+                      <td>{e.sackQuantity > 0 ? e.sackQuantity.toLocaleString("en-US") : "—"}</td>
                       <td className="text-gray-500 text-sm">{e.notes ?? "—"}</td>
                       {(canEdit || canDelete) && (
                         <td className="whitespace-nowrap">

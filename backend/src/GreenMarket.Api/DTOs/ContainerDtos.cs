@@ -19,8 +19,8 @@ public record CreateContainerMovementRequest(
 ///
 ///   • FromInvoices — crates going OUT with a buyer. One leaves with every box-unit line they
 ///     buy, net of produce sent back, which arrives in its crates. Buyers only.
-///   • FromGoodsEntries — wooden crates coming IN with a seller's produce, counted on the
-///     "إضافة بضاعة" form (FarmerGoodsEntry.WoodQuantity). Sellers only.
+///   • FromGoodsEntries — containers coming IN with a seller's produce, counted on the "إضافة
+///     بضاعة" form: wooden crates for Box, sacks for Sack. Sellers only.
 ///
 /// HandedOut and CameBack are what was recorded by hand on the containers screen.
 ///

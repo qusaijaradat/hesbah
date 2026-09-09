@@ -70,14 +70,14 @@ public class ContainerService : IContainerService
         // on that page — a third place tracking the same physical thing, which is how the crate
         // count, the stock and the money all came to disagree about a مرتجع. Read here rather
         // than re-typed, for the same reason the buyer's side is.
-        var goodsEntryCrates = await GoodsEntryCratesFor(partnerId);
+        var (goodsEntryCrates, goodsEntrySacks) = await GoodsEntryContainersFor(partnerId);
 
         var balances = new List<ContainerBalanceDto>();
         foreach (var type in new[] { ContainerType.Box, ContainerType.Sack })
         {
-            // Both derived sides are crates; sacks are only ever recorded by hand.
+            // Only crates leave on an invoice; both kinds can arrive with a seller's produce.
             var fromInvoices = type == ContainerType.Box ? invoiceBoxes : 0m;
-            var fromGoodsEntries = type == ContainerType.Box ? goodsEntryCrates : 0m;
+            var fromGoodsEntries = type == ContainerType.Box ? goodsEntryCrates : goodsEntrySacks;
             var handedOut = movements.Where(m => m.Type == type && m.Direction == ContainerDirection.Out).Sum(m => m.Quantity);
             var cameBack = movements.Where(m => m.Type == type && m.Direction == ContainerDirection.In).Sum(m => m.Quantity);
             balances.Add(new ContainerBalanceDto(
@@ -151,9 +151,9 @@ public class ContainerService : IContainerService
             .Select(g => new { PartnerId = g.Key, Total = g.Sum(x => x.Quantity) })
             .ToListAsync();
 
-        var goodsCrates = await _db.FarmerGoodsEntries
+        var goodsContainers = await _db.FarmerGoodsEntries
             .GroupBy(e => e.FarmerId)
-            .Select(g => new { PartnerId = g.Key, Total = g.Sum(e => e.WoodQuantity) })
+            .Select(g => new { PartnerId = g.Key, Crates = g.Sum(e => e.WoodQuantity), Sacks = g.Sum(e => e.SackQuantity) })
             .ToListAsync();
 
         var totals = new Dictionary<(int PartnerId, ContainerType Type), decimal>();
@@ -168,7 +168,11 @@ public class ContainerService : IContainerService
             Add(row.PartnerId, row.Type, row.Direction == ContainerDirection.Out ? row.Total : -row.Total);
         foreach (var row in issued) Add(row.PartnerId, ContainerType.Box, row.Total);
         foreach (var row in backOnReturns) Add(row.PartnerId, ContainerType.Box, -row.Total);
-        foreach (var row in goodsCrates) Add(row.PartnerId, ContainerType.Box, -row.Total);
+        foreach (var row in goodsContainers)
+        {
+            Add(row.PartnerId, ContainerType.Box, -row.Crates);
+            Add(row.PartnerId, ContainerType.Sack, -row.Sacks);
+        }
 
         // Square is square — a person who has returned everything is finished business and only
         // pads the list, same treatment as a sold-out row on the stock screen.
@@ -212,13 +216,18 @@ public class ContainerService : IContainerService
     }
 
     /// <summary>
-    /// Wooden crates logged against this partner's goods intake as a SELLER — the "صناديق خشب"
-    /// field on "إضافة بضاعة" (FarmerGoodsEntry.WoodQuantity), which is a plain crate count and
-    /// never a portion of the produce quantity. Zero for anyone who has never brought goods in,
-    /// which is what makes this safe to call for a buyer or a driver.
+    /// Containers logged against this partner's goods intake as a SELLER — the "صناديق خشب" and
+    /// "مخالات" fields on "إضافة بضاعة", both plain counts and never a portion of the produce
+    /// quantity. Zero for anyone who has never brought goods in, which is what makes this safe to
+    /// call for a buyer or a driver.
     /// </summary>
-    private async Task<decimal> GoodsEntryCratesFor(int partnerId) =>
-        await _db.FarmerGoodsEntries
+    private async Task<(decimal Crates, decimal Sacks)> GoodsEntryContainersFor(int partnerId)
+    {
+        var totals = await _db.FarmerGoodsEntries
             .Where(e => e.FarmerId == partnerId)
-            .SumAsync(e => (decimal?)e.WoodQuantity) ?? 0;
+            .GroupBy(e => 1)
+            .Select(g => new { Crates = g.Sum(e => e.WoodQuantity), Sacks = g.Sum(e => e.SackQuantity) })
+            .SingleOrDefaultAsync();
+        return (totals?.Crates ?? 0, totals?.Sacks ?? 0);
+    }
 }

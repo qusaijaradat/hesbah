@@ -594,6 +594,9 @@ export interface GoodsEntryDto {
   unit: UnitOfMeasure;
   quantity: number;
   woodQuantity: number;
+  /** "مخالات" — the same kind of plain container count as woodQuantity, tracked in the same
+   *  ledger and kept on its own balance (see ContainerBalanceDto). */
+  sackQuantity: number;
   notes?: string | null;
 }
 
@@ -604,6 +607,7 @@ export interface CreateGoodsEntryRequest {
   unit: UnitOfMeasure;
   quantity: number;
   woodQuantity?: number;
+  sackQuantity?: number;
   notes?: string | null;
 }
 
@@ -626,6 +630,8 @@ export interface GoodsStockRow {
    * (GoodsEntryDto.woodQuantity) — always a plain crate count, never in this row's own `unit`
    * (Kg/Box), and never netted against totalSold (no "wood crates sold" concept exists). */
   woodReceived: number;
+  /** Same, for "مخالات" — its own running total, never pooled with the crates. */
+  sackReceived: number;
   /** Populated ONLY by the global "كل الباعة" stock summary (getGoodsGlobalStock/
    * getGoodsGlobalStockForReports) — each row there is scoped to one specific farmer, not summed
    * across every farmer, so the table can show whose stock it is. Both undefined on the per-farmer

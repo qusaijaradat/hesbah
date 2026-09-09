@@ -35,5 +35,11 @@ public class FarmerGoodsEntry : AuditableEntity
     /// <summary>Portion of <see cref="Quantity"/> delivered in wood crates — see the class doc comment.</summary>
     public decimal WoodQuantity { get; set; }
 
+    /// <summary>Sacks ("مخالات") the seller brought this delivery in — the same kind of plain
+    /// container count as <see cref="WoodQuantity"/> beside it, and tracked in the same ledger
+    /// (see ContainerService). Its own field rather than a second crate count: sacks and crates
+    /// keep separate balances, so ten of each is ten of each, not twenty of something.</summary>
+    public decimal SackQuantity { get; set; }
+
     public string? Notes { get; set; }
 }

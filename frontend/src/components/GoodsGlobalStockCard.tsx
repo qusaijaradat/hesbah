@@ -32,7 +32,7 @@ export function GoodsGlobalStockCard({
       {error && <div className="text-sm text-red-600 bg-red-50 rounded-md p-2 mx-4">{error}</div>}
       <table className="table-base">
         <thead>
-          <tr><th>البائع</th><th>الصنف</th><th>الوحدة</th><th>الوارد</th><th>المباع</th><th>المتوفر</th><th>صناديق خشب</th></tr>
+          <tr><th>البائع</th><th>الصنف</th><th>الوحدة</th><th>الوارد</th><th>المباع</th><th>المتوفر</th><th>صناديق خشب</th><th>مخالات</th></tr>
         </thead>
         <tbody>
           {loading ? (
@@ -56,6 +56,7 @@ export function GoodsGlobalStockCard({
                 <td>{formatQuantity(r.totalSold, r.unit)}</td>
                 <td className={`font-semibold ${r.available < 0 ? "text-red-600" : ""}`}>{formatQuantity(r.available, r.unit)}</td>
                 <td>{r.woodReceived > 0 ? formatQuantity(r.woodReceived, "Box") : "—"}</td>
+                <td>{r.sackReceived > 0 ? r.sackReceived.toLocaleString("en-US") : "—"}</td>
               </tr>
             ))
           )}

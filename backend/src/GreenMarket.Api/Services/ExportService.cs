@@ -2305,6 +2305,7 @@ public class ExportService : IExportService
                         columns.RelativeColumn(2); // المباع
                         columns.RelativeColumn(2); // المتوفر
                         columns.RelativeColumn(2); // صناديق خشب
+                        columns.RelativeColumn(2); // مخالات
                     });
 
                     table.Header(header =>
@@ -2315,6 +2316,7 @@ public class ExportService : IExportService
                         header.Cell().Element(HeaderCell).AlignRight().Text("المباع");
                         header.Cell().Element(HeaderCell).AlignRight().Text("المتوفر");
                         header.Cell().Element(HeaderCell).AlignRight().Text("صناديق خشب");
+                        header.Cell().Element(HeaderCell).AlignRight().Text("مخالات");
                     });
 
                     for (var i = 0; i < stock.Count; i++)
@@ -2327,6 +2329,7 @@ public class ExportService : IExportService
                         table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(StockQuantityText(r.Unit, r.TotalSold));
                         table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(StockQuantityText(r.Unit, r.Available)).Bold();
                         table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(r.WoodReceived > 0 ? $"{r.WoodReceived:0.###}" : "—");
+                        table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(r.SackReceived > 0 ? $"{r.SackReceived:0.###}" : "—");
                     }
                 });
 

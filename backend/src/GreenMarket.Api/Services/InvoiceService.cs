@@ -115,7 +115,7 @@ public class InvoiceService : IInvoiceService
             // on every later edit/return — see Invoice.GrandTotal for why it is stored at all.
             // A brand-new invoice has no returns yet, hence 0.
             GrandTotal = InvoiceCharge.ForMerchant(
-                totals.TotalValue, request.TransportFee, totals.WoodTotal,
+                totals.TotalValue, totals.WoodTotal,
                 totals.TotalBoxes * boxPrice, returnsTotal: 0m),
             Items = totals.Lines.Select(l => new InvoiceItem
             {
@@ -175,12 +175,10 @@ public class InvoiceService : IInvoiceService
                 Date = invoice.Date,
                 SaleValue = totals.TotalValue,
                 Commission = commissionResult.Commission,
-                // "سعر الخشب" is NOT part of this: the crates are not the seller's to be paid for.
-                // The buyer is charged for them once and that money goes to the driver, who is the
-                // side that supplies and handles them (see the driver's own ledger row below).
-                // Adding it here as well was paying a single charge out twice — see ToDto's
-                // NetDueToFarmer for the read-side mirror of this.
-                Amount = commissionResult.NetDueToFarmer,
+                // One definition, in InvoiceCharge.ForSeller: produce less commission less the
+                // transport that brought it in. Wood and رسوم الصناديق are not in it — neither is
+                // the seller's to be paid for. See ToDto's NetDueToFarmer for the read side.
+                Amount = InvoiceCharge.ForSeller(totals.TotalValue, commissionResult.Commission, invoice.TransportFee),
                 Notes = $"تسجيل تلقائي من الفاتورة رقم {invoice.InvoiceNumber}"
             });
             await _db.SaveChangesAsync();
@@ -341,7 +339,7 @@ public class InvoiceService : IInvoiceService
         // Recomputed from the edited lines/fees, keeping whatever has already been returned
         // against this invoice subtracted (an edit must never quietly un-return goods).
         invoice.GrandTotal = InvoiceCharge.ForMerchant(
-            totals.TotalValue, request.TransportFee, totals.WoodTotal,
+            totals.TotalValue, totals.WoodTotal,
             totals.TotalBoxes * boxPrice,
             await _db.GoodsReturns.Where(r => r.InvoiceId == invoice.Id).SumAsync(r => (decimal?)r.TotalValue) ?? 0m);
 
@@ -372,11 +370,11 @@ public class InvoiceService : IInvoiceService
         else if (existingSale is not null && previousFarmerId == farmer.Id)
         {
             // Same farmer as before — just correct the figures on their existing ledger row.
-            // Amount carries no wood, same as CreateAsync — see its own comment.
+            // Same InvoiceCharge.ForSeller as CreateAsync — see its own comment.
             existingSale.Date = invoice.Date;
             existingSale.SaleValue = totals.TotalValue;
             existingSale.Commission = commissionResult.Commission;
-            existingSale.Amount = commissionResult.NetDueToFarmer;
+            existingSale.Amount = InvoiceCharge.ForSeller(totals.TotalValue, commissionResult.Commission, invoice.TransportFee);
             existingSale.Notes = $"Auto-generated from invoice {invoice.InvoiceNumber} (edited)";
         }
         else
@@ -393,7 +391,7 @@ public class InvoiceService : IInvoiceService
                 Date = invoice.Date,
                 SaleValue = totals.TotalValue,
                 Commission = commissionResult.Commission,
-                Amount = commissionResult.NetDueToFarmer,
+                Amount = InvoiceCharge.ForSeller(totals.TotalValue, commissionResult.Commission, invoice.TransportFee),
                 Notes = $"تسجيل تلقائي من الفاتورة رقم {invoice.InvoiceNumber} (بعد التعديل)"
             });
         }
@@ -684,7 +682,7 @@ public class InvoiceService : IInvoiceService
                 merchantRemainingById.GetValueOrDefault(x.MerchantId),
                 x.FarmerId is not null ? sellerRemainingById.GetValueOrDefault(x.FarmerId.Value) : null,
                 x.DriverId is not null ? sellerRemainingById.GetValueOrDefault(x.DriverId.Value) : null,
-                commissionResult.Commission, commissionResult.NetDueToFarmer,
+                commissionResult.Commission, InvoiceCharge.ForSeller(x.TotalValue, commissionResult.Commission, x.TransportFee),
                 driverBoxFeeTotal, x.TransportFee + driverBoxFeeTotal + x.WoodTotal,
                 x.ReturnsTotal,
                 x.PaidAmount, x.GrandTotal - x.PaidAmount,
@@ -1002,13 +1000,12 @@ public class InvoiceService : IInvoiceService
 
         // Same base as the linked FarmerTransaction.Commission (TotalValue only — never +wood/
         // +transport/+box, see CommissionCalculator's own doc comment) so the COMMISSION itself can
-        // never drift from the farmer's own ledger. NetDueToFarmer carries no wood — the crates are
-        // not the seller's to be paid for, they are the driver's (see FarmerTransaction.Amount in
-        // CreateAsync/UpdateAsync) — so THIS never drifts from the farmer's own ledger row either.
-        // Computed even without a farmer attached (harmless/unused then) — see InvoiceDto's own doc
-        // comment for where this is and isn't shown.
+        // never drift from the farmer's own ledger. Same InvoiceCharge.ForSeller the ledger row
+        // itself is written with, so THIS never drifts from it either. Computed even without a
+        // farmer attached (harmless/unused then) — see InvoiceDto's own doc comment for where this
+        // is and isn't shown.
         var commissionResult = CommissionCalculator.Calculate(i.TotalValue, i.CommissionRateApplied);
-        var netDueToFarmer = commissionResult.NetDueToFarmer;
+        var netDueToFarmer = InvoiceCharge.ForSeller(i.TotalValue, commissionResult.Commission, i.TransportFee);
 
         return new(
             i.Id, i.InvoiceNumber, i.Date,

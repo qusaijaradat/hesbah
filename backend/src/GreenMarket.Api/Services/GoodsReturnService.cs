@@ -215,7 +215,7 @@ public class GoodsReturnService : IGoodsReturnService
         var woodTotal = invoice.Items.Sum(it => it.WoodPrice);
         var boxFeeTotal = invoice.Items.Where(it => it.Unit == UnitOfMeasure.Box).Sum(it => it.Quantity) * invoice.BoxPriceApplied;
         invoice.GrandTotal = InvoiceCharge.ForMerchant(
-            invoice.TotalValue, invoice.TransportFee, woodTotal, boxFeeTotal, returnsTotal);
+            invoice.TotalValue, woodTotal, boxFeeTotal, returnsTotal);
     }
 
     private static GoodsReturnDto ToDto(GoodsReturn r) => new(

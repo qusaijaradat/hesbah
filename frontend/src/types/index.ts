@@ -221,7 +221,8 @@ export interface InvoiceDto {
    * request). Deliberately NOT included in grandTotal (merchant-facing) — only shown/added on the
    * driver's own manifest print (كشف أجرة نقل السائق). */
   driverBoxFeeTotal: number;
-  /** totalValue + transportFee + woodTotal + boxFeeTotal — the actual amount charged to the merchant. */
+  /** totalValue + woodTotal + boxFeeTotal, net of returns — the actual amount charged to the
+   *  merchant. أجرة النقل is NOT in it: that comes off the seller and goes to the driver. */
   grandTotal: number;
   /** "الرصيد السابق" — what this merchant still owed from every one of their OTHER active
    * invoices minus every payment they've made, all-time (never negative — see backend
@@ -436,8 +437,8 @@ export interface MerchantReportRow {
   totalBoxes: number;
   totalPurchases: number;
   totalWoodTotal: number;
-  totalTransportFee: number;
-  /** رسوم الصناديق — broken out so purchases + wood + transport + this adds up to grandTotal. */
+  /** رسوم الصناديق — broken out so purchases + wood + this adds up to grandTotal. No transport:
+   *  a buyer is not charged for it. */
   totalBoxFee: number;
   grandTotal: number;
   totalPaid: number;

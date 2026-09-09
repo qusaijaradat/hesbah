@@ -471,6 +471,66 @@ using (var scope = app.Services.CreateScope())
         app.Logger.LogError(ex, "Failed to migrate box_returns into container_movements — the الصناديق والمخالات screen will not work until this is fixed.");
     }
 
+    // أجرة النقل moved sides: it is what it costs the SELLER to get his produce to market, so it
+    // comes off his due and goes to the driver, and the BUYER is not charged for it at all. It
+    // used to sit in the buyer's stored GrandTotal and nowhere on the seller's ledger, so both
+    // need correcting on rows written before the change.
+    //
+    // RECOMPUTED from figures already on the rows, never adjusted by a delta — a subtraction is
+    // right exactly once, a recompute is right however many times it runs, and this executes on
+    // every startup. The WHERE on each makes a settled row a no-op.
+    try
+    {
+        // Buyer: produce + wood + boxes × their own locked-in box price, less anything returned.
+        // Exactly InvoiceCharge.ForMerchant, in SQL.
+        var rebilled = await db.Database.ExecuteSqlRawAsync("""
+            WITH computed AS (
+                SELECT i."Id",
+                       i."TotalValue" + COALESCE(lines.wood, 0)
+                                      + (COALESCE(lines.boxes, 0) * i."BoxPriceApplied")
+                                      - COALESCE(ret.returned, 0) AS total
+                FROM invoices i
+                LEFT JOIN (
+                    SELECT "InvoiceId",
+                           SUM("WoodPrice") AS wood,
+                           SUM(CASE WHEN "Unit" = 2 THEN "Quantity" ELSE 0 END) AS boxes
+                    FROM invoice_items GROUP BY "InvoiceId"
+                ) AS lines ON lines."InvoiceId" = i."Id"
+                LEFT JOIN (
+                    SELECT "InvoiceId", SUM("TotalValue") AS returned
+                    FROM goods_returns WHERE NOT "IsDeleted" GROUP BY "InvoiceId"
+                ) AS ret ON ret."InvoiceId" = i."Id"
+            )
+            UPDATE invoices i
+            SET "GrandTotal" = c.total
+            FROM computed c
+            WHERE c."Id" = i."Id" AND i."GrandTotal" <> c.total;
+            """);
+        if (rebilled > 0)
+            app.Logger.LogWarning(
+                "Recomputed {Count} invoice total(s) after أجرة النقل stopped being charged to the buyer — those buyers were billed for transport that is the seller's.",
+                rebilled);
+
+        // Seller: sale value − commission − the transport on that invoice. Exactly
+        // InvoiceCharge.ForSeller. Type 1 = Sale; a Sale row always has an InvoiceId.
+        var reduced = await db.Database.ExecuteSqlRawAsync("""
+            UPDATE farmer_transactions ft
+            SET "Amount" = ft."SaleValue" - ft."Commission" - i."TransportFee"
+            FROM invoices i
+            WHERE ft."InvoiceId" = i."Id"
+              AND ft."Type" = 1
+              AND ft."Amount" <> ft."SaleValue" - ft."Commission" - i."TransportFee";
+            """);
+        if (reduced > 0)
+            app.Logger.LogWarning(
+                "Corrected {Count} seller ledger row(s) for أجرة النقل, which now comes off the seller.",
+                reduced);
+    }
+    catch (Exception ex)
+    {
+        app.Logger.LogError(ex, "Failed to move أجرة النقل from the buyer's total onto the seller's ledger — buyers stay over-billed and sellers over-credited by the transport fee until this is fixed.");
+    }
+
     // Correction for the wood price having been paid out twice. سعر الخشب is charged to the buyer
     // once, and it belongs to the DRIVER, who supplies and handles the crates (see InvoiceCharge).
     // It used to be added to the SELLER's ledger row as well, so every invoice carrying both a

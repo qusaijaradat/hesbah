@@ -64,7 +64,9 @@ public class ReportService : IReportService
                 TotalBoxes = g.Sum(i => i.Items.Where(it => it.Unit == UnitOfMeasure.Box).Sum(it => it.Quantity)),
                 TotalSalesValue = g.Sum(i => i.TotalValue),
                 // No wood total here: سعر الخشب is the DRIVER's (see InvoiceCharge), so it is not
-                // part of what the market owes this seller and must not enter NetDue below.
+                // part of what the market owes this seller. أجرة النقل IS — it comes off his due
+                // and goes to the driver, so it has to enter NetDue below as a deduction.
+                TotalTransportFee = g.Sum(i => i.TransportFee),
                 LastInvoiceDate = (DateTimeOffset?)g.Max(i => i.Date)
             })
             .ToList();
@@ -113,10 +115,10 @@ public class ReportService : IReportService
             var opening = openingBalances.GetValueOrDefault(a.FarmerId);
             return new FarmerReportRow(
                 a.FarmerId, a.FarmerName, a.InvoiceCount, a.TotalWeightKg, a.TotalBoxes, a.TotalSalesValue,
-                // Sale value minus commission — the same figure the seller's ledger row carries,
-                // so NetDue and Remaining in this row cannot disagree with each other or with the
-                // seller's own كشف حساب.
-                commission, a.TotalSalesValue - commission, paidByFarmer.GetValueOrDefault(a.FarmerId),
+                // InvoiceCharge.ForSeller, aggregated — the same definition the seller's ledger
+                // rows are written with, so NetDue and Remaining in this row cannot disagree with
+                // each other or with the seller's own كشف حساب.
+                commission, a.TotalSalesValue - commission - a.TotalTransportFee, paidByFarmer.GetValueOrDefault(a.FarmerId),
                 opening + allTimeBalance.GetValueOrDefault(a.FarmerId), opening, a.LastInvoiceDate);
         })
         .OrderBy(r => r.FarmerName)
@@ -148,8 +150,9 @@ public class ReportService : IReportService
                 TotalBoxes = g.Sum(i => i.Items.Where(it => it.Unit == UnitOfMeasure.Box).Sum(it => it.Quantity)),
                 TotalPurchases = g.Sum(i => i.TotalValue),
                 TotalWoodTotal = g.Sum(i => i.Items.Sum(it => it.WoodPrice)),
-                TotalTransportFee = g.Sum(i => i.TransportFee),
-                // Shown on its own so the row adds up: without it, purchases + wood + transport
+                // No transport: أجرة النقل comes off the SELLER now and goes to the driver, so it
+                // is no part of what this buyer is charged (see InvoiceCharge).
+                // Shown on its own so the row adds up: without it, purchases + wood
                 // visibly fell short of the total by exactly this.
                 TotalBoxFee = g.Sum(i => i.Items.Where(it => it.Unit == UnitOfMeasure.Box).Sum(it => it.Quantity) * i.BoxPriceApplied),
                 // READ, not re-derived. What a buyer is charged is defined once, in InvoiceCharge,
@@ -194,7 +197,7 @@ public class ReportService : IReportService
             var remaining = opening + allTimePurchases.GetValueOrDefault(a.MerchantId) - totalPaid;
             return new MerchantReportRow(
                 a.MerchantId, a.MerchantName, a.InvoiceCount, a.TotalWeightKg, a.TotalBoxes,
-                a.TotalPurchases, a.TotalWoodTotal, a.TotalTransportFee, a.TotalBoxFee, a.GrandTotal,
+                a.TotalPurchases, a.TotalWoodTotal, a.TotalBoxFee, a.GrandTotal,
                 totalPaid, remaining, opening, a.LastInvoiceDate);
         })
         .OrderBy(r => r.MerchantName)

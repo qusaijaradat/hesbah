@@ -150,13 +150,13 @@ function MerchantsTable({ rows }: { rows: MerchantReportRow[] }) {
         <thead>
           <tr>
             <th>المشتري</th><th>عدد الفواتير</th><th>الوزن</th><th>الصناديق</th><th>المشتريات</th>
-            <th>سعر الخشب</th><th>أجرة النقل</th><th>رسوم الصناديق</th><th>الإجمالي الكلي</th><th>المدفوع</th>
+            <th>سعر الخشب</th><th>رسوم الصناديق</th><th>الإجمالي الكلي</th><th>المدفوع</th>
             <th>الرصيد الافتتاحي</th><th>المتبقي</th><th>آخر فاتورة</th>
           </tr>
         </thead>
         <tbody>
           {rows.length === 0 ? (
-            <tr><td colSpan={13} className="text-center text-gray-400 py-6">لا توجد بيانات</td></tr>
+            <tr><td colSpan={12} className="text-center text-gray-400 py-6">لا توجد بيانات</td></tr>
           ) : pager.pageRows.map((r) => (
             <tr key={r.merchantId}>
               <td className="font-medium"><PartnerLink partnerId={r.merchantId} name={r.merchantName} side="merchant" /></td>
@@ -165,7 +165,6 @@ function MerchantsTable({ rows }: { rows: MerchantReportRow[] }) {
               <td>{r.totalBoxes.toLocaleString("en-US", { maximumFractionDigits: 3 })}</td>
               <td>{formatCurrency(r.totalPurchases)}</td>
               <td>{formatCurrency(r.totalWoodTotal)}</td>
-              <td>{formatCurrency(r.totalTransportFee)}</td>
               <td>{formatCurrency(r.totalBoxFee)}</td>
               <td>{formatCurrency(r.grandTotal)}</td>
               <td>{formatCurrency(r.totalPaid)}</td>

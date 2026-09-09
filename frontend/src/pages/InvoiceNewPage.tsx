@@ -109,7 +109,10 @@ export function InvoiceNewPage() {
   const woodTotal = parsedRows.reduce((sum, r) => sum + r.woodPrice, 0);
   const transportFeeValue = parseFloat(transportFee) || 0;
 
-  const grandTotal = totalValue + woodTotal + transportFeeValue;
+  // أجرة النقل is not in the buyer's total: it comes off the SELLER and goes to the driver (see
+  // the backend InvoiceCharge). Kept in the form because it is entered here and drives both the
+  // seller's deduction and the driver's due.
+  const grandTotal = totalValue + woodTotal;
   const paidAmountValue = paymentLines.reduce((sum, l) => sum + lineTotal(l), 0);
   const remainingOnThisInvoice = grandTotal - paidAmountValue;
 
@@ -418,7 +421,7 @@ export function InvoiceNewPage() {
           )}
           {transportFeeValue > 0 && (
             <div>
-              <div className="text-gray-500">أجرة النقل</div>
+              <div className="text-gray-500">أجرة النقل (على البائع)</div>
               <div className="font-medium">{formatCurrency(transportFeeValue)}</div>
             </div>
           )}

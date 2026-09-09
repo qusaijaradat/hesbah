@@ -227,8 +227,10 @@ export function InvoiceDetailPage() {
             {invoice.boxFeeTotal > 0 && (
               <div className="text-gray-500">رسوم الصناديق: <span className="font-semibold text-gray-900">{formatCurrency(invoice.boxFeeTotal)}</span></div>
             )}
+            {/* Not part of the buyer's total — it comes off the seller and goes to the driver
+                (see the backend InvoiceCharge), so the label says whose it is. */}
             {invoice.transportFee > 0 && (
-              <div className="text-gray-500">أجرة النقل: <span className="font-semibold text-gray-900">{formatCurrency(invoice.transportFee)}</span></div>
+              <div className="text-gray-500">أجرة النقل (على البائع، للسائق): <span className="font-semibold text-gray-900">{formatCurrency(invoice.transportFee)}</span></div>
             )}
             {/* Both are already subtracted inside grandTotal — shown so the total below never
                 looks smaller than the lines add up to for no visible reason. */}

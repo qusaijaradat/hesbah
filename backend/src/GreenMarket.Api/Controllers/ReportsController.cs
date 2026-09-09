@@ -218,11 +218,11 @@ public class ReportsController : ControllerBase
     public async Task<IActionResult> MerchantsPdf([FromQuery] ReportFilterRequest filter)
     {
         var rows = await _reportService.MerchantReportAsync(filter);
-        var headers = new[] { "Merchant", "Invoices", "Weight (kg)", "Boxes", "Purchases (₪)", "Wood (₪)", "Transport (₪)", "Grand Total (₪)", "Paid (₪)", "Opening (₪)", "Remaining (₪)", "Last Invoice" };
+        var headers = new[] { "Merchant", "Invoices", "Weight (kg)", "Boxes", "Purchases (₪)", "Wood (₪)", "Box Fee (₪)", "Grand Total (₪)", "Paid (₪)", "Opening (₪)", "Remaining (₪)", "Last Invoice" };
         var body = rows.Select(r => new[]
         {
             r.MerchantName, r.InvoiceCount.ToString(), r.TotalWeightKg.ToString("0.###"), r.TotalBoxes.ToString("0.###"),
-            r.TotalPurchases.ToString("0.##"), r.TotalWoodTotal.ToString("0.##"), r.TotalTransportFee.ToString("0.##"),
+            r.TotalPurchases.ToString("0.##"), r.TotalWoodTotal.ToString("0.##"), r.TotalBoxFee.ToString("0.##"),
             r.GrandTotal.ToString("0.##"), r.TotalPaid.ToString("0.##"), r.OpeningBalance.ToString("0.##"),
             r.Remaining.ToString("0.##"), r.LastInvoiceDate?.ToString("yyyy-MM-dd") ?? "-"
         });

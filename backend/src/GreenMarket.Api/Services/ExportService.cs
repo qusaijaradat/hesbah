@@ -187,7 +187,7 @@ public class ExportService : IExportService
     {
         using var workbook = new XLWorkbook();
         var sheet = workbook.Worksheets.Add("Merchant Report");
-        var headers = new[] { "Buyer", "Invoices", "Total Weight (kg)", "Total Boxes", "Purchases (₪)", "Wood (₪)", "Transport Fee (₪)", "Box Fee (₪)", "Grand Total (₪)", "Paid (₪)", "Opening Balance (₪)", "Remaining (₪)", "Last Invoice" };
+        var headers = new[] { "Buyer", "Invoices", "Total Weight (kg)", "Total Boxes", "Purchases (₪)", "Wood (₪)", "Box Fee (₪)", "Grand Total (₪)", "Paid (₪)", "Opening Balance (₪)", "Remaining (₪)", "Last Invoice" };
         for (var c = 0; c < headers.Length; c++) sheet.Cell(1, c + 1).Value = headers[c];
         sheet.Row(1).Style.Font.Bold = true;
 
@@ -200,13 +200,12 @@ public class ExportService : IExportService
             sheet.Cell(row, 4).Value = (double)r.TotalBoxes;
             sheet.Cell(row, 5).Value = (double)r.TotalPurchases;
             sheet.Cell(row, 6).Value = (double)r.TotalWoodTotal;
-            sheet.Cell(row, 7).Value = (double)r.TotalTransportFee;
-            sheet.Cell(row, 8).Value = (double)r.TotalBoxFee;
-            sheet.Cell(row, 9).Value = (double)r.GrandTotal;
-            sheet.Cell(row, 10).Value = (double)r.TotalPaid;
-            sheet.Cell(row, 11).Value = (double)r.OpeningBalance;
-            sheet.Cell(row, 12).Value = (double)r.Remaining;
-            sheet.Cell(row, 13).Value = r.LastInvoiceDate?.ToLocalTime().DateTime.ToString("yyyy-MM-dd") ?? "-";
+            sheet.Cell(row, 7).Value = (double)r.TotalBoxFee;
+            sheet.Cell(row, 8).Value = (double)r.GrandTotal;
+            sheet.Cell(row, 9).Value = (double)r.TotalPaid;
+            sheet.Cell(row, 10).Value = (double)r.OpeningBalance;
+            sheet.Cell(row, 11).Value = (double)r.Remaining;
+            sheet.Cell(row, 12).Value = r.LastInvoiceDate?.ToLocalTime().DateTime.ToString("yyyy-MM-dd") ?? "-";
             row++;
         }
         sheet.Columns().AdjustToContents();
@@ -417,8 +416,6 @@ public class ExportService : IExportService
                         col.Item().AlignRight().Text($"إجمالي الخشب: ₪ {invoice.WoodTotal:0.##}").FontSize(thermalWidth ? 8 : 10);
                     if (invoice.BoxFeeTotal > 0)
                         col.Item().AlignRight().Text($"رسوم الصناديق: ₪ {invoice.BoxFeeTotal:0.##}").FontSize(thermalWidth ? 8 : 10);
-                    if (invoice.TransportFee > 0)
-                        col.Item().AlignRight().Text($"أجرة النقل: ₪ {invoice.TransportFee:0.##}").FontSize(thermalWidth ? 8 : 10);
                     if (invoice.ReturnsTotal > 0)
                         col.Item().AlignRight().Text($"مرتجع بضاعة: - ₪ {invoice.ReturnsTotal:0.##}").FontSize(thermalWidth ? 8 : 10).FontColor(PrintInk.Deduction);
                     col.Item().PaddingTop(4).AlignRight().Text($"الإجمالي: ₪ {invoice.GrandTotal:0.##}").Bold().FontSize(13);
@@ -549,6 +546,12 @@ public class ExportService : IExportService
                         col.Item().AlignRight().Text($"رسوم الصناديق (لا يدخل بحساب العمولة): ₪ {invoice.BoxFeeTotal:0.##}").FontSize(9).FontColor(PrintInk.Secondary);
                     col.Item().PaddingTop(4).AlignRight().Text($"إجمالي المبيعات: ₪ {invoice.TotalValue:0.##}").FontSize(12);
                     col.Item().AlignRight().Text($"العمولة ({invoice.CommissionRateApplied:0.##%}): - ₪ {invoice.Commission:0.##}").FontColor(PrintInk.Deduction);
+                    // أجرة النقل is the cost of bringing this produce in, so it comes off the
+                    // seller and goes to the driver — the buyer is not charged for it at all.
+                    // Shown as the deduction it is, so "الصافي المستحق" below reconciles:
+                    // TotalValue − Commission − TransportFee.
+                    if (invoice.TransportFee > 0)
+                        col.Item().AlignRight().Text($"أجرة النقل: - ₪ {invoice.TransportFee:0.##}").FontColor(PrintInk.Deduction);
                     col.Item().PaddingTop(2).AlignRight().Text($"الصافي المستحق لهذه الفاتورة: ₪ {invoice.NetDueToFarmer:0.##}").Bold().FontSize(13);
                     if (previousBalance != 0)
                     {
@@ -1383,6 +1386,8 @@ public class ExportService : IExportService
                     if (invoice.WoodTotal > 0)
                         col.Item().AlignRight().Text($"سعر الخشب (يُدفع للسائق): ₪ {invoice.WoodTotal:0.##}").FontSize(7);
                     col.Item().AlignRight().Text($"العمولة ({invoice.CommissionRateApplied:0.##%}): - ₪ {invoice.Commission:0.##}").FontSize(7).FontColor(PrintInk.Deduction);
+                    if (invoice.TransportFee > 0)
+                        col.Item().AlignRight().Text($"أجرة النقل: - ₪ {invoice.TransportFee:0.##}").FontSize(7).FontColor(PrintInk.Deduction);
                     col.Item().PaddingTop(2).AlignRight().Text($"الصافي المستحق: ₪ {invoice.NetDueToFarmer:0.##}").Bold().FontSize(10);
                     break;
 

@@ -14,9 +14,10 @@ public class ReportFilterRequest
 /// Requirement doc §8: farmer (بائع) report — detailed per-seller breakdown, not just a single
 /// totals line. TotalBoxes sits alongside TotalWeightKg for the same reason InvoiceListItemDto's
 /// does (a box-only seller would otherwise show 0 weight and look empty). NetDue = TotalSalesValue
-/// - TotalCommission, exactly what FarmerTransaction.Amount carries on their own ledger. No wood:
-/// "سعر الخشب" is paid to the DRIVER, who supplies and handles the crates (see InvoiceCharge), so
-/// it is no part of what the market owes this seller — this is what the market owes them BEFORE
+/// - TotalCommission - TotalTransportFee, exactly what FarmerTransaction.Amount carries on their
+/// own ledger (InvoiceCharge.ForSeller). No wood: "سعر الخشب" is paid to the DRIVER, who supplies
+/// and handles the crates, so it is no part of what the market owes this seller. أجرة النقل is
+/// deducted: it is what it cost to bring the produce in — this is what the market owes them BEFORE
 /// payments/adjustments, kept alongside Remaining (which nets in OpeningBalance,
 /// every payment, and any Adjustment reversal) so both "how much did we owe from sales alone" and
 /// "how much is left right now" are visible at once. OpeningBalance is broken out on its own even
@@ -33,10 +34,10 @@ public record FarmerReportRow(
 
 /// <summary>
 /// Requirement doc §8: merchant (مشتري) report — detailed per-buyer breakdown. TotalPurchases
-/// mirrors InvoiceDto.TotalValue (product value only, commission base — never includes wood/
-/// transport). TotalWoodTotal/TotalTransportFee are broken out on their own (never silently folded
-/// into TotalPurchases) so "سعر الخشب" and "أجرة النقل" stay visible in detail, matching the same
-/// convention used on the invoice list / bulk-print pages. GrandTotal is the SUM of each matching
+/// mirrors InvoiceDto.TotalValue (product value only, commission base — never includes wood or
+/// crate fees). TotalWoodTotal/TotalBoxFee are broken out on their own (never silently folded into
+/// TotalPurchases) so both stay visible in detail. أجرة النقل is NOT here at all: it comes off the
+/// seller and goes to the driver, so a buyer is never charged for it. GrandTotal is the SUM of each matching
 /// invoice's own stored charge (see InvoiceCharge). TotalBoxFee is broken out beside the other
 /// two so the row adds up on screen: purchases + wood + transport + box fee = GrandTotal, except
 /// on invoices carrying a مرتجع, which GrandTotal is net of.
@@ -49,7 +50,7 @@ public record FarmerReportRow(
 public record MerchantReportRow(
     int MerchantId, string MerchantName,
     int InvoiceCount, decimal TotalWeightKg, decimal TotalBoxes,
-    decimal TotalPurchases, decimal TotalWoodTotal, decimal TotalTransportFee, decimal TotalBoxFee, decimal GrandTotal,
+    decimal TotalPurchases, decimal TotalWoodTotal, decimal TotalBoxFee, decimal GrandTotal,
     decimal TotalPaid, decimal Remaining, decimal OpeningBalance, DateTimeOffset? LastInvoiceDate);
 
 /// <summary>

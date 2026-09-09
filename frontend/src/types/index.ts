@@ -401,6 +401,8 @@ export interface MerchantReportRow {
   totalPurchases: number;
   totalWoodTotal: number;
   totalTransportFee: number;
+  /** رسوم الصناديق — broken out so purchases + wood + transport + this adds up to grandTotal. */
+  totalBoxFee: number;
   grandTotal: number;
   totalPaid: number;
   remaining: number;

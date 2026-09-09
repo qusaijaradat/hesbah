@@ -149,6 +149,9 @@ public class ReportService : IReportService
                 TotalPurchases = g.Sum(i => i.TotalValue),
                 TotalWoodTotal = g.Sum(i => i.Items.Sum(it => it.WoodPrice)),
                 TotalTransportFee = g.Sum(i => i.TransportFee),
+                // Shown on its own so the row adds up: without it, purchases + wood + transport
+                // visibly fell short of the total by exactly this.
+                TotalBoxFee = g.Sum(i => i.Items.Where(it => it.Unit == UnitOfMeasure.Box).Sum(it => it.Quantity) * i.BoxPriceApplied),
                 // READ, not re-derived. What a buyer is charged is defined once, in InvoiceCharge,
                 // and stored on the invoice — and it includes رسوم الصناديق and nets out any
                 // مرتجع, neither of which the columns above carry. Adding the visible parts back
@@ -191,7 +194,7 @@ public class ReportService : IReportService
             var remaining = opening + allTimePurchases.GetValueOrDefault(a.MerchantId) - totalPaid;
             return new MerchantReportRow(
                 a.MerchantId, a.MerchantName, a.InvoiceCount, a.TotalWeightKg, a.TotalBoxes,
-                a.TotalPurchases, a.TotalWoodTotal, a.TotalTransportFee, a.GrandTotal,
+                a.TotalPurchases, a.TotalWoodTotal, a.TotalTransportFee, a.TotalBoxFee, a.GrandTotal,
                 totalPaid, remaining, opening, a.LastInvoiceDate);
         })
         .OrderBy(r => r.MerchantName)

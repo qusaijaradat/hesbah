@@ -37,8 +37,9 @@ public record FarmerReportRow(
 /// transport). TotalWoodTotal/TotalTransportFee are broken out on their own (never silently folded
 /// into TotalPurchases) so "سعر الخشب" and "أجرة النقل" stay visible in detail, matching the same
 /// convention used on the invoice list / bulk-print pages. GrandTotal is the SUM of each matching
-/// invoice's own stored charge (see InvoiceCharge) — so it also carries رسوم الصناديق and is net
-/// of any مرتجع, and therefore does NOT equal TotalPurchases + TotalWoodTotal + TotalTransportFee.
+/// invoice's own stored charge (see InvoiceCharge). TotalBoxFee is broken out beside the other
+/// two so the row adds up on screen: purchases + wood + transport + box fee = GrandTotal, except
+/// on invoices carrying a مرتجع, which GrandTotal is net of.
 /// It is deliberately read rather than re-derived from those three: this row's Remaining already
 /// sums the same stored charge, and a total assembled a second way is a total that eventually
 /// disagrees with it.
@@ -48,7 +49,7 @@ public record FarmerReportRow(
 public record MerchantReportRow(
     int MerchantId, string MerchantName,
     int InvoiceCount, decimal TotalWeightKg, decimal TotalBoxes,
-    decimal TotalPurchases, decimal TotalWoodTotal, decimal TotalTransportFee, decimal GrandTotal,
+    decimal TotalPurchases, decimal TotalWoodTotal, decimal TotalTransportFee, decimal TotalBoxFee, decimal GrandTotal,
     decimal TotalPaid, decimal Remaining, decimal OpeningBalance, DateTimeOffset? LastInvoiceDate);
 
 /// <summary>

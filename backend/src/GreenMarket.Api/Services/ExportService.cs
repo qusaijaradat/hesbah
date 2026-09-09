@@ -187,7 +187,7 @@ public class ExportService : IExportService
     {
         using var workbook = new XLWorkbook();
         var sheet = workbook.Worksheets.Add("Merchant Report");
-        var headers = new[] { "Buyer", "Invoices", "Total Weight (kg)", "Total Boxes", "Purchases (₪)", "Wood (₪)", "Transport Fee (₪)", "Grand Total (₪)", "Paid (₪)", "Opening Balance (₪)", "Remaining (₪)", "Last Invoice" };
+        var headers = new[] { "Buyer", "Invoices", "Total Weight (kg)", "Total Boxes", "Purchases (₪)", "Wood (₪)", "Transport Fee (₪)", "Box Fee (₪)", "Grand Total (₪)", "Paid (₪)", "Opening Balance (₪)", "Remaining (₪)", "Last Invoice" };
         for (var c = 0; c < headers.Length; c++) sheet.Cell(1, c + 1).Value = headers[c];
         sheet.Row(1).Style.Font.Bold = true;
 
@@ -201,11 +201,12 @@ public class ExportService : IExportService
             sheet.Cell(row, 5).Value = (double)r.TotalPurchases;
             sheet.Cell(row, 6).Value = (double)r.TotalWoodTotal;
             sheet.Cell(row, 7).Value = (double)r.TotalTransportFee;
-            sheet.Cell(row, 8).Value = (double)r.GrandTotal;
-            sheet.Cell(row, 9).Value = (double)r.TotalPaid;
-            sheet.Cell(row, 10).Value = (double)r.OpeningBalance;
-            sheet.Cell(row, 11).Value = (double)r.Remaining;
-            sheet.Cell(row, 12).Value = r.LastInvoiceDate?.ToLocalTime().DateTime.ToString("yyyy-MM-dd") ?? "-";
+            sheet.Cell(row, 8).Value = (double)r.TotalBoxFee;
+            sheet.Cell(row, 9).Value = (double)r.GrandTotal;
+            sheet.Cell(row, 10).Value = (double)r.TotalPaid;
+            sheet.Cell(row, 11).Value = (double)r.OpeningBalance;
+            sheet.Cell(row, 12).Value = (double)r.Remaining;
+            sheet.Cell(row, 13).Value = r.LastInvoiceDate?.ToLocalTime().DateTime.ToString("yyyy-MM-dd") ?? "-";
             row++;
         }
         sheet.Columns().AdjustToContents();

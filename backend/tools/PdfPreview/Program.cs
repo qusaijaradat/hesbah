@@ -69,7 +69,7 @@ var statementLines = new List<StatementLineDto>
     new(DateTimeOffset.Now, "فاتورة", 1329.19m, 1829.19m, 101, "INV-2026-000042", 1108.69m, 110.87m, null, null),
 };
 Write("08-account-statement.pdf",
-    export.GenerateAccountStatementPdf("محل أبو عمار للخضار", "كشف حساب مشتري", statementLines, 0m, 1829.19m, company));
+    export.GenerateAccountStatementPdf("محل أبو عمار للخضار", "كشف حساب مشتري", statementLines, 1829.19m, company));
 
 Console.WriteLine($"\n{outDir}");
 

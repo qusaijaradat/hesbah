@@ -101,7 +101,7 @@ public interface IExportService
 
     /// <summary>"كشف حساب" print button on a partner's own farmer/driver/merchant account page —
     /// see GenerateAccountStatementPdf's own doc comment.</summary>
-    byte[] GenerateAccountStatementPdf(string partnerName, string title, IReadOnlyList<StatementLineDto> lines, decimal openingBalance, decimal remaining, CompanyInfo company);
+    byte[] GenerateAccountStatementPdf(string partnerName, string title, IReadOnlyList<StatementLineDto> lines, decimal remaining, CompanyInfo company);
 
     /// <summary>"قيمة الديون" drill-down print button — see GenerateInvoiceDetailPdf's own doc comment.</summary>
     byte[] GenerateInvoiceDetailPdf(string partnerName, string title, IReadOnlyList<PartnerInvoiceItemLineDto> lines, CompanyInfo company);
@@ -1805,7 +1805,7 @@ public class ExportService : IExportService
     /// partner's two independent statements are two separate print buttons, matching their two
     /// separate on-screen كشف حساب pages.
     /// </summary>
-    public byte[] GenerateAccountStatementPdf(string partnerName, string title, IReadOnlyList<StatementLineDto> lines, decimal openingBalance, decimal remaining, CompanyInfo company)
+    public byte[] GenerateAccountStatementPdf(string partnerName, string title, IReadOnlyList<StatementLineDto> lines, decimal remaining, CompanyInfo company)
     {
         var document = Document.Create(container =>
         {
@@ -1824,8 +1824,7 @@ public class ExportService : IExportService
                     col.Item().PaddingTop(6).LineHorizontal(1).LineColor(PrintInk.Text);
                     col.Item().PaddingTop(6).AlignCenter().Text(title).Bold().FontSize(14);
                     col.Item().Text($"الاسم: {partnerName}").FontSize(12);
-                    if (openingBalance != 0)
-                        col.Item().Text($"رصيد افتتاحي: ₪ {openingBalance:0.##}").FontSize(9).FontColor(PrintInk.Secondary);
+
                     col.Item().Text($"تاريخ الطباعة: {DateTimeOffset.Now:yyyy-MM-dd}").FontSize(9).FontColor(PrintInk.Secondary);
                 });
 

@@ -340,7 +340,7 @@ public class PartnerService : IPartnerService
             }));
 
         var openingBalance = partner.OpeningBalance ?? 0;
-        var statement = AccountStatementBuilder.Build(entries, openingBalance);
+        var statement = AccountStatementBuilder.Build(entries, openingBalance, partner.CreatedAt);
         var totalPurchases = invoices.Sum(i => i.GrandTotal);
         var totalPaid = payments.Where(p => PaymentRules.CountsTowardBalance(p.CheckStatus)).Sum(p => p.Amount);
         var remaining = openingBalance + totalPurchases - totalPaid;
@@ -406,7 +406,7 @@ public class PartnerService : IPartnerService
         });
 
         var openingBalance = partner.OpeningBalance ?? 0;
-        var statement = AccountStatementBuilder.Build(entries, openingBalance);
+        var statement = AccountStatementBuilder.Build(entries, openingBalance, partner.CreatedAt);
 
         var totalSales = transactions.Where(t => t.Type == FarmerTransactionType.Sale).Sum(t => t.SaleValue);
         var totalCommission = transactions.Where(t => t.Type == FarmerTransactionType.Sale).Sum(t => t.Commission);

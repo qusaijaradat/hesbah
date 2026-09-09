@@ -125,6 +125,24 @@ Console.WriteLine("== AccountStatementBuilder ==");
     };
     var sorted = AccountStatementBuilder.Build(outOfOrder);
     Check("entries are sorted by date regardless of input order", sorted[0].Description == "Sale");
+
+    // An opening balance ("دين قديم" carried over from before the system) must show as its own
+    // first line — the whole point is that the column adds up on screen instead of starting from
+    // an unexplained number — and must not change the final remaining balance by doing so.
+    var joined = baseDate.AddDays(-10);
+    var withOpening = AccountStatementBuilder.Build(farmerEntries, 2_000m, joined);
+    Check("opening balance adds one line at the top", withOpening.Count == farmerStatement.Count + 1 &&
+          withOpening[0].Description == AccountStatementBuilder.OpeningBalanceDescription,
+          $"got {withOpening.Count} lines starting with \"{withOpening[0].Description}\"");
+    Check("opening line carries the amount and dates to the partner's join date",
+          withOpening[0].SignedAmount == 2_000m && withOpening[0].RunningBalance == 2_000m && withOpening[0].Date == joined,
+          $"got {withOpening[0].RunningBalance} on {withOpening[0].Date:yyyy-MM-dd}");
+    Check("the column adds up: every line = previous balance + its own amount",
+          withOpening.Skip(1).Select((l, i) => l.RunningBalance == withOpening[i].RunningBalance + l.SignedAmount).All(ok => ok));
+    Check("remaining is still opening + sale - payment = 6,300",
+          withOpening[^1].RunningBalance == 6_300m, $"got {withOpening[^1].RunningBalance}");
+    Check("a zero opening balance adds no line at all",
+          AccountStatementBuilder.Build(farmerEntries, 0m, joined).Count == farmerStatement.Count);
 }
 
 Console.WriteLine();

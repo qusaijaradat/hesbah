@@ -142,7 +142,7 @@ public class PartnersController : ControllerBase
     {
         var account = await _partnerService.GetMerchantAccountAsync(id);
         var company = await GetCompanyInfoAsync();
-        var bytes = _exportService.GenerateAccountStatementPdf(account.Name, "كشف حساب مشتري", account.Statement, account.OpeningBalance ?? 0, account.Remaining, company);
+        var bytes = _exportService.GenerateAccountStatementPdf(account.Name, "كشف حساب مشتري", account.Statement, account.Remaining, company);
         return File(bytes, "application/pdf", "account-statement.pdf");
     }
 
@@ -160,7 +160,7 @@ public class PartnersController : ControllerBase
         var account = await _partnerService.GetFarmerAccountAsync(id);
         var roleLabel = account.Type == PartnerType.Driver ? "سائق" : "بائع";
         var company = await GetCompanyInfoAsync();
-        var bytes = _exportService.GenerateAccountStatementPdf(account.Name, $"كشف حساب {roleLabel}", account.Statement, account.OpeningBalance ?? 0, account.Remaining, company);
+        var bytes = _exportService.GenerateAccountStatementPdf(account.Name, $"كشف حساب {roleLabel}", account.Statement, account.Remaining, company);
         return File(bytes, "application/pdf", "account-statement.pdf");
     }
 

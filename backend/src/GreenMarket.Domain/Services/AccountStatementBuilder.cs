@@ -29,16 +29,34 @@ public static class AccountStatementBuilder
     /// <summary>
     /// Positive SignedAmount = increases what's owed to/by the partner; negative = a payment reducing it.
     /// The final line's RunningBalance is the "remaining" figure requirement doc §6/§8 wants on every report.
-    /// <paramref name="startingBalance"/> seeds the running total before the first entry — this is
-    /// how a partner's manually-entered "الرصيد الافتتاحي" (Partner.OpeningBalance) flows into the
-    /// statement's running balance without needing a synthetic row of its own; 0 (the default)
-    /// reproduces the old no-opening-balance behavior exactly.
+    /// <paramref name="startingBalance"/> is the partner's manually-entered "الرصيد الافتتاحي"
+    /// (Partner.OpeningBalance) — what they already owed, or were already owed, before this system
+    /// existed. It gets its OWN first line rather than silently seeding the running total, because
+    /// silently seeding it is how the statement ended up opening on a balance with nothing next to
+    /// it explaining where the number came from: the column stopped adding up, and the only place
+    /// that said "رصيد افتتاحي" was a note above the table. The line is always first, whatever
+    /// <paramref name="startingBalanceDate"/> says, since it predates everything else by definition.
+    /// 0 (the default) adds no line at all, reproducing the old behavior exactly.
     /// </summary>
-    public static IReadOnlyList<StatementLine> Build(IEnumerable<Entry> entries, decimal startingBalance = 0m)
+    public const string OpeningBalanceDescription = "دين قديم (رصيد افتتاحي — قبل النظام)";
+
+    public static IReadOnlyList<StatementLine> Build(
+        IEnumerable<Entry> entries, decimal startingBalance = 0m, DateTimeOffset? startingBalanceDate = null)
     {
         var ordered = entries.OrderBy(e => e.Date).ToList();
-        var lines = new List<StatementLine>(ordered.Count);
+        var lines = new List<StatementLine>(ordered.Count + 1);
         decimal running = startingBalance;
+
+        if (startingBalance != 0m)
+        {
+            // Dated to whenever the partner was added here (their CreatedAt) when the caller knows
+            // it — the day the old debt was carried over — falling back to the first real entry so
+            // the line never shows a date later than the movements it precedes.
+            var openedOn = startingBalanceDate ?? (ordered.Count > 0 ? ordered[0].Date : DateTimeOffset.UtcNow);
+            lines.Add(new StatementLine(
+                openedOn, OpeningBalanceDescription, startingBalance, startingBalance,
+                null, null, null, null, null, null));
+        }
 
         foreach (var entry in ordered)
         {

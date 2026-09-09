@@ -52,9 +52,7 @@ export function FarmerAccountPage() {
       </div>
       {/* Already folded into "المتبقي" above — shown on its own only when set, so the number is
           traceable back to what was manually entered vs. what came from actual transactions. */}
-      {!!account.openingBalance && (
-        <div className="text-sm text-gray-500 mb-4">رصيد افتتاحي مدرج ضمن المتبقي: <span className="font-medium text-gray-800">{formatCurrency(account.openingBalance)}</span></div>
-      )}
+
 
       <AdjustmentSection partnerId={Number(id)} roleLabel={roleLabel} onChanged={refresh} />
 
@@ -195,9 +193,7 @@ export function MerchantAccountPage() {
         <StatCard label="المتبقي" value={formatCurrency(account.remaining)} tone="negative" />
         {CREDIT_LIMIT_UI_ENABLED && account.creditLimit != null && <StatCard label="الحد الائتماني" value={formatCurrency(account.creditLimit)} />}
       </div>
-      {!!account.openingBalance && (
-        <div className="text-sm text-gray-500 mb-4">رصيد افتتاحي مدرج ضمن المتبقي: <span className="font-medium text-gray-800">{formatCurrency(account.openingBalance)}</span></div>
-      )}
+
 
       {/* Crates and sacks have their own screen now — they are counts, they apply to sellers and
           drivers too, and there is more than one kind. */}

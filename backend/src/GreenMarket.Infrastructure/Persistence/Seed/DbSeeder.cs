@@ -168,8 +168,14 @@ public static class DbSeeder
             new Setting { Key = Setting.Keys.RegistrationNumber, Value = "", Description = "Company/commercial registration number shown on the printed invoice header." },
             new Setting { Key = Setting.Keys.Phone, Value = "", Description = "Company phone number shown on the printed invoice header." },
             new Setting { Key = Setting.Keys.Address, Value = "", Description = "Company address shown on the printed invoice header." },
-            new Setting { Key = Setting.Keys.BoxPrice, Value = "0", Description = "سعر الصندوق الواحد (₪) — يُطبّق تلقائيًا كرسم إضافي على كل فاتورة تحتوي أصناف بوحدة الصندوق، بالإضافة لأي سعر خشب يدوي على السطر." },
-            new Setting { Key = Setting.Keys.DriverBoxFee, Value = "0.03", Description = "أجرة السائق عن كل صندوق (₪) — تُضاف تلقائيًا لأجرة النقل المستحقة للسائق على كل فاتورة تحتوي أصناف بوحدة الصندوق." },
+            // Both in SHEKELS, which is the whole trap here: 3 agorot is 0.03, not 0.3, and
+            // entering the latter pays the driver ten times over. The market takes 0.10 a crate
+            // from the buyer and passes 0.03 to the driver, keeping 0.07 — the "٧ أغورات" it is
+            // meant to end up with. The buyer's side used to seed as 0, so a fresh install charged
+            // nothing for crates at all. Only ever applied to a database that has no value yet; an
+            // existing one keeps whatever was set.
+            new Setting { Key = Setting.Keys.BoxPrice, Value = "0.10", Description = "سعر الصندوق الواحد (₪) — يُطبّق تلقائيًا كرسم إضافي على كل فاتورة تحتوي أصناف بوحدة الصندوق، بالإضافة لأي سعر خشب يدوي على السطر." },
+            new Setting { Key = Setting.Keys.DriverBoxFee, Value = "0.03", Description = "أجرة السائق عن كل صندوق (₪) — تُضاف تلقائيًا لأجرة النقل المستحقة للسائق. الفرق بينها وبين سعر الصندوق يبقى للمصلحة." },
         };
 
         var existing = await db.Settings.Select(s => s.Key).ToListAsync();

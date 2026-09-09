@@ -14,8 +14,11 @@ const KEY_LABELS: Record<string, string> = {
   "market.registration_number": "الرقم/السجل التجاري (يظهر بترويسة الفاتورة المطبوعة)",
   "market.phone": "رقم هاتف الشركة (يظهر بترويسة الفاتورة المطبوعة)",
   "market.address": "عنوان الشركة (يظهر بترويسة الفاتورة المطبوعة)",
-  "boxes.price": "سعر الصندوق الواحد (₪) — يُضاف تلقائيًا كرسم على كل فاتورة فيها أصناف بالصندوق",
-  "boxes.driver_fee": "أجرة السائق عن كل صندوق (₪) — تُضاف تلقائيًا لأجرة النقل المستحقة للسائق",
+  // Both in shekels, not agorot — 30 agorot is "0.3", not "30". The difference between the two
+  // is what the market keeps per crate, so the labels say so rather than leaving it to be
+  // worked out.
+  "boxes.price": "سعر الصندوق الواحد (₪) — بتنحسب على المشتري تلقائيًا على كل فاتورة فيها أصناف بالصندوق",
+  "boxes.driver_fee": "أجرة السائق عن كل صندوق (₪) — بتنعطى للسائق، والفرق بينها وبين سعر الصندوق يضل للمصلحة",
 };
 
 const MAX_LOGO_BYTES = 3 * 1024 * 1024;

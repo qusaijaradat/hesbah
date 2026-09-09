@@ -13,11 +13,11 @@ public record InvoiceItemInput(string ItemName, decimal Quantity, UnitOfMeasure 
 /// every invoice would just get in the way. Exactly one of {Id, Name} must be supplied for each
 /// side that's being set at all. FarmerId/DriverId are independent of each other — an invoice can
 /// have either, both, or neither. TransportFee ("أجرة النقل") is optional, defaulting to 0.
-/// PaidAmount ("المبلغ المدفوع") is optional: when set and greater than 0, InvoiceService records
-/// it as a Payment (direction FromMerchant, linked to this invoice) right when the invoice is
-/// created — a shortcut for the common "he paid on the spot" case that skips a separate trip to
-/// the Payments page. Only honored on CreateAsync, not UpdateAsync (editing an invoice never
-/// touches payments — corrections to what's been paid go through the Payments page itself).
+///
+/// There is no "paid on the spot" field. Payment normally comes AFTER the invoices are entered,
+/// not during — so the shortcut asked staff to fill in something they did not know yet, and its
+/// only real effect was a half-filled check line blocking an invoice that was otherwise ready.
+/// Payments are recorded from the Payments page, or on the invoice's own edit screen.
 /// </summary>
 public record CreateInvoiceRequest(
     DateTimeOffset Date,
@@ -28,8 +28,7 @@ public record CreateInvoiceRequest(
     int? DriverId,
     string? DriverName,
     IReadOnlyList<InvoiceItemInput> Items,
-    decimal TransportFee = 0,
-    decimal? PaidAmount = null);
+    decimal TransportFee = 0);
 
 public record InvoiceItemDto(int Id, string ItemName, decimal Quantity, UnitOfMeasure Unit, decimal PricePerUnit, decimal WoodPrice, decimal LineTotal);
 

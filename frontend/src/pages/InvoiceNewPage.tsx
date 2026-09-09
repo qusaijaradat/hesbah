@@ -3,14 +3,13 @@ import { Link, useNavigate } from "react-router-dom";
 import { PartnerAutocomplete } from "../components/PartnerAutocomplete";
 import { ItemAutocomplete } from "../components/ItemAutocomplete";
 import { createInvoice } from "../api/invoices";
-import { createPayment } from "../api/payments";
+
 import { getMerchantAccount } from "../api/partners";
 import { apiErrorMessage } from "../api/client";
 import { formatCurrency, formatQuantity, todayLocalDateString } from "../lib/format";
 import type { MerchantAccountDto, UnitOfMeasure } from "../types";
 import { CREDIT_LIMIT_UI_ENABLED } from "../lib/featureFlags";
-import { PaymentLineFields, emptyLine, lineTotal, paymentRequestsFromLine, validatePaymentLine } from "../components/PaymentLineFields";
-import type { PaymentLine } from "../components/PaymentLineFields";
+
 
 interface Row {
   itemName: string;
@@ -78,19 +77,14 @@ export function InvoiceNewPage() {
   // Optional flat transport/delivery fee for the whole invoice ("أجرة النقل").
   const [transportFee, setTransportFee] = useState("");
 
-  // "دفعة عند الإصدار" shortcut — records one or more linked payments right when the invoice is
-  // saved instead of a separate trip to the Payments page. Explicit request: can now split across
-  // several payment methods at once (part نقدي + part شيك, etc.), same PaymentLine building block
-  // the standalone "تسجيل دفعة" modal uses — see PaymentLineFields.tsx. An empty/zero-amount line
-  // means nothing paid yet; extra lines are only sent if they end up with an amount > 0.
-  const [paymentLines, setPaymentLines] = useState<PaymentLine[]>([emptyLine()]);
+
   const [rows, setRows] = useState<Row[]>([emptyRow()]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   // Requirement: after saving, jump straight into a fresh invoice instead of navigating
   // away — the market enters invoices back-to-back all day, so staying on this screen
   // (with a quick link to the one just saved) beats re-clicking "new invoice" every time.
-  const [lastSaved, setLastSaved] = useState<{ id: number; invoiceNumber: string; remaining: number; paymentError?: string } | null>(null);
+  const [lastSaved, setLastSaved] = useState<{ id: number; invoiceNumber: string } | null>(null);
 
   const parsedRows = rows.map((r) => ({
     itemName: r.itemName,
@@ -113,8 +107,7 @@ export function InvoiceNewPage() {
   // the backend InvoiceCharge). Kept in the form because it is entered here and drives both the
   // seller's deduction and the driver's due.
   const grandTotal = totalValue + woodTotal;
-  const paidAmountValue = paymentLines.reduce((sum, l) => sum + lineTotal(l), 0);
-  const remainingOnThisInvoice = grandTotal - paidAmountValue;
+
 
   useEffect(() => {
     if (!merchant) { setMerchantAccount(null); return; }
@@ -139,17 +132,6 @@ export function InvoiceNewPage() {
     setRows((prev) => (prev.length > 1 ? prev.filter((_, i) => i !== index) : prev));
   }
 
-  function updatePaymentLine(index: number, patch: Partial<PaymentLine>) {
-    setPaymentLines((prev) => prev.map((l, i) => (i === index ? { ...l, ...patch } : l)));
-  }
-
-  function addPaymentLine() {
-    setPaymentLines((prev) => [...prev, emptyLine()]);
-  }
-
-  function removePaymentLine(index: number) {
-    setPaymentLines((prev) => (prev.length > 1 ? prev.filter((_, i) => i !== index) : prev));
-  }
 
   function resetForm() {
     setDate(todayLocalDateString());
@@ -162,7 +144,7 @@ export function InvoiceNewPage() {
     setDriverText("");
     setTransportFee("");
 
-    setPaymentLines([emptyLine()]);
+
     setRows([emptyRow()]);
   }
 
@@ -178,16 +160,6 @@ export function InvoiceNewPage() {
       .map((r) => ({ itemName: r.itemName, quantity: r.quantity, unit: r.unit, pricePerUnit: r.pricePerUnit, woodPrice: r.woodPrice }));
     if (items.length === 0) { setError("يجب إضافة صنف واحد على الأقل بكمية أكبر من صفر"); return; }
 
-    // "دفعة عند الإصدار" (explicit request: can split across several methods) — validated BEFORE
-    // creating the invoice, so a bad check due date is caught up front instead of leaving an
-    // invoice saved with no way to also record its payment.
-    // Validated across ALL lines (even zero ones) before filtering, so a check line with a due
-    // date but no amount typed in yet is caught as the half-filled entry it is.
-    for (const [i, line] of paymentLines.entries()) {
-      const problem = validatePaymentLine(line, `الدفعة - السطر ${i + 1}`);
-      if (problem) { setError(problem); return; }
-    }
-    const paymentLinesToRecord = paymentLines.filter((l) => lineTotal(l) > 0);
 
     setBusy(true);
     try {
@@ -205,32 +177,7 @@ export function InvoiceNewPage() {
         items,
       });
 
-      // The invoice is saved at this point no matter what happens below — a payment-line failure
-      // must never read as if the invoice itself failed to save (see the paymentError banner).
-      let paymentError: string | undefined;
-      for (const [i, line] of paymentLinesToRecord.entries()) {
-        try {
-          // One Payment row per check on a شيك line — see paymentRequestsFromLine.
-          for (const request of paymentRequestsFromLine(line)) {
-            await createPayment({
-              partnerId: invoice.merchantId,
-              direction: "FromMerchant",
-              amount: request.amount,
-              date: new Date(date).toISOString(),
-              method: request.method,
-              notes: `دفعة عند إصدار الفاتورة ${invoice.invoiceNumber}`,
-              invoiceId: invoice.id,
-              checkDueDate: request.checkDueDate,
-              checkNumber: request.checkNumber,
-            });
-          }
-        } catch (err) {
-          paymentError = `تعذر تسجيل الدفعة (السطر ${i + 1}): ${apiErrorMessage(err, "فشل الحفظ")}${i > 0 ? " — الأسطر السابقة انحفظت فعليًا" : ""}`;
-          break;
-        }
-      }
-
-      setLastSaved({ id: invoice.id, invoiceNumber: invoice.invoiceNumber, remaining: remainingOnThisInvoice, paymentError });
+      setLastSaved({ id: invoice.id, invoiceNumber: invoice.invoiceNumber });
       resetForm();
     } catch (err) {
       setError(apiErrorMessage(err, "فشل إنشاء الفاتورة"));
@@ -247,18 +194,13 @@ export function InvoiceNewPage() {
         <div className="text-sm text-brand-800 bg-brand-50 border border-brand-200 rounded-md p-3 mb-4 flex items-center justify-between flex-wrap gap-2">
           <span>
             ✅ تم حفظ الفاتورة {lastSaved.invoiceNumber} — جاهز لإدخال فاتورة جديدة.
-            {lastSaved.remaining > 0 && ` الباقي على هذه الفاتورة: ${formatCurrency(lastSaved.remaining)}.`}
           </span>
           <Link to={`/invoices/${lastSaved.id}`} className="text-brand-700 font-medium hover:underline">
             عرض / طباعة الفاتورة ←
           </Link>
         </div>
       )}
-      {lastSaved?.paymentError && (
-        <div className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-md p-3 mb-4">
-          ⚠️ {lastSaved.paymentError} — يمكنك تسجيلها يدويًا من صفحة "الدفعات".
-        </div>
-      )}
+
 
       <div className="card p-5 space-y-4 mb-4">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -378,24 +320,7 @@ export function InvoiceNewPage() {
             onChange={(e) => setTransportFee(e.target.value)} placeholder="اتركه فارغًا إن لم يوجد" />
         </div>
 
-        <div className="space-y-2 max-w-md">
-          <div className="flex items-center justify-between">
-            <label className="label mb-0">الدفعة عند الإصدار (اختياري)</label>
-            {paymentLines.length > 1 && <span className="text-xs text-gray-400">المجموع: {formatCurrency(paidAmountValue)}</span>}
-          </div>
-          {paymentLines.map((line, i) => (
-            <PaymentLineFields key={i} line={line} onChange={(patch) => updatePaymentLine(i, patch)} onRemove={() => removePaymentLine(i)} showRemove={paymentLines.length > 1} />
-          ))}
-          <button type="button" className="text-sm text-brand-700 hover:underline" onClick={addPaymentLine}>
-            + إضافة طريقة دفع أخرى لنفس الدفعة (مثلاً: جزء نقدي وجزء شيكات)
-          </button>
-        </div>
 
-        {paidAmountValue > 0 && (
-          <div className="text-sm text-gray-600">
-            الباقي على هذه الفاتورة بعد هذه الدفعة: <span className="font-semibold">{formatCurrency(remainingOnThisInvoice)}</span>
-          </div>
-        )}
         <div className="flex flex-wrap gap-4 justify-between text-sm">
           {totalWeight > 0 && (
             <div>

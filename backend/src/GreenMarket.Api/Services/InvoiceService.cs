@@ -59,8 +59,6 @@ public class InvoiceService : IInvoiceService
         if (request.Items is null || request.Items.Count == 0)
             throw new ValidationAppException("An invoice must have at least one item.");
 
-        if (request.PaidAmount is < 0)
-            throw new ValidationAppException("Paid amount cannot be negative.");
 
         // Previously unchecked — a negative value here flowed straight into GrandTotal and the
         // driver's FarmerTransaction Amount, quietly reducing what the driver is shown as owed.
@@ -205,24 +203,6 @@ public class InvoiceService : IInvoiceService
             await _db.SaveChangesAsync();
         }
 
-        // Optional "المبلغ المدفوع" shortcut (see CreateInvoiceRequest.PaidAmount doc): records a
-        // FromMerchant payment linked to this invoice right away, exactly as if it had been
-        // entered separately on the Payments page — same PartnerService.GetMerchantAccountAsync/
-        // ComputePreviousBalanceAsync below immediately reflect it.
-        if (request.PaidAmount is > 0)
-        {
-            _db.Payments.Add(new Payment
-            {
-                PartnerId = merchant.Id,
-                Direction = PaymentDirection.FromMerchant,
-                Amount = request.PaidAmount.Value,
-                Date = invoice.Date,
-                InvoiceId = invoice.Id,
-                Notes = $"دفعة عند إصدار الفاتورة {invoice.InvoiceNumber}",
-                RecordedByUserId = recordedByUserId
-            });
-            await _db.SaveChangesAsync();
-        }
 
         await transaction.CommitAsync();
         return await GetAsync(invoice.Id);
@@ -247,13 +227,6 @@ public class InvoiceService : IInvoiceService
             throw new ValidationAppException("أجرة النقل لا يمكن أن تكون قيمة سالبة.");
 
 
-        // PaidAmount only ever means "record an automatic payment right now" (see CreateAsync) —
-        // there's no sensible "automatic payment" moment on an edit, and silently doing nothing
-        // with it left staff assuming a payment was recorded when it wasn't. Rejecting it here with
-        // a clear message replaces that silent no-op; the payment can still be recorded normally
-        // from the Payments page.
-        if (request.PaidAmount is > 0)
-            throw new ValidationAppException("لا يمكن تسجيل \"مبلغ مدفوع عند الإصدار\" عند تعديل فاتورة — سجّل الدفعة من شاشة الدفعات بدلاً من ذلك.");
 
         var invoice = await _db.Invoices.Include(i => i.Items)
             .SingleOrDefaultAsync(i => i.Id == id) ?? throw new NotFoundAppException("Invoice", id);

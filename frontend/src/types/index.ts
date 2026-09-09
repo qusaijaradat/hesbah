@@ -125,6 +125,14 @@ export interface ContainerBalanceDto {
   remaining: number;
 }
 
+/** One line of "مين ماسك صناديقي" — positive = they hold ours, negative = we hold theirs. */
+export interface ContainerHolderDto {
+  partnerId: number;
+  partnerName: string;
+  type: ContainerType;
+  remaining: number;
+}
+
 export interface PartnerContainersDto {
   partnerId: number;
   partnerName: string;

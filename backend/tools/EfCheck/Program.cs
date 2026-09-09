@@ -31,6 +31,16 @@ Show("crates coming back with a buyer's returns (PartnerService crate balance)",
     db.GoodsReturns.Where(r => r.Invoice.MerchantId == 7 && r.Invoice.Status == InvoiceStatus.Active)
         .SelectMany(r => r.Items).Where(ri => ri.Unit == UnitOfMeasure.Box).Select(ri => ri.Quantity));
 
+Show("crates issued per buyer, all buyers at once (ContainerService.GetHoldersAsync)",
+    db.Invoices.Where(i => i.Status == InvoiceStatus.Active)
+        .SelectMany(i => i.Items.Where(it => it.Unit == UnitOfMeasure.Box).Select(it => new { i.MerchantId, it.Quantity }))
+        .GroupBy(x => x.MerchantId)
+        .Select(g => new { PartnerId = g.Key, Total = g.Sum(x => x.Quantity) }));
+
+Show("hand-recorded container movements per person and kind (GetHoldersAsync)",
+    db.ContainerMovements.GroupBy(m => new { m.PartnerId, m.Type, m.Direction })
+        .Select(g => new { g.Key.PartnerId, g.Key.Type, g.Key.Direction, Total = g.Sum(m => m.Quantity) }));
+
 void Show<T>(string label, IQueryable<T> query)
 {
     Console.WriteLine($"--- {label}");

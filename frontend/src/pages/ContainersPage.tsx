@@ -3,11 +3,11 @@ import { useSearchParams } from "react-router-dom";
 import { PartnerAutocomplete } from "../components/PartnerAutocomplete";
 import { TablePagination } from "../components/TablePagination";
 import { usePagination } from "../lib/usePagination";
-import { createContainerMovement, deleteContainerMovement, getPartnerContainers } from "../api/partners";
+import { createContainerMovement, deleteContainerMovement, getContainerHolders, getPartnerContainers } from "../api/partners";
 import { apiErrorMessage } from "../api/client";
 import { formatDate, formatQuantity, todayLocalDateString } from "../lib/format";
 import { useAuth } from "../auth/AuthContext";
-import type { ContainerBalanceDto, ContainerDirection, ContainerType, PartnerContainersDto } from "../types";
+import type { ContainerBalanceDto, ContainerDirection, ContainerHolderDto, ContainerType, PartnerContainersDto } from "../types";
 
 /**
  * "الصناديق والمخالات" — the empty containers the market lends out and expects back.
@@ -41,6 +41,7 @@ export function ContainersPage() {
   const [data, setData] = useState<PartnerContainersDto | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [holders, setHolders] = useState<ContainerHolderDto[] | null>(null);
 
   const partnerId = partner?.id ?? (partnerIdParam ? Number(partnerIdParam) : null);
 
@@ -61,11 +62,23 @@ export function ContainersPage() {
     }
   }
 
+  async function refreshHolders() {
+    try {
+      setHolders(await getContainerHolders());
+    } catch {
+      // The overview is a convenience on top of the per-person view; failing to load it must
+      // not take the page down with it.
+      setHolders([]);
+    }
+  }
+
   useEffect(() => {
     if (partnerId) refresh(partnerId);
     else setData(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [partnerId]);
+
+  useEffect(() => { refreshHolders(); }, []);
 
   function pickPartner(next: { id: number; name: string } | null) {
     setPartner(next);
@@ -92,7 +105,7 @@ export function ContainersPage() {
       {error && <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-md p-3 mb-4">{error}</div>}
 
       {!partnerId ? (
-        <div className="text-gray-500">اختر شخصًا لعرض صناديقه ومخالاته.</div>
+        <div className="text-gray-500">اختر شخصًا لعرض تفاصيله، أو شوف القائمة تحت.</div>
       ) : loading && !data ? (
         <div className="text-gray-500">جاري التحميل...</div>
       ) : data ? (
@@ -103,15 +116,73 @@ export function ContainersPage() {
             ))}
           </div>
 
-          {canCreate && <MovementForm partnerId={data.partnerId} onSaved={() => refresh(data.partnerId)} />}
+          {canCreate && (
+            <MovementForm
+              partnerId={data.partnerId}
+              onSaved={() => { refresh(data.partnerId); refreshHolders(); }}
+            />
+          )}
 
           <MovementsTable
             movements={data.movements}
             canDelete={canDelete}
-            onDeleted={() => refresh(data.partnerId)}
+            onDeleted={() => { refresh(data.partnerId); refreshHolders(); }}
           />
         </>
       ) : null}
+
+      <HoldersTable holders={holders} onPick={(id, name) => pickPartner({ id, name })} />
+    </div>
+  );
+}
+
+/**
+ * "مين ماسك صناديقي" — everyone who is not square, biggest holder first. The money side has had
+ * this view for a while ("قيمة الدين"); without it the same question about crates meant opening
+ * people one at a time and remembering.
+ *
+ * Always on screen, under the per-person detail: it is the question you ask before you know
+ * whose name to type, and clicking a row fills the picker in above.
+ */
+function HoldersTable({ holders, onPick }: { holders: ContainerHolderDto[] | null; onPick: (id: number, name: string) => void }) {
+  const pager = usePagination(holders ?? []);
+  return (
+    <div className="card overflow-x-auto mt-6">
+      <div className="px-4 pt-4 pb-1 text-sm font-semibold text-gray-700">مين ماسك صناديقي ومخالاتي</div>
+      <table className="table-base">
+        <thead>
+          <tr><th>الشخص</th><th>النوع</th><th>عليه</th><th>عندنا إله</th></tr>
+        </thead>
+        <tbody>
+          {holders === null ? (
+            <tr><td colSpan={4} className="text-center text-gray-400 py-6">جاري التحميل...</td></tr>
+          ) : holders.length === 0 ? (
+            <tr><td colSpan={4} className="text-center text-gray-400 py-6">كل الحسابات مظبوطة — ما في حدا ماسك صناديق أو مخالات</td></tr>
+          ) : pager.pageRows.map((h) => (
+            <tr key={`${h.partnerId}-${h.type}`}>
+              <td>
+                <button className="text-brand-700 hover:underline" onClick={() => onPick(h.partnerId, h.partnerName)}>
+                  {h.partnerName}
+                </button>
+              </td>
+              <td>{TYPE_LABEL[h.type]}</td>
+              {/* Two columns rather than one signed number: "عليه 40" and "عندنا إله 40" are
+                  opposite facts, and a reader should not have to spot a minus sign to tell them
+                  apart. */}
+              <td className="font-semibold text-red-700">
+                {h.remaining > 0 ? `${h.remaining.toLocaleString("en-US")} ${TYPE_UNIT[h.type]}` : "—"}
+              </td>
+              <td className="font-semibold text-brand-700">
+                {h.remaining < 0 ? `${Math.abs(h.remaining).toLocaleString("en-US")} ${TYPE_UNIT[h.type]}` : "—"}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <TablePagination
+        page={pager.page} pageSize={pager.pageSize} totalCount={pager.totalCount}
+        itemLabel="سطر" onPageChange={pager.setPage} onPageSizeChange={pager.setPageSize}
+      />
     </div>
   );
 }

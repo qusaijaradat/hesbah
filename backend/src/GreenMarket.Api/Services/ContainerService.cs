@@ -27,6 +27,17 @@ public interface IContainerService
     Task<ContainerMovementDto> CreateAsync(int partnerId, CreateContainerMovementRequest request, int recordedByUserId);
 
     Task DeleteAsync(int movementId);
+
+    /// <summary>
+    /// "مين ماسك صناديقي" — everyone who is not square, one line per person per kind. The money
+    /// side has had this view for a while ("قيمة الدين"); without it, answering the same question
+    /// about crates meant opening people one at a time and remembering.
+    ///
+    /// Aggregated in a handful of grouped queries rather than a round trip per partner, and using
+    /// the same three components GetForPartnerAsync does, so a person's line here can never
+    /// disagree with their own page.
+    /// </summary>
+    Task<IReadOnlyList<ContainerHolderDto>> GetHoldersAsync();
 }
 
 public class ContainerService : IContainerService
@@ -115,6 +126,67 @@ public class ContainerService : IContainerService
             ?? throw new NotFoundAppException("ContainerMovement", movementId);
         movement.IsDeleted = true;
         await _db.SaveChangesAsync();
+    }
+
+    public async Task<IReadOnlyList<ContainerHolderDto>> GetHoldersAsync()
+    {
+        // Out and In per (person, kind), from what was recorded by hand.
+        var manual = await _db.ContainerMovements
+            .GroupBy(m => new { m.PartnerId, m.Type, m.Direction })
+            .Select(g => new { g.Key.PartnerId, g.Key.Type, g.Key.Direction, Total = g.Sum(m => m.Quantity) })
+            .ToListAsync();
+
+        // The two derived sides, same definitions as GetForPartnerAsync — crates only.
+        var issued = await _db.Invoices
+            .Where(i => i.Status == InvoiceStatus.Active)
+            .SelectMany(i => i.Items.Where(it => it.Unit == UnitOfMeasure.Box).Select(it => new { i.MerchantId, it.Quantity }))
+            .GroupBy(x => x.MerchantId)
+            .Select(g => new { PartnerId = g.Key, Total = g.Sum(x => x.Quantity) })
+            .ToListAsync();
+
+        var backOnReturns = await _db.GoodsReturns
+            .Where(r => r.Invoice.Status == InvoiceStatus.Active)
+            .SelectMany(r => r.Items.Where(ri => ri.Unit == UnitOfMeasure.Box).Select(ri => new { r.Invoice.MerchantId, ri.Quantity }))
+            .GroupBy(x => x.MerchantId)
+            .Select(g => new { PartnerId = g.Key, Total = g.Sum(x => x.Quantity) })
+            .ToListAsync();
+
+        var goodsCrates = await _db.FarmerGoodsEntries
+            .GroupBy(e => e.FarmerId)
+            .Select(g => new { PartnerId = g.Key, Total = g.Sum(e => e.WoodQuantity) })
+            .ToListAsync();
+
+        var totals = new Dictionary<(int PartnerId, ContainerType Type), decimal>();
+        void Add(int partnerId, ContainerType type, decimal amount)
+        {
+            if (amount == 0) return;
+            var key = (partnerId, type);
+            totals[key] = totals.GetValueOrDefault(key) + amount;
+        }
+
+        foreach (var row in manual)
+            Add(row.PartnerId, row.Type, row.Direction == ContainerDirection.Out ? row.Total : -row.Total);
+        foreach (var row in issued) Add(row.PartnerId, ContainerType.Box, row.Total);
+        foreach (var row in backOnReturns) Add(row.PartnerId, ContainerType.Box, -row.Total);
+        foreach (var row in goodsCrates) Add(row.PartnerId, ContainerType.Box, -row.Total);
+
+        // Square is square — a person who has returned everything is finished business and only
+        // pads the list, same treatment as a sold-out row on the stock screen.
+        var open = totals.Where(kv => kv.Value != 0).ToList();
+        if (open.Count == 0) return Array.Empty<ContainerHolderDto>();
+
+        var ids = open.Select(kv => kv.Key.PartnerId).Distinct().ToList();
+        var names = await _db.Partners.Where(p => ids.Contains(p.Id))
+            .Select(p => new { p.Id, p.Name })
+            .ToDictionaryAsync(x => x.Id, x => x.Name);
+
+        return open
+            // Whoever is holding the most of the market's comes first — that is who the question
+            // is usually about.
+            .OrderByDescending(kv => kv.Value)
+            .Select(kv => new ContainerHolderDto(
+                kv.Key.PartnerId, names.GetValueOrDefault(kv.Key.PartnerId) ?? "—", kv.Key.Type, kv.Value))
+            .ToList();
     }
 
     /// <summary>

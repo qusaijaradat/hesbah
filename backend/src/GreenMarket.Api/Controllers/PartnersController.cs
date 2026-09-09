@@ -110,6 +110,12 @@ public class PartnersController : ControllerBase
 
     /// <summary>"الصناديق والمخالات" for one person — a balance per kind plus the movements
     /// behind it. Works for a buyer, a seller or a driver alike; see IContainerService.</summary>
+    /// <summary>"مين ماسك صناديقي" across everyone — see IContainerService.GetHoldersAsync.</summary>
+    [HttpGet("containers/holders")]
+    [RequirePermission(PermissionKeys.BoxesView)]
+    public async Task<ActionResult<IReadOnlyList<ContainerHolderDto>>> ContainerHolders() =>
+        Ok(await _containerService.GetHoldersAsync());
+
     [HttpGet("{id:int}/containers")]
     [RequirePermission(PermissionKeys.BoxesView)]
     public async Task<ActionResult<PartnerContainersDto>> Containers(int id) =>

@@ -35,6 +35,13 @@ public record ContainerBalanceDto(
     ContainerType Type, decimal FromInvoices, decimal FromGoodsEntries,
     decimal HandedOut, decimal CameBack, decimal Remaining);
 
+/// <summary>
+/// One line of "مين ماسك صناديقي" — a person and one kind of container they are not square on.
+/// Remaining carries the same sign as ContainerBalanceDto: positive means they hold that many of
+/// the market's, negative means the market holds theirs.
+/// </summary>
+public record ContainerHolderDto(int PartnerId, string PartnerName, ContainerType Type, decimal Remaining);
+
 /// <summary>Everything the containers page needs for one person: a balance per kind, plus the raw
 /// history behind them.</summary>
 public record PartnerContainersDto(

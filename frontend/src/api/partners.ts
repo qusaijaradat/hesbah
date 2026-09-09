@@ -2,7 +2,7 @@ import { apiClient } from "./client";
 import type {
   PartnerDto, PartnerSuggestionDto, PagedResult, PartnerType,
   MerchantAccountDto, FarmerAccountDto, DebtsOverviewDto, PartnerInvoiceDetailDto,
-  PartnerContainersDto, ContainerMovementDto, CreateContainerMovementRequest, AdjustmentDto,
+  PartnerContainersDto, ContainerMovementDto, CreateContainerMovementRequest, ContainerHolderDto, AdjustmentDto,
 } from "../types";
 
 export async function listPartners(params: { search?: string; type?: PartnerType; page?: number; pageSize?: number }) {
@@ -108,6 +108,12 @@ export async function deletePartner(id: number) {
 // "الصناديق والمخالات" — empty containers the market lends out, counted per person and per kind,
 // for buyers, sellers and drivers alike. Deliberately no money anywhere: see the backend
 // IContainerService.
+/** "مين ماسك صناديقي" across everyone — only people who are not square. */
+export async function getContainerHolders() {
+  const { data } = await apiClient.get<ContainerHolderDto[]>("/partners/containers/holders");
+  return data;
+}
+
 export async function getPartnerContainers(partnerId: number) {
   const { data } = await apiClient.get<PartnerContainersDto>(`/partners/${partnerId}/containers`);
   return data;

@@ -54,13 +54,24 @@ public class ContainerService : IContainerService
         // side at all: everything they hold was handed over by hand and is recorded here.
         var invoiceBoxes = await InvoiceBoxesFor(partnerId);
 
+        // The mirror image, on the seller's side: "صناديق خشب" counted on the "إضافة بضاعة" form
+        // are real wooden crates that arrived with his produce, and they were being counted only
+        // on that page — a third place tracking the same physical thing, which is how the crate
+        // count, the stock and the money all came to disagree about a مرتجع. Read here rather
+        // than re-typed, for the same reason the buyer's side is.
+        var goodsEntryCrates = await GoodsEntryCratesFor(partnerId);
+
         var balances = new List<ContainerBalanceDto>();
         foreach (var type in new[] { ContainerType.Box, ContainerType.Sack })
         {
+            // Both derived sides are crates; sacks are only ever recorded by hand.
             var fromInvoices = type == ContainerType.Box ? invoiceBoxes : 0m;
+            var fromGoodsEntries = type == ContainerType.Box ? goodsEntryCrates : 0m;
             var handedOut = movements.Where(m => m.Type == type && m.Direction == ContainerDirection.Out).Sum(m => m.Quantity);
             var cameBack = movements.Where(m => m.Type == type && m.Direction == ContainerDirection.In).Sum(m => m.Quantity);
-            balances.Add(new ContainerBalanceDto(type, fromInvoices, handedOut, cameBack, fromInvoices + handedOut - cameBack));
+            balances.Add(new ContainerBalanceDto(
+                type, fromInvoices, fromGoodsEntries, handedOut, cameBack,
+                fromInvoices + handedOut - cameBack - fromGoodsEntries));
         }
 
         return new PartnerContainersDto(partner.Id, partner.Name, balances, movements);
@@ -127,4 +138,15 @@ public class ContainerService : IContainerService
 
         return issued - back;
     }
+
+    /// <summary>
+    /// Wooden crates logged against this partner's goods intake as a SELLER — the "صناديق خشب"
+    /// field on "إضافة بضاعة" (FarmerGoodsEntry.WoodQuantity), which is a plain crate count and
+    /// never a portion of the produce quantity. Zero for anyone who has never brought goods in,
+    /// which is what makes this safe to call for a buyer or a driver.
+    /// </summary>
+    private async Task<decimal> GoodsEntryCratesFor(int partnerId) =>
+        await _db.FarmerGoodsEntries
+            .Where(e => e.FarmerId == partnerId)
+            .SumAsync(e => (decimal?)e.WoodQuantity) ?? 0;
 }

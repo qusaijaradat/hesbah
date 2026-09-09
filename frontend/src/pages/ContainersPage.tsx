@@ -20,10 +20,10 @@ import type { ContainerBalanceDto, ContainerDirection, ContainerType, PartnerCon
  * out to fill — so this page is not scoped to one partner type. Crates and sacks keep separate
  * balances: handing someone ten of each leaves them owing ten of each, not twenty of something.
  *
- * A crate leaves with every box-unit line a buyer buys, so that side is read from their invoices
- * rather than re-typed (and netted against produce sent back, which arrives in its crates).
- * Everything else — every crate handed to a seller, every sack, every return — is recorded here by
- * hand.
+ * Two sides are read from what the market already records, rather than re-typed: crates leaving
+ * with a buyer's box-unit lines (net of produce sent back, which arrives in its crates), and the
+ * wooden crates arriving with a seller's produce on "إضافة بضاعة". Everything else — every crate
+ * handed out by hand, every sack, every return — is recorded here.
  */
 const TYPE_LABEL: Record<ContainerType, string> = { Box: "صناديق", Sack: "مخالات" };
 const TYPE_UNIT: Record<ContainerType, string> = { Box: "صندوق", Sack: "مخلاة" };
@@ -76,7 +76,8 @@ export function ContainersPage() {
     <div>
       <h1 className="text-2xl font-bold mb-2">الصناديق والمخالات</h1>
       <p className="text-sm text-gray-500 mb-6">
-        عدد فقط — لا علاقة له بحساب الشخص المالي. الرصيد الموجب معناه إنه ماسك هالعدد من صناديقك.
+        عدد فقط — لا علاقة له بحساب الشخص المالي. "المتبقي عليه" معناه إنه ماسك هالعدد من صناديقك،
+        و"عندنا إله" معناه العكس — صناديقه هو موجودة عندك.
       </p>
 
       <div className="card p-4 mb-4 max-w-sm">
@@ -121,13 +122,19 @@ function BalanceCard({ balance }: { balance: ContainerBalanceDto }) {
     <div className="card p-4">
       <div className="font-semibold text-gray-700 mb-3">{TYPE_LABEL[balance.type]}</div>
       <div className="grid grid-cols-3 gap-3 text-sm">
-        {/* Only shown for crates against a buyer — see ContainerBalanceDto. Hidden at zero rather
-            than printed as "0", which would read as "no crates went out on invoices" for a seller
-            who never has an invoice-derived side at all. */}
+        {/* The two derived sides are hidden at zero rather than printed as "0": a seller has no
+            invoice side at all and a buyer has no goods-intake side, and a row of zeros reads as
+            "nothing moved" instead of "this does not apply here". */}
         {balance.fromInvoices !== 0 && (
           <div>
             <div className="text-gray-500">على الفواتير</div>
             <div className="font-bold">{formatQuantity(balance.fromInvoices, "Box")}</div>
+          </div>
+        )}
+        {balance.fromGoodsEntries !== 0 && (
+          <div>
+            <div className="text-gray-500">جابها مع البضاعة</div>
+            <div className="font-bold text-brand-700">{formatQuantity(balance.fromGoodsEntries, "Box")}</div>
           </div>
         )}
         <div>
@@ -138,10 +145,13 @@ function BalanceCard({ balance }: { balance: ContainerBalanceDto }) {
           <div className="text-gray-500">رجّع</div>
           <div className="font-bold text-brand-700">{balance.cameBack.toLocaleString("en-US")} {unit}</div>
         </div>
+        {/* The balance runs both ways, so the label says which way instead of leaving a minus
+            sign to be read. A seller who brings his own crates sits permanently on the negative
+            side, and "المتبقي عليه: -40" would read as a mistake. */}
         <div>
-          <div className="text-gray-500">المتبقي عليه</div>
-          <div className={`font-bold ${balance.remaining > 0 ? "text-red-700" : ""}`}>
-            {balance.remaining.toLocaleString("en-US")} {unit}
+          <div className="text-gray-500">{balance.remaining < 0 ? "عندنا إله" : "المتبقي عليه"}</div>
+          <div className={`font-bold ${balance.remaining > 0 ? "text-red-700" : balance.remaining < 0 ? "text-brand-700" : ""}`}>
+            {Math.abs(balance.remaining).toLocaleString("en-US")} {unit}
           </div>
         </div>
       </div>

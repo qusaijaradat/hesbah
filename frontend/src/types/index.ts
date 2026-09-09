@@ -107,14 +107,19 @@ export interface CreateContainerMovementRequest {
 }
 
 /**
- * One kind of container's standing with one person. fromInvoices is non-zero only for crates
- * against someone buying — a crate leaves with every box-unit line, so that side is read from
- * their invoices instead of being re-typed, net of produce sent back (which arrives in its
- * crates). remaining = fromInvoices + handedOut − cameBack; positive means they hold that many.
+ * One kind of container's standing with one person. Two sides are derived rather than re-typed:
+ * fromInvoices (crates going out with a buyer, net of produce sent back) and fromGoodsEntries
+ * (wooden crates arriving with a seller's produce, counted on "إضافة بضاعة"). Both are crates
+ * only; sacks are always recorded by hand.
+ *
+ * remaining = (fromInvoices + handedOut) − (cameBack + fromGoodsEntries). Positive = they hold
+ * that many of ours; negative = we hold theirs, which is normal for a seller who brings his
+ * produce in his own crates.
  */
 export interface ContainerBalanceDto {
   type: ContainerType;
   fromInvoices: number;
+  fromGoodsEntries: number;
   handedOut: number;
   cameBack: number;
   remaining: number;

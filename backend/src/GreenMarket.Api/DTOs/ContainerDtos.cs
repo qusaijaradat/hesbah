@@ -14,17 +14,26 @@ public record CreateContainerMovementRequest(
 /// <summary>
 /// One kind of container's standing with one person.
 ///
-/// FromInvoices is only ever non-zero for crates against someone acting as a BUYER: a crate leaves
-/// with every box-unit line they buy, so that side is derived from their invoices rather than
-/// re-typed (and netted against produce sent back, which arrives in its crates). HandedOut and
-/// CameBack are what was recorded by hand. Remaining = FromInvoices + HandedOut − CameBack, and a
-/// positive number means this person is holding that many of the market's.
+/// Two of the four are derived rather than re-typed, because the market already records them
+/// elsewhere and typing them twice is both work and a way to disagree with itself:
+///
+///   • FromInvoices — crates going OUT with a buyer. One leaves with every box-unit line they
+///     buy, net of produce sent back, which arrives in its crates. Buyers only.
+///   • FromGoodsEntries — wooden crates coming IN with a seller's produce, counted on the
+///     "إضافة بضاعة" form (FarmerGoodsEntry.WoodQuantity). Sellers only.
+///
+/// HandedOut and CameBack are what was recorded by hand on the containers screen.
+///
+/// Remaining = (FromInvoices + HandedOut) − (CameBack + FromGoodsEntries). POSITIVE means this
+/// person is holding that many of the market's; NEGATIVE means the market is holding theirs,
+/// which is the normal state for a seller who keeps bringing his produce in his own crates.
 ///
 /// Purely counts. Any money attached to containers is a separate matter and is deliberately kept
 /// out of the person's account balance.
 /// </summary>
 public record ContainerBalanceDto(
-    ContainerType Type, decimal FromInvoices, decimal HandedOut, decimal CameBack, decimal Remaining);
+    ContainerType Type, decimal FromInvoices, decimal FromGoodsEntries,
+    decimal HandedOut, decimal CameBack, decimal Remaining);
 
 /// <summary>Everything the containers page needs for one person: a balance per kind, plus the raw
 /// history behind them.</summary>

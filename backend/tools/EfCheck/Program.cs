@@ -19,6 +19,14 @@ Show("seller Sale rows whose amount no longer matches sale − commission (Progr
 Show("find-or-create partner by name, oldest match first (PartnerService)",
     db.Partners.Where(p => p.Name.ToLower() == "أبو عمار").OrderBy(p => p.Id));
 
+Show("returns netted out of one seller's sold quantities (GoodsService per-seller stock)",
+    db.GoodsReturns.Where(r => r.Invoice.FarmerId == 9 && r.Invoice.Status == InvoiceStatus.Active)
+        .SelectMany(r => r.Items).Select(ri => new { ri.ItemName, ri.Unit, ri.Quantity }));
+
+Show("returns netted out across every seller (GoodsService global stock)",
+    db.GoodsReturns.Where(r => r.Invoice.FarmerId != null && r.Invoice.Status == InvoiceStatus.Active)
+        .SelectMany(r => r.Items.Select(ri => new { FarmerId = r.Invoice.FarmerId!.Value, ri.ItemName, ri.Unit, ri.Quantity })));
+
 void Show<T>(string label, IQueryable<T> query)
 {
     Console.WriteLine($"--- {label}");

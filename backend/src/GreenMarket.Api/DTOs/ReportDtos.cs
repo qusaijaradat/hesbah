@@ -14,10 +14,10 @@ public class ReportFilterRequest
 /// Requirement doc §8: farmer (بائع) report — detailed per-seller breakdown, not just a single
 /// totals line. TotalBoxes sits alongside TotalWeightKg for the same reason InvoiceListItemDto's
 /// does (a box-only seller would otherwise show 0 weight and look empty). NetDue = TotalSalesValue
-/// - TotalCommission + (this farmer's own wood-price total across the period) — explicit
-/// requirement: the farmer is paid the full "سعر الخشب" amount too, never taxed by the commission,
-/// same as FarmerTransaction.Amount already reflects on their own ledger — what the market owes
-/// this farmer BEFORE payments/adjustments, kept alongside Remaining (which nets in OpeningBalance,
+/// - TotalCommission, exactly what FarmerTransaction.Amount carries on their own ledger. No wood:
+/// "سعر الخشب" is paid to the DRIVER, who supplies and handles the crates (see InvoiceCharge), so
+/// it is no part of what the market owes this seller — this is what the market owes them BEFORE
+/// payments/adjustments, kept alongside Remaining (which nets in OpeningBalance,
 /// every payment, and any Adjustment reversal) so both "how much did we owe from sales alone" and
 /// "how much is left right now" are visible at once. OpeningBalance is broken out on its own even
 /// though it's already folded into Remaining — same traceability convention as
@@ -36,8 +36,12 @@ public record FarmerReportRow(
 /// mirrors InvoiceDto.TotalValue (product value only, commission base — never includes wood/
 /// transport). TotalWoodTotal/TotalTransportFee are broken out on their own (never silently folded
 /// into TotalPurchases) so "سعر الخشب" and "أجرة النقل" stay visible in detail, matching the same
-/// convention used on the invoice list / bulk-print pages. GrandTotal = TotalPurchases +
-/// TotalWoodTotal + TotalTransportFee — the actual amount charged across every matching invoice.
+/// convention used on the invoice list / bulk-print pages. GrandTotal is the SUM of each matching
+/// invoice's own stored charge (see InvoiceCharge) — so it also carries رسوم الصناديق and is net
+/// of any مرتجع, and therefore does NOT equal TotalPurchases + TotalWoodTotal + TotalTransportFee.
+/// It is deliberately read rather than re-derived from those three: this row's Remaining already
+/// sums the same stored charge, and a total assembled a second way is a total that eventually
+/// disagrees with it.
 /// OpeningBalance is broken out even though it's already folded into Remaining, same traceability
 /// convention as MerchantAccountDto.
 /// </summary>

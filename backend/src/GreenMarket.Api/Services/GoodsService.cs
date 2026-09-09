@@ -75,13 +75,27 @@ public class GoodsService : IGoodsService
             .GroupBy(l => (Name: l.ItemName.Trim().ToLowerInvariant(), l.Unit))
             .ToDictionary(g => g.Key, g => (Display: g.First().ItemName.Trim(), Total: g.Sum(l => l.Quantity)));
 
+        // Goods the buyer handed back are physically here again, so they are not sold. The money
+        // side already treats them that way — a مرتجع credits the buyer and debits the seller
+        // (see GoodsReturnService) — while this view counted them as sold forever, so the two
+        // disagreed about the same event and "المتوفر" read low by exactly what came back.
+        var returnedLines = await _db.GoodsReturns
+            .Where(r => r.Invoice.FarmerId == farmerId && r.Invoice.Status == InvoiceStatus.Active)
+            .SelectMany(r => r.Items)
+            .Select(ri => new { ri.ItemName, ri.Unit, ri.Quantity })
+            .ToListAsync();
+
+        var returnedByKey = returnedLines
+            .GroupBy(l => (Name: l.ItemName.Trim().ToLowerInvariant(), l.Unit))
+            .ToDictionary(g => g.Key, g => g.Sum(l => l.Quantity));
+
         var allKeys = receivedByKey.Keys.Union(soldByKey.Keys);
         var stock = allKeys.Select(key =>
         {
             var receivedAgg = receivedByKey.GetValueOrDefault(key);
             var received = receivedAgg.Total;
             var wood = receivedAgg.Wood;
-            var sold = soldByKey.GetValueOrDefault(key).Total;
+            var sold = soldByKey.GetValueOrDefault(key).Total - returnedByKey.GetValueOrDefault(key);
             var display = receivedByKey.TryGetValue(key, out var r) ? r.Display : soldByKey[key].Display;
             return new GoodsStockRow(display, key.Unit, received, sold, received - sold, wood);
         })
@@ -133,13 +147,23 @@ public class GoodsService : IGoodsService
             .GroupBy(l => (l.FarmerId, Name: l.ItemName.Trim().ToLowerInvariant(), l.Unit))
             .ToDictionary(g => g.Key, g => (FarmerName: g.First().FarmerName, Display: g.First().ItemName.Trim(), Total: g.Sum(l => l.Quantity)));
 
+        // Same netting as the per-seller view above — see its comment.
+        var returnedLines = await _db.GoodsReturns
+            .Where(r => r.Invoice.FarmerId != null && r.Invoice.Status == InvoiceStatus.Active)
+            .SelectMany(r => r.Items.Select(ri => new { FarmerId = r.Invoice.FarmerId!.Value, ri.ItemName, ri.Unit, ri.Quantity }))
+            .ToListAsync();
+
+        var returnedByKey = returnedLines
+            .GroupBy(l => (l.FarmerId, Name: l.ItemName.Trim().ToLowerInvariant(), l.Unit))
+            .ToDictionary(g => g.Key, g => g.Sum(l => l.Quantity));
+
         var allKeys = receivedByKey.Keys.Union(soldByKey.Keys);
         return allKeys.Select(key =>
         {
             var receivedAgg = receivedByKey.GetValueOrDefault(key);
             var received = receivedAgg.Total;
             var wood = receivedAgg.Wood;
-            var sold = soldByKey.GetValueOrDefault(key).Total;
+            var sold = soldByKey.GetValueOrDefault(key).Total - returnedByKey.GetValueOrDefault(key);
             var display = receivedByKey.TryGetValue(key, out var r) ? r.Display : soldByKey[key].Display;
             var farmerName = receivedByKey.TryGetValue(key, out var r2) ? r2.FarmerName : soldByKey[key].FarmerName;
             return new GoodsStockRow(display, key.Unit, received, sold, received - sold, wood, key.FarmerId, farmerName);

@@ -473,7 +473,9 @@ export function InvoiceEditPage() {
 
       <div className="flex justify-end gap-2">
         <button className="btn-secondary" onClick={() => navigate(`/invoices/${id}`)}>إلغاء</button>
-        <button className="btn-primary" onClick={handleSubmit} disabled={busy}>{busy ? "جاري الحفظ..." : "حفظ التعديلات"}</button>
+        {/* data-enter-target: Enter in the last field lands here (see lib/formNavigation) so a
+            whole invoice can be typed and saved without reaching for the mouse. */}
+        <button className="btn-primary" onClick={handleSubmit} disabled={busy} data-enter-target>{busy ? "جاري الحفظ..." : "حفظ التعديلات"}</button>
       </div>
     </div>
   );

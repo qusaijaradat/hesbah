@@ -23,6 +23,9 @@ body {
 
 .btn {
   @apply inline-flex items-center justify-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed;
+  /* Keyboard entry can now finish ON a button (see lib/formNavigation) — without a visible ring,
+     landing there is invisible and the next Enter feels like it came from nowhere. */
+  @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2;
 }
 
 .btn-primary {

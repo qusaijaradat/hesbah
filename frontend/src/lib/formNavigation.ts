@@ -31,6 +31,31 @@ const NON_ADVANCING_INPUT_TYPES = new Set(["submit", "reset", "button", "image",
  */
 const SCOPE_SELECTOR = "form, [data-field-scope], .fixed.inset-0";
 
+/**
+ * Where Enter finishes: the scope's primary action, opted in with `data-enter-target`.
+ *
+ * Enter deliberately does NOT walk buttons in general — a row's ✕, "إضافة صنف", "إلغاء" are all
+ * buttons sitting in the middle of the typing path, and stepping through them would make every
+ * invoice slower, not faster. But stopping dead at the last field left the one button people
+ * actually want, حفظ الفاتورة, reachable only by mouse, at the end of an entry flow whose whole
+ * point is not touching the mouse. So exactly one button per scope may say it is the end.
+ *
+ * Landing on it does not press it. Enter again does — the button's own Enter, unchanged.
+ */
+const FINAL_TARGET_SELECTOR = "[data-enter-target]";
+
+/** Same visibility/enabled rules as a field: a save button greyed out mid-save is not a
+ *  destination, and Enter is left alone rather than focusing something unusable. */
+function focusFinalTarget(scope: Element): boolean {
+  const target = scope.querySelector(FINAL_TARGET_SELECTOR) as HTMLElement | null;
+  if (!target) return false;
+  if ((target as HTMLButtonElement).disabled) return false;
+  if (target.tabIndex < 0) return false;
+  if (target.offsetParent === null && target.getClientRects().length === 0) return false;
+  target.focus();
+  return true;
+}
+
 function isEligibleField(element: Element): element is HTMLElement {
   const field = element as HTMLInputElement;
   if (field.disabled) return false;
@@ -47,8 +72,9 @@ function isEligibleField(element: Element): element is HTMLElement {
 /**
  * Moves focus to the field after `from` in document order, which for every form here matches
  * reading order (including across the cells of an invoice item row, then on to the next row).
- * Returns false when `from` is the last field in its scope — callers use that to leave the
- * keystroke alone rather than swallowing it.
+ * Returns false when there is nowhere left to go — the last field of a scope with no
+ * `data-enter-target` — and callers use that to leave the keystroke alone rather than swallowing
+ * it, so a real <form> still submits on Enter in its final field exactly as before.
  */
 export function focusNextField(from: HTMLElement): boolean {
   const scope = from.closest(SCOPE_SELECTOR) ?? document.body;
@@ -57,7 +83,8 @@ export function focusNextField(from: HTMLElement): boolean {
   if (currentIndex === -1) return false;
 
   const next = fields[currentIndex + 1];
-  if (!next) return false;
+  // Past the last field, Enter goes to the scope's primary action if it has named one.
+  if (!next) return focusFinalTarget(scope);
 
   next.focus();
   // Pre-select what's already there so typing replaces it instead of appending — the same thing

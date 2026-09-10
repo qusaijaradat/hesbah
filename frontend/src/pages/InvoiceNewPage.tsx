@@ -231,13 +231,13 @@ export function InvoiceNewPage() {
             label="المشتري" value={merchant} onChange={setMerchant}
             allowNew newTypeLabel="مشتري" text={merchantText} onFreeTextChange={setMerchantText}
             placeholder="اكتب اسم المشتري أو اختره من القائمة..."
-            types={["Merchant", "Both"]}
+            types={["Merchant"]}
           />
           <PartnerAutocomplete
             label="البائع (اختياري)" value={farmer} onChange={setFarmer}
             allowNew newTypeLabel="بائع" text={farmerText} onFreeTextChange={setFarmerText}
             placeholder="اتركه فارغًا إن لم يكن معروفًا..."
-            types={["Farmer", "Both"]}
+            types={["Farmer"]}
           />
           <PartnerAutocomplete
             label="السائق (اختياري)" value={driver} onChange={setDriver}

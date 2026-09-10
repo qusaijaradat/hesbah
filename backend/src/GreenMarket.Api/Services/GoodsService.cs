@@ -2,6 +2,7 @@ using GreenMarket.Api.Common;
 using GreenMarket.Api.DTOs;
 using GreenMarket.Domain.Entities;
 using GreenMarket.Domain.Enums;
+using GreenMarket.Domain.Services;
 using GreenMarket.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
@@ -192,7 +193,7 @@ public class GoodsService : IGoodsService
         // Type itself is nullable (staff can record a person before knowing their role) — a
         // still-unset Type is passed through rather than rejected, same as every other type check
         // added across this pass (see PaymentService.PartnerTypeMatches's doc comment).
-        if (farmer.Type is not (null or PartnerType.Farmer or PartnerType.Both))
+        if (!PartnerRoles.CanBe(farmer.Type, PartnerType.Farmer))
             throw new ValidationAppException($"الشخص المحدد ({farmer.Name}) ليس بائعًا — لا يمكن تسجيل بضاعة له.");
         ValidateLine(request.ItemName, request.Quantity, request.WoodQuantity, request.SackQuantity);
 

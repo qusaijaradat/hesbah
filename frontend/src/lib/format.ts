@@ -90,6 +90,25 @@ export function localDateInputValue(iso: string): string {
  * already addressed to the right person with the invoice details pre-typed, so the
  * employee only has to attach the PDF they just downloaded and hit send.
  */
+/** Mirrors backend PartnerRoles.Label — a person can hold more than one role, and the label has to
+ *  show all of them: "بائع/سائق", not whichever one happened to be checked for first. */
+export function partnerTypeLabel(type: string | null | undefined): string {
+  if (!type) return "—";
+  const parts: string[] = [];
+  if (type === "Farmer" || type === "Both" || type === "FarmerDriver" || type === "All") parts.push("بائع");
+  if (type === "Merchant" || type === "Both" || type === "MerchantDriver" || type === "All") parts.push("مشتري");
+  if (type === "Driver" || type === "FarmerDriver" || type === "MerchantDriver" || type === "All") parts.push("سائق");
+  return parts.length > 0 ? parts.join("/") : "—";
+}
+
+/** Does this person hold `role`? The picker and the account pages ask this, never `type === "..."`. */
+export function partnerHasRole(type: string | null | undefined, role: "Farmer" | "Merchant" | "Driver"): boolean {
+  if (!type) return false;
+  if (role === "Farmer") return type === "Farmer" || type === "Both" || type === "FarmerDriver" || type === "All";
+  if (role === "Merchant") return type === "Merchant" || type === "Both" || type === "MerchantDriver" || type === "All";
+  return type === "Driver" || type === "FarmerDriver" || type === "MerchantDriver" || type === "All";
+}
+
 export function buildWhatsAppLink(phone: string, message: string): string {
   const digitsOnly = phone.replace(/\D/g, "");
   return `https://wa.me/${digitsOnly}?text=${encodeURIComponent(message)}`;

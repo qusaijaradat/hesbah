@@ -3,6 +3,7 @@ using GreenMarket.Api.DTOs;
 using GreenMarket.Api.Services;
 using GreenMarket.Domain.Entities;
 using GreenMarket.Domain.Enums;
+using GreenMarket.Domain.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -158,7 +159,7 @@ public class PartnersController : ControllerBase
     public async Task<IActionResult> FarmerAccountPrintPdf(int id)
     {
         var account = await _partnerService.GetFarmerAccountAsync(id);
-        var roleLabel = account.Type == PartnerType.Driver ? "سائق" : "بائع";
+        var roleLabel = PartnerRoles.Has(account.Type, PartnerType.Driver) && !PartnerRoles.Has(account.Type, PartnerType.Farmer) ? "سائق" : "بائع";
         var company = await GetCompanyInfoAsync();
         var bytes = _exportService.GenerateAccountStatementPdf(account.Name, $"كشف حساب {roleLabel}", account.Statement, account.Remaining, company);
         return File(bytes, "application/pdf", "account-statement.pdf");

@@ -41,6 +41,19 @@ Show("hand-recorded container movements per person and kind (GetHoldersAsync)",
     db.ContainerMovements.GroupBy(m => new { m.PartnerId, m.Type, m.Direction })
         .Select(g => new { g.Key.PartnerId, g.Key.Type, g.Key.Direction, Total = g.Sum(m => m.Quantity) }));
 
+// Role membership is a BITWISE test now that a person can hold more than one role (PartnerRoles).
+// Worth printing: if EF cannot translate the & it does not fail here, it silently pulls the whole
+// partners table into memory — on the query behind every name picker in the app.
+var wantsDriver = true;
+var wantsMerchant = false;
+Show("name suggestions restricted to a ROLE, not an exact type (PartnerService.SuggestAsync)",
+    db.Partners.Where(p => p.Name.Contains("خالد")).Where(p => p.Type != null && (
+        (wantsMerchant && (p.Type.Value & PartnerType.Merchant) == PartnerType.Merchant) ||
+        (wantsDriver && (p.Type.Value & PartnerType.Driver) == PartnerType.Driver))));
+
+Show("partners list filtered by a role (PartnerService.ListAsync)",
+    db.Partners.Where(p => p.Type != null && (p.Type.Value & PartnerType.Driver) == PartnerType.Driver));
+
 void Show<T>(string label, IQueryable<T> query)
 {
     Console.WriteLine($"--- {label}");

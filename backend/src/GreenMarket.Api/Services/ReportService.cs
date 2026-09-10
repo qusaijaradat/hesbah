@@ -651,7 +651,7 @@ public class ReportService : IReportService
         var partners = await _db.Partners.Select(p => new { p.Id, p.Name, p.Type, p.OpeningBalance }).ToListAsync();
 
         var merchantDebts = partners
-            .Where(p => p.Type == PartnerType.Merchant || p.Type == PartnerType.Both)
+            .Where(p => PartnerRoles.Has(p.Type, PartnerType.Merchant))
             .Select(p => new PartnerDebtRow(p.Id, p.Name,
                 (p.OpeningBalance ?? 0) + purchasesByMerchant.GetValueOrDefault(p.Id) - paidByMerchant.GetValueOrDefault(p.Id)))
             .Where(r => r.Remaining > 0)
@@ -659,7 +659,7 @@ public class ReportService : IReportService
             .ToList();
 
         var sellerDues = partners
-            .Where(p => p.Type == PartnerType.Farmer || p.Type == PartnerType.Driver || p.Type == PartnerType.Both)
+            .Where(p => PartnerRoles.HasSellerSide(p.Type))
             .Select(p => new PartnerDebtRow(p.Id, p.Name, (p.OpeningBalance ?? 0) + sellerBalances.GetValueOrDefault(p.Id)))
             .Where(r => r.Remaining > 0)
             .OrderByDescending(r => r.Remaining)

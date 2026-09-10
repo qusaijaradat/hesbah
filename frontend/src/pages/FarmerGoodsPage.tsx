@@ -263,7 +263,7 @@ export function FarmerGoodsPage() {
           <PartnerAutocomplete
             label="البائع" value={farmerPick} onChange={setFarmerPick}
             placeholder="اكتب اسم البائع واختره من القائمة..."
-            types={["Farmer", "Both"]}
+            types={["Farmer"]}
             allowNew={canCreatePartners}
             newTypeLabel="بائع"
             onCreateNew={canCreatePartners ? createFarmer : undefined}

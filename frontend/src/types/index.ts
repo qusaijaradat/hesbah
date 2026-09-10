@@ -4,7 +4,14 @@
 
 // "Farmer" displays in the UI as "بائع" (Seller); "Driver" ("سائق") is a peer type that shares
 // the same optional invoice slot and ledger wiring — see the remarks on PartnerType in the backend.
-export type PartnerType = "Farmer" | "Merchant" | "Both" | "Driver";
+/** The roles a person holds, combined. "Both" is the old name for seller+buyer and stays because
+ *  it is what the database holds; the two combinations with a driver in them had no name at all,
+ *  which is how a driver whose name already existed was saved as a buyer. See backend PartnerRoles. */
+export type PartnerType = "Farmer" | "Merchant" | "Both" | "Driver" | "FarmerDriver" | "MerchantDriver" | "All";
+
+/** A single role to ask about — what the name pickers filter by, and what a person may hold */
+/** several of at once. */
+export type PartnerRole = "Farmer" | "Merchant" | "Driver";
 export type InvoiceStatus = "Active" | "Cancelled";
 // Three separate directions — ToFarmer and ToDriver used to share one value ("ToFarmer" covered
 // both), which meant the person picker searched every partner regardless of type. Now each has

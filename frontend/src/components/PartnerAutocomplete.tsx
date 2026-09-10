@@ -1,3 +1,4 @@
+import { partnerTypeLabel } from "../lib/format";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { suggestPartners } from "../api/partners";
 import { useSuggestionKeyboard } from "../lib/useSuggestionKeyboard";
@@ -233,9 +234,6 @@ type Option =
   | { kind: "existing"; partner: PartnerSuggestionDto }
   | { kind: "new"; name: string };
 
-function typeLabel(type: string) {
-  if (type === "Farmer") return "بائع";
-  if (type === "Driver") return "سائق";
-  if (type === "Merchant") return "مشتري";
-  return "بائع/مشتري";
-}
+// One definition, in lib/format — this one knew four of the seven combinations and called
+// everything it did not recognise "بائع/مشتري", including every driver who also bought.
+const typeLabel = partnerTypeLabel;

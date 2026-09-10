@@ -62,8 +62,8 @@ const ROLE_LABEL: Record<Role, string> = { Merchant: "مشتري", Farmer: "با
 /** Plural form, for the "استثناء ..." picker's own label/placeholder. */
 const ROLE_PLURAL_LABEL: Record<Role, string> = { Merchant: "المشترين", Farmer: "الباعة", Driver: "السواق" };
 const ROLE_PARTNER_TYPES: Record<Role, PartnerType[]> = {
-  Merchant: ["Merchant", "Both"],
-  Farmer: ["Farmer", "Both"],
+  Merchant: ["Merchant"],
+  Farmer: ["Farmer"],
   Driver: ["Driver"],
 };
 const ROLE_FILE_SLUG: Record<Role, string> = { Merchant: "buyer", Farmer: "farmer", Driver: "driver" };
@@ -1004,7 +1004,7 @@ export function BulkPrintPage() {
               <PartnerAutocomplete
                 label="البائع" value={farmerStatementPick} onChange={setFarmerStatementPick}
                 placeholder="اكتب اسم البائع واختره من القائمة..."
-                types={["Farmer", "Both"]}
+                types={["Farmer"]}
               />
             </div>
             <div>

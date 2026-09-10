@@ -83,8 +83,11 @@ public class PartnerService : IPartnerService
         var query = _db.Partners.AsQueryable();
         if (!string.IsNullOrWhiteSpace(search))
             query = query.Where(p => p.Name.Contains(search));
+        // By ROLE, not by exact value: filtering the list to "سائق" has to include the man who
+        // drives and also buys, who is stored as MerchantDriver. Equality hid every such person
+        // from every filter they belonged in.
         if (type is not null)
-            query = query.Where(p => p.Type == type);
+            query = query.Where(p => p.Type != null && (p.Type.Value & type.Value) == type.Value);
 
         var total = await query.CountAsync();
         var pageItems = await query.OrderBy(p => p.Name)
@@ -94,8 +97,8 @@ public class PartnerService : IPartnerService
         // "الرصيد" column on this list: same bulk-aggregated Remaining formulas as
         // GetDebtsOverviewAsync (one grouped query across this page's ids, not one DB round trip
         // per row) — see PartnerDto's doc comment for why Farmer/Merchant sides stay separate.
-        var sellerIds = pageItems.Where(p => p.Type is PartnerType.Farmer or PartnerType.Driver or PartnerType.Both).Select(p => p.Id).ToList();
-        var merchantIds = pageItems.Where(p => p.Type is PartnerType.Merchant or PartnerType.Both).Select(p => p.Id).ToList();
+        var sellerIds = pageItems.Where(p => PartnerRoles.HasSellerSide(p.Type)).Select(p => p.Id).ToList();
+        var merchantIds = pageItems.Where(p => PartnerRoles.Has(p.Type, PartnerType.Merchant)).Select(p => p.Id).ToList();
 
         var netAmountBySeller = await _db.FarmerTransactions
             .Where(t => sellerIds.Contains(t.FarmerId))
@@ -120,10 +123,10 @@ public class PartnerService : IPartnerService
 
         var items = pageItems.Select(p =>
         {
-            decimal? farmerRemaining = p.Type is PartnerType.Farmer or PartnerType.Driver or PartnerType.Both
+            decimal? farmerRemaining = PartnerRoles.HasSellerSide(p.Type)
                 ? (p.OpeningBalance ?? 0) + netAmountBySeller.GetValueOrDefault(p.Id)
                 : null;
-            decimal? merchantRemaining = p.Type is PartnerType.Merchant or PartnerType.Both
+            decimal? merchantRemaining = PartnerRoles.Has(p.Type, PartnerType.Merchant)
                 ? (p.OpeningBalance ?? 0) + purchasesByMerchant.GetValueOrDefault(p.Id) - paidByMerchant.GetValueOrDefault(p.Id)
                 : null;
             return ToDto(p, farmerRemaining, merchantRemaining);
@@ -144,8 +147,20 @@ public class PartnerService : IPartnerService
         var q = _db.Partners.AsQueryable();
         if (!string.IsNullOrEmpty(trimmed))
             q = q.Where(p => p.Name.Contains(trimmed));
+        // Each requested type is a ROLE to hold, not a value to equal — "Driver" has to suggest
+        // the seller who also drives (FarmerDriver) as readily as a pure driver. Exact matching is
+        // why, once the find-or-create bug had merged someone, the picker stopped offering them at
+        // all and the invoice could no longer be written.
         if (types is { Count: > 0 })
-            q = q.Where(p => p.Type != null && types.Contains(p.Type.Value));
+        {
+            var wantsFarmer = types.Contains(PartnerType.Farmer);
+            var wantsMerchant = types.Contains(PartnerType.Merchant);
+            var wantsDriver = types.Contains(PartnerType.Driver);
+            q = q.Where(p => p.Type != null && (
+                (wantsFarmer && (p.Type.Value & PartnerType.Farmer) == PartnerType.Farmer) ||
+                (wantsMerchant && (p.Type.Value & PartnerType.Merchant) == PartnerType.Merchant) ||
+                (wantsDriver && (p.Type.Value & PartnerType.Driver) == PartnerType.Driver)));
+        }
 
         return await q
             .OrderBy(p => p.Name)
@@ -206,14 +221,14 @@ public class PartnerService : IPartnerService
 
         if (existing is not null)
         {
-            if (existing.Type is not null && existing.Type != type && existing.Type != PartnerType.Both)
+            // Roles ADD UP (PartnerRoles.Add). This used to set the type to "Both" — seller+buyer —
+            // whatever the two roles really were, so entering a driver whose name already belonged to
+            // a buyer saved him as بائع/مشتري and threw the driver role away, on an invoice that had
+            // just recorded him as the driver.
+            var combined = PartnerRoles.Add(existing.Type, type);
+            if (existing.Type != combined)
             {
-                existing.Type = PartnerType.Both;
-                await _db.SaveChangesAsync();
-            }
-            else if (existing.Type is null)
-            {
-                existing.Type = type;
+                existing.Type = combined;
                 await _db.SaveChangesAsync();
             }
             return existing;
@@ -244,7 +259,7 @@ public class PartnerService : IPartnerService
         // merchant would silently do nothing. Type is nullable by design (staff can record a
         // person before knowing their role), so an unset type is allowed through, same as every
         // other type check in this codebase.
-        if (partner.Type is PartnerType.Merchant)
+        if (partner.Type is not null && !PartnerRoles.HasSellerSide(partner.Type))
             throw new ValidationAppException($"الشخص المحدد ({partner.Name}) مشترٍ — التسوية تُسجّل على حساب بائع أو سائق فقط.");
 
         var line = new FarmerTransaction
@@ -481,9 +496,11 @@ public class PartnerService : IPartnerService
                 .OrderByDescending(r => Math.Abs(r.Remaining))
                 .ToList();
 
-        var farmers = BuildRows(partners.Where(p => p.Type == PartnerType.Farmer || p.Type == PartnerType.Both), SellerRemaining);
-        var drivers = BuildRows(partners.Where(p => p.Type == PartnerType.Driver), SellerRemaining);
-        var merchants = BuildRows(partners.Where(p => p.Type == PartnerType.Merchant || p.Type == PartnerType.Both), MerchantRemaining);
+        // Someone who both sells and drives appears in BOTH lists — they have one ledger balance
+        // between them, so the same figure shows twice rather than the person going missing from one.
+        var farmers = BuildRows(partners.Where(p => PartnerRoles.Has(p.Type, PartnerType.Farmer)), SellerRemaining);
+        var drivers = BuildRows(partners.Where(p => PartnerRoles.Has(p.Type, PartnerType.Driver)), SellerRemaining);
+        var merchants = BuildRows(partners.Where(p => PartnerRoles.Has(p.Type, PartnerType.Merchant)), MerchantRemaining);
 
         return new DebtsOverviewDto(farmers, drivers, merchants);
     }
@@ -496,7 +513,8 @@ public class PartnerService : IPartnerService
     {
         var partner = await _db.Partners.FindAsync(id) ?? throw new NotFoundAppException("Partner", id);
 
-        var query = partner.Type == PartnerType.Driver
+        // A person who is both keeps the seller reading: it is the side with produce on it.
+        var query = PartnerRoles.Has(partner.Type, PartnerType.Driver) && !PartnerRoles.Has(partner.Type, PartnerType.Farmer)
             ? _db.Invoices.Where(i => i.DriverId == id && i.Status == InvoiceStatus.Active)
             : _db.Invoices.Where(i => i.FarmerId == id && i.Status == InvoiceStatus.Active);
 

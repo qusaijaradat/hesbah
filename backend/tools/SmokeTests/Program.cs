@@ -98,6 +98,56 @@ Console.WriteLine("== InvoiceCalculator ==");
     }
 }
 
+Console.WriteLine("== PartnerRoles: a person can be more than one thing ==");
+{
+    // The reported bug, exactly: a new driver typed into an invoice's driver field, whose name was
+    // already on file as a buyer, came back as بائع/مشتري with no driver role at all — while that
+    // same invoice recorded him as its driver.
+    var wasBuyer = PartnerType.Merchant;
+    var nowAlsoDrives = PartnerRoles.Add(wasBuyer, PartnerType.Driver);
+    Check("a buyer entered as a driver keeps BOTH roles",
+          PartnerRoles.Has(nowAlsoDrives, PartnerType.Merchant) && PartnerRoles.Has(nowAlsoDrives, PartnerType.Driver),
+          $"got {nowAlsoDrives}");
+    Check("and is not silently turned into a seller", !PartnerRoles.Has(nowAlsoDrives, PartnerType.Farmer),
+          $"got {nowAlsoDrives}");
+    Check("the combination has a name of its own", nowAlsoDrives == PartnerType.MerchantDriver, $"got {nowAlsoDrives}");
+
+    // The knock-on effect: he was rejected from the driver field on every later invoice, and the
+    // picker stopped offering his name.
+    Check("he can be used as a driver on the next invoice", PartnerRoles.CanBe(nowAlsoDrives, PartnerType.Driver));
+    Check("and still as a buyer", PartnerRoles.CanBe(nowAlsoDrives, PartnerType.Merchant));
+    Check("but not as a seller", !PartnerRoles.CanBe(nowAlsoDrives, PartnerType.Farmer));
+
+    // The reverse direction lost the driver role instead.
+    var driverWhoBuys = PartnerRoles.Add(PartnerType.Driver, PartnerType.Merchant);
+    Check("a driver entered as a buyer stays a driver", PartnerRoles.Has(driverWhoBuys, PartnerType.Driver));
+    Check("roles combine the same either way round", driverWhoBuys == nowAlsoDrives);
+
+    // Existing data keeps its meaning: Both has always been stored as 3 = Farmer | Merchant.
+    Check("Both still means seller and buyer",
+          PartnerRoles.Has(PartnerType.Both, PartnerType.Farmer) && PartnerRoles.Has(PartnerType.Both, PartnerType.Merchant));
+    Check("Both is not a driver", !PartnerRoles.Has(PartnerType.Both, PartnerType.Driver));
+    Check("Both is still the number already in the database", (int)PartnerType.Both == 3);
+    Check("adding a role a person already holds changes nothing",
+          PartnerRoles.Add(PartnerType.Both, PartnerType.Farmer) == PartnerType.Both);
+
+    // A person recorded before their role was known must stay usable for anything.
+    Check("an untyped person may be used as any role",
+          PartnerRoles.CanBe(null, PartnerType.Driver) && PartnerRoles.CanBe(null, PartnerType.Farmer));
+    Check("but does not COUNT as one in any list", !PartnerRoles.Has(null, PartnerType.Driver));
+
+    // Both sellers and drivers post to the same ledger, so balance queries ask one question.
+    Check("seller side covers sellers, drivers and every mix",
+          PartnerRoles.HasSellerSide(PartnerType.Farmer) && PartnerRoles.HasSellerSide(PartnerType.Driver) &&
+          PartnerRoles.HasSellerSide(PartnerType.MerchantDriver) && PartnerRoles.HasSellerSide(PartnerType.All));
+    Check("a plain buyer has no seller side", !PartnerRoles.HasSellerSide(PartnerType.Merchant));
+
+    Check("the label names every role held, not just the first",
+          PartnerRoles.Label(PartnerType.MerchantDriver) == "مشتري/سائق", PartnerRoles.Label(PartnerType.MerchantDriver));
+    Check("all three reads as all three",
+          PartnerRoles.Label(PartnerType.All) == "بائع/مشتري/سائق", PartnerRoles.Label(PartnerType.All));
+}
+
 Console.WriteLine("== The money identity: buyer - seller - driver == market ==");
 {
     // The one invariant every money rule in this system has to satisfy, and the one that kept

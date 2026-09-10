@@ -8,7 +8,7 @@ import {
 } from "../api/partners";
 import { apiErrorMessage } from "../api/client";
 import type { FarmerAccountDto, MerchantAccountDto, StatementLineDto } from "../types";
-import { formatCurrency, formatDate } from "../lib/format";
+import { formatCurrency, formatDate, partnerHasRole } from "../lib/format";
 import { StatCard } from "../components/StatCard";
 import { CREDIT_LIMIT_UI_ENABLED } from "../lib/featureFlags";
 import { useAuth } from "../auth/AuthContext";
@@ -33,7 +33,7 @@ export function FarmerAccountPage() {
 
   // Title reflects this person's ACTUAL type — a Driver never has a farmer side and vice versa
   // (a Both partner is farmer+merchant, never a driver, so their farmer-side title always reads "بائع").
-  const roleLabel = account.type === "Driver" ? "سائق" : "بائع";
+  const roleLabel = partnerHasRole(account.type, "Driver") && !partnerHasRole(account.type, "Farmer") ? "سائق" : "بائع";
 
   return (
     <div>

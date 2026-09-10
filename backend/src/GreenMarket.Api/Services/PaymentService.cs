@@ -269,9 +269,9 @@ public class PaymentService : IPaymentService
     /// is passed through here rather than rejected.</summary>
     private static bool PartnerTypeMatches(PartnerType? actual, PartnerType expected) => actual is null || expected switch
     {
-        PartnerType.Farmer => actual is PartnerType.Farmer or PartnerType.Both,
-        PartnerType.Merchant => actual is PartnerType.Merchant or PartnerType.Both,
-        PartnerType.Driver => actual is PartnerType.Driver,
+        PartnerType.Farmer => PartnerRoles.Has(actual, PartnerType.Farmer),
+        PartnerType.Merchant => PartnerRoles.Has(actual, PartnerType.Merchant),
+        PartnerType.Driver => PartnerRoles.Has(actual, PartnerType.Driver),
         _ => actual == expected
     };
 

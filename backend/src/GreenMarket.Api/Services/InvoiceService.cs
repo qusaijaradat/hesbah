@@ -865,13 +865,11 @@ public class InvoiceService : IInvoiceService
     /// PartnerService.ValidateNameAndType/PartnersPage's "النوع (اختياري)" field): a still-unset
     /// Type can't fail this check without also blocking that pre-existing, intentional flow, so it
     /// is passed through here rather than rejected.</summary>
-    private static bool PartnerTypeMatches(PartnerType? actual, PartnerType expected) => actual is null || expected switch
-    {
-        PartnerType.Farmer => actual is PartnerType.Farmer or PartnerType.Both,
-        PartnerType.Merchant => actual is PartnerType.Merchant or PartnerType.Both,
-        PartnerType.Driver => actual is PartnerType.Driver,
-        _ => actual == expected
-    };
+    // PartnerRoles.CanBe: one bitwise test that covers every combination of roles, including the
+    // two this used to have no way to express. The hand-written version denied a driver who was
+    // also a buyer — which is precisely the state the find-or-create bug kept putting people in.
+    private static bool PartnerTypeMatches(PartnerType? actual, PartnerType expected) =>
+        PartnerRoles.CanBe(actual, expected);
 
     private static string PartnerTypeLabel(PartnerType type) => type switch
     {

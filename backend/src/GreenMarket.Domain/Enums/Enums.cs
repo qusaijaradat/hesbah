@@ -12,12 +12,28 @@ namespace GreenMarket.Domain.Enums;
 /// FarmerTransactionType.TransportFee), so "كشف حساب بائع/سائق" (GetFarmerAccountAsync) and its
 /// FarmerId-keyed statement/remaining-balance math work unchanged for either kind of person.
 /// </remarks>
+/// <remarks>
+/// The roles combine. They always could in real life — the man who drives for the market on Tuesday
+/// buys from it on Thursday — but this enum could only express seller+buyer ("Both"), so a driver
+/// whose name already existed was quietly turned INTO a seller+buyer and stopped being a driver at
+/// all. See PartnerRoles for the whole story and for the only correct way to read or combine these.
+///
+/// The values are powers of two and have been since the beginning, so Both == Farmer | Merchant is
+/// already what is stored in every existing row: naming it [Flags] changes no data, it only stops
+/// the two missing combinations from being unrepresentable.
+/// </remarks>
+[Flags]
 public enum PartnerType
 {
     Farmer = 1,
     Merchant = 2,
-    Both = 3,
-    Driver = 4
+    /// <summary>Seller and buyer. Named before drivers existed; kept because it is in the database.</summary>
+    Both = Farmer | Merchant,
+    Driver = 4,
+    FarmerDriver = Farmer | Driver,
+    MerchantDriver = Merchant | Driver,
+    /// <summary>Seller, buyer and driver at once.</summary>
+    All = Farmer | Merchant | Driver
 }
 
 /// <summary>

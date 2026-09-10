@@ -4,7 +4,7 @@ import { Link } from "react-router-dom";
 import { createPartner, deletePartner, listPartners, updatePartner } from "../api/partners";
 import type { PartnerDto, PartnerType } from "../types";
 import { apiErrorMessage } from "../api/client";
-import { formatCurrency } from "../lib/format";
+import { formatCurrency, partnerHasRole, partnerTypeLabel } from "../lib/format";
 import { useAuth } from "../auth/AuthContext";
 import { usePagination } from "../lib/usePagination";
 import { TablePagination } from "../components/TablePagination";
@@ -12,7 +12,8 @@ import { CREDIT_LIMIT_UI_ENABLED } from "../lib/featureFlags";
 import { useSelection } from "../lib/useSelection";
 import { runBulkDelete, summarizeBulkDelete } from "../lib/bulkDelete";
 
-const TYPE_LABELS: Record<string, string> = { Farmer: "بائع", Driver: "سائق", Merchant: "مشتري", Both: "بائع/مشتري" };
+// Labels come from one place now (lib/format) — this map knew four of the seven combinations and
+// rendered the rest blank.
 
 export function PartnersPage() {
   const { hasPermission } = useAuth();
@@ -47,8 +48,9 @@ export function PartnersPage() {
   // partner just shows their one figure with no label. Red when negative (mirrors every other
   // "remaining" figure in the app — e.g. BulkPrintPage's SectionTable).
   function renderRemaining(p: PartnerDto) {
-    const farmerLabel = p.type === "Driver" ? "سائق" : "بائع";
-    const isBoth = p.type === "Both";
+    const farmerLabel = partnerHasRole(p.type, "Driver") && !partnerHasRole(p.type, "Farmer") ? "سائق" : "بائع";
+    // More than one role, so each balance needs saying which side it is.
+    const isBoth = partnerHasRole(p.type, "Farmer") && partnerHasRole(p.type, "Merchant");
     const lines: ReactNode[] = [];
     if (p.farmerRemaining != null) {
       lines.push(
@@ -163,7 +165,7 @@ export function PartnersPage() {
                     </td>
                   )}
                   <td className="font-medium">{p.name}</td>
-                  <td>{p.type ? TYPE_LABELS[p.type] : "—"}</td>
+                  <td>{partnerTypeLabel(p.type)}</td>
                   <td>{p.whatsAppNumber || "—"}</td>
                   <td className="text-gray-500">{p.address || "—"}</td>
                   {CREDIT_LIMIT_UI_ENABLED && <td>{p.creditLimit != null ? formatCurrency(p.creditLimit) : "—"}</td>}
@@ -174,12 +176,12 @@ export function PartnersPage() {
                         everyone, since a Driver never has a farmer side and vice versa. A Both
                         partner is farmer+merchant (never a driver), so their farmer-side link
                         always reads "بائع". */}
-                    {(p.type === "Farmer" || p.type === "Driver" || p.type === "Both") && (
+                    {(partnerHasRole(p.type, "Farmer") || partnerHasRole(p.type, "Driver")) && (
                       <Link to={`/partners/${p.id}/farmer-account`} className="text-brand-700 text-sm hover:underline ms-2">
-                        كشف حساب ({p.type === "Driver" ? "سائق" : "بائع"})
+                        كشف حساب ({partnerHasRole(p.type, "Driver") && !partnerHasRole(p.type, "Farmer") ? "سائق" : "بائع"})
                       </Link>
                     )}
-                    {(p.type === "Merchant" || p.type === "Both") && (
+                    {partnerHasRole(p.type, "Merchant") && (
                       <Link to={`/partners/${p.id}/merchant-account`} className="text-brand-700 text-sm hover:underline ms-2">كشف حساب (مشتري)</Link>
                     )}
                     {canEdit && (

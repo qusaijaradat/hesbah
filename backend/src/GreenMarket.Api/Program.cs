@@ -736,6 +736,44 @@ using (var scope = app.Services.CreateScope())
     {
         app.Logger.LogError(ex, "Failed to correct the default commission rate from 7% to 10% — check/update it manually from الإعدادات if it's still wrong.");
     }
+
+    // Gives people back the roles the old find-or-create took off them. Until PartnerType became a
+    // set of roles, entering someone in a slot they were not already typed for set them to "Both" —
+    // seller+buyer — whatever the two roles actually were. Anyone entered as a DRIVER whose name was
+    // already on file lost the driver role in the same breath as the invoice recording that he drove
+    // it, and then could not be picked as a driver again.
+    //
+    // The truth is still on the invoices: whoever is a MerchantId IS a buyer, a FarmerId a seller, a
+    // DriverId a driver. So this ORs those roles back on (PartnerType is [Flags] — 1 seller, 2 buyer,
+    // 4 driver) rather than guessing. Purely additive, never clears a role, and the WHERE makes every
+    // re-run a no-op — the same recompute-don't-adjust rule the ledger corrections above follow.
+    try
+    {
+        var restored = await db.Database.ExecuteSqlRawAsync("""
+            WITH roles AS (
+                SELECT "MerchantId" AS pid, 2 AS role FROM invoices WHERE NOT "IsDeleted"
+                UNION ALL
+                SELECT "FarmerId", 1 FROM invoices WHERE NOT "IsDeleted" AND "FarmerId" IS NOT NULL
+                UNION ALL
+                SELECT "DriverId", 4 FROM invoices WHERE NOT "IsDeleted" AND "DriverId" IS NOT NULL
+            ), held AS (
+                SELECT pid, bit_or(role) AS mask FROM roles GROUP BY pid
+            )
+            UPDATE partners p
+            SET "Type" = COALESCE(p."Type", 0) | h.mask
+            FROM held h
+            WHERE p."Id" = h.pid
+              AND (COALESCE(p."Type", 0) | h.mask) <> COALESCE(p."Type", 0);
+            """);
+        if (restored > 0)
+            app.Logger.LogWarning(
+                "Restored roles on {Count} partner(s) that the old find-or-create had overwritten — mostly drivers who had been turned into بائع/مشتري and could no longer be picked as drivers.",
+                restored);
+    }
+    catch (Exception ex)
+    {
+        app.Logger.LogError(ex, "Failed to restore partner roles lost to the old find-or-create — affected people stay mistyped and cannot be picked for the slot they lost until this is fixed.");
+    }
 }
 
 // ---------- Middleware pipeline ----------

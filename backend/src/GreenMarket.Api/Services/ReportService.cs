@@ -115,10 +115,11 @@ public class ReportService : IReportService
             var opening = openingBalances.GetValueOrDefault(a.FarmerId);
             return new FarmerReportRow(
                 a.FarmerId, a.FarmerName, a.InvoiceCount, a.TotalWeightKg, a.TotalBoxes, a.TotalSalesValue,
-                // InvoiceCharge.ForSeller, aggregated — the same definition the seller's ledger
-                // rows are written with, so NetDue and Remaining in this row cannot disagree with
-                // each other or with the seller's own كشف حساب.
-                commission, a.TotalSalesValue - commission - a.TotalTransportFee, paidByFarmer.GetValueOrDefault(a.FarmerId),
+                // InvoiceCharge.ForSeller itself, over the aggregate — it said "ForSeller" in this
+                // comment while spelling the formula out again below it, which is exactly how the
+                // other copies of this rule drifted. Called now, so NetDue here cannot disagree with
+                // the seller's ledger rows or his own كشف حساب.
+                commission, InvoiceCharge.ForSeller(a.TotalSalesValue, commission, a.TotalTransportFee), paidByFarmer.GetValueOrDefault(a.FarmerId),
                 opening + allTimeBalance.GetValueOrDefault(a.FarmerId), opening, a.LastInvoiceDate);
         })
         .OrderBy(r => r.FarmerName)

@@ -200,7 +200,8 @@ public class PartnerService : IPartnerService
             Address = request.Address,
             Notes = request.Notes,
             CreditLimit = request.CreditLimit,
-            OpeningBalance = request.OpeningBalance
+            OpeningBalance = request.OpeningBalance,
+            IncludeOpeningBalanceInInvoices = request.IncludeOpeningBalanceInInvoices
         };
         _db.Partners.Add(partner);
         await _db.SaveChangesAsync();
@@ -322,6 +323,7 @@ public class PartnerService : IPartnerService
         partner.Notes = request.Notes;
         partner.CreditLimit = request.CreditLimit;
         partner.OpeningBalance = request.OpeningBalance;
+        partner.IncludeOpeningBalanceInInvoices = request.IncludeOpeningBalanceInInvoices;
         await _db.SaveChangesAsync();
         return ToDto(partner);
     }
@@ -511,24 +513,31 @@ public class PartnerService : IPartnerService
             .Select(g => new { PartnerId = g.Key, Total = g.Sum(p => p.Amount) })
             .ToDictionaryAsync(x => x.PartnerId, x => x.Total);
 
-        decimal SellerRemaining(int id, decimal? openingBalance) =>
-            (openingBalance ?? 0) + netAmountBySeller.GetValueOrDefault(id);
+        // The CURRENT half only — what this system itself recorded. The old debt is added on top in
+        // BuildRows, so the two halves are computed once each and Remaining is their sum rather than
+        // a third expression that could drift from them.
+        decimal SellerCurrent(int id) => netAmountBySeller.GetValueOrDefault(id);
 
-        decimal MerchantRemaining(int id, decimal? openingBalance) =>
-            (openingBalance ?? 0) + purchasesByMerchant.GetValueOrDefault(id) - paidByMerchant.GetValueOrDefault(id);
+        decimal MerchantCurrent(int id) =>
+            purchasesByMerchant.GetValueOrDefault(id) - paidByMerchant.GetValueOrDefault(id);
 
-        List<PartnerDebtRow> BuildRows(IEnumerable<PartnerBalanceSeed> people, Func<int, decimal?, decimal> remainingFn) =>
+        List<PartnerDebtRow> BuildRows(IEnumerable<PartnerBalanceSeed> people, Func<int, decimal> currentFn) =>
             people
-                .Select(p => new PartnerDebtRow(p.Id, p.Name, remainingFn(p.Id, p.OpeningBalance)))
+                .Select(p =>
+                {
+                    var oldDebt = p.OpeningBalance ?? 0;
+                    var current = currentFn(p.Id);
+                    return new PartnerDebtRow(p.Id, p.Name, oldDebt, current, oldDebt + current);
+                })
                 .Where(r => r.Remaining != 0)
                 .OrderByDescending(r => Math.Abs(r.Remaining))
                 .ToList();
 
         // Someone who both sells and drives appears in BOTH lists — they have one ledger balance
         // between them, so the same figure shows twice rather than the person going missing from one.
-        var farmers = BuildRows(partners.Where(p => PartnerRoles.Has(p.Type, PartnerType.Farmer)), SellerRemaining);
-        var drivers = BuildRows(partners.Where(p => PartnerRoles.Has(p.Type, PartnerType.Driver)), SellerRemaining);
-        var merchants = BuildRows(partners.Where(p => PartnerRoles.Has(p.Type, PartnerType.Merchant)), MerchantRemaining);
+        var farmers = BuildRows(partners.Where(p => PartnerRoles.Has(p.Type, PartnerType.Farmer)), SellerCurrent);
+        var drivers = BuildRows(partners.Where(p => PartnerRoles.Has(p.Type, PartnerType.Driver)), SellerCurrent);
+        var merchants = BuildRows(partners.Where(p => PartnerRoles.Has(p.Type, PartnerType.Merchant)), MerchantCurrent);
 
         return new DebtsOverviewDto(farmers, drivers, merchants);
     }
@@ -618,7 +627,8 @@ public class PartnerService : IPartnerService
             line.InvoiceId, line.InvoiceNumber, line.SaleValue, line.Commission, line.Method, line.Notes);
 
     private static PartnerDto ToDto(Partner p, decimal? farmerRemaining = null, decimal? merchantRemaining = null) =>
-        new(p.Id, p.Name, p.Type, p.WhatsAppNumber, p.Address, p.Notes, p.CreditLimit, p.OpeningBalance, farmerRemaining, merchantRemaining);
+        new(p.Id, p.Name, p.Type, p.WhatsAppNumber, p.Address, p.Notes, p.CreditLimit, p.OpeningBalance,
+            p.IncludeOpeningBalanceInInvoices, farmerRemaining, merchantRemaining);
 
     /// <summary>Minimal projection used only inside GetDebtsOverviewAsync — a typed stand-in for an
     /// anonymous type so it can be passed around a local helper function.</summary>

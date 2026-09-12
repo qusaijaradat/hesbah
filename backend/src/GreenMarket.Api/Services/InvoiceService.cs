@@ -468,9 +468,8 @@ public class InvoiceService : IInvoiceService
     }
 
     /// <summary>
-    /// "الرصيد السابق" on a printed invoice: this merchant's manually-entered "الرصيد الافتتاحي"
-    /// (Partner.OpeningBalance — money already owed before this system was in use) PLUS what they
-    /// still owe from every one of their OTHER Active invoices (GrandTotal — see InvoiceCharge
+    /// "الرصيد السابق" on a printed invoice: what this merchant still owes from every one of their
+    /// OTHER Active invoices (GrandTotal — see InvoiceCharge
     /// for exactly what a buyer is charged; transport is not part of it) minus every
     /// FromMerchant payment they've ever made, all-time — never date-scoped, since the point is
     /// "what's actually still owed right now", not a snapshot frozen at some past invoice date.
@@ -489,7 +488,10 @@ public class InvoiceService : IInvoiceService
         // FindAsync hits the DbContext's local tracking cache first — every caller of this method
         // already Included the Merchant navigation on the same context, so this is normally free.
         var merchant = await _db.Partners.FindAsync(merchantId);
-        var openingBalance = merchant?.OpeningBalance ?? 0;
+        // Only for a buyer marked for it — see Partner.IncludeOpeningBalanceInInvoices for why an
+        // old debt stays off a printed invoice unless someone says otherwise. His account still
+        // carries it either way; this is about what the paper says.
+        var openingBalance = merchant?.IncludeOpeningBalanceInInvoices == true ? merchant.OpeningBalance ?? 0 : 0;
 
         var otherInvoices = await _db.Invoices
             .Where(i => i.MerchantId == merchantId && i.Status == InvoiceStatus.Active && !excludeInvoiceIds.Contains(i.Id))

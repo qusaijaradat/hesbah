@@ -45,6 +45,19 @@ public class Partner : AuditableEntity
     /// </summary>
     public decimal? OpeningBalance { get; set; }
 
+    /// <summary>
+    /// Whether <see cref="OpeningBalance"/> is added into the "الرصيد السابق" printed on this
+    /// person's invoices. OFF by default, and that default is the point.
+    ///
+    /// An opening balance is an old debt carried over from before this system. It belongs on the
+    /// ACCOUNT — the كشف حساب opens with it as its own dated "دين قديم" line and المتبقي includes
+    /// it, and none of that changes here. But an invoice is a document about the goods handed over
+    /// today, and rolling a debt from the old books into its الرصيد السابق turns a bill the buyer
+    /// can check into one he has to take on trust. Switch it on for the person you actually want it
+    /// carried for.
+    /// </summary>
+    public bool IncludeOpeningBalanceInInvoices { get; set; }
+
     public ICollection<Invoice> Invoices { get; set; } = new List<Invoice>();
     public ICollection<FarmerTransaction> FarmerTransactions { get; set; } = new List<FarmerTransaction>();
     public ICollection<Payment> Payments { get; set; } = new List<Payment>();

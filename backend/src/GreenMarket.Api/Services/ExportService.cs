@@ -1766,14 +1766,18 @@ public class ExportService : IExportService
                 table.ColumnsDefinition(columns =>
                 {
                     columns.RelativeColumn(4); // الاسم
-                    columns.RelativeColumn(2); // المبلغ
+                    columns.RelativeColumn(2); // دين قديم
+                    columns.RelativeColumn(2); // دين حالي
+                    columns.RelativeColumn(2); // المجموع
                     columns.RelativeColumn(3); // الحالة
                 });
 
                 table.Header(header =>
                 {
                     header.Cell().Element(HeaderCell).AlignRight().Text("الاسم");
-                    header.Cell().Element(HeaderCell).AlignRight().Text("المبلغ");
+                    header.Cell().Element(HeaderCell).AlignRight().Text("دين قديم");
+                    header.Cell().Element(HeaderCell).AlignRight().Text("دين حالي");
+                    header.Cell().Element(HeaderCell).AlignRight().Text("المجموع");
                     header.Cell().Element(HeaderCell).AlignRight().Text("الحالة");
                 });
 
@@ -1783,6 +1787,12 @@ public class ExportService : IExportService
                     var shaded = rowIndex % 2 == 1;
                     var status = r.Remaining > 0 ? owedByThemLabel : owedToThemLabel;
                     table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(r.Name);
+                    // The two halves, then their sum. A dash where there is no old debt, so the
+                    // column reads as "nothing carried over" rather than a row of zeros.
+                    table.Cell().Element(c => DataCell(c, shaded)).AlignRight()
+                        .Text(r.OldDebt != 0 ? $"₪ {Math.Abs(r.OldDebt):0.##}" : "—");
+                    table.Cell().Element(c => DataCell(c, shaded)).AlignRight()
+                        .Text(r.CurrentDebt != 0 ? $"₪ {Math.Abs(r.CurrentDebt):0.##}" : "—");
                     table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text($"₪ {Math.Abs(r.Remaining):0.##}").Bold();
                     table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(status).FontSize(9);
                     rowIndex++;

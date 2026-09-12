@@ -796,6 +796,20 @@ using (var scope = app.Services.CreateScope())
         app.Logger.LogError(ex, "Failed to split the old الكمية+الوحدة columns into العدد/الوزن/الصناديق — old invoice lines will read as count 0 with no weight until this is fixed.");
     }
 
+    // "اجمع الدين القديم على الرصيد السابق" — off for everyone who already exists, which is the
+    // default the owner asked for: an old debt stays on the account and off the printed invoice
+    // until someone turns it on for that person. NOT NULL DEFAULT false does both at once.
+    try
+    {
+        await db.Database.ExecuteSqlRawAsync("""
+            ALTER TABLE partners ADD COLUMN IF NOT EXISTS "IncludeOpeningBalanceInInvoices" boolean NOT NULL DEFAULT false;
+            """);
+    }
+    catch (Exception ex)
+    {
+        app.Logger.LogError(ex, "Failed to add partners.IncludeOpeningBalanceInInvoices — the الرصيد السابق on printed invoices cannot be switched per person until this is fixed.");
+    }
+
     // Gives people back the roles the old find-or-create took off them. Until PartnerType became a
     // set of roles, entering someone in a slot they were not already typed for set them to "Both" —
     // seller+buyer — whatever the two roles actually were. Anyone entered as a DRIVER whose name was

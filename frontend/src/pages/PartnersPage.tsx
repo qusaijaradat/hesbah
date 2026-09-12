@@ -229,6 +229,9 @@ function PartnerEditModal({ partner, onClose, onSaved }: {
   const [notes, setNotes] = useState(partner?.notes ?? "");
   const [creditLimit, setCreditLimit] = useState(partner?.creditLimit != null ? String(partner.creditLimit) : "");
   const [openingBalance, setOpeningBalance] = useState(partner?.openingBalance != null ? String(partner.openingBalance) : "");
+  // Off for a new person, and off for every person who already existed (the column defaults to
+  // false) — an old debt belongs on the account, not on a bill for today's goods.
+  const [includeOpeningBalanceInInvoices, setIncludeOpeningBalanceInInvoices] = useState(partner?.includeOpeningBalanceInInvoices ?? false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [justAdded, setJustAdded] = useState(false);
@@ -241,7 +244,7 @@ function PartnerEditModal({ partner, onClose, onSaved }: {
     try {
       const creditLimitValue = creditLimit.trim() === "" ? null : parseFloat(creditLimit);
       const openingBalanceValue = openingBalance.trim() === "" ? null : parseFloat(openingBalance);
-      const payload = { name, type: type || null, whatsAppNumber: whatsAppNumber || undefined, address: address || undefined, notes: notes || undefined, creditLimit: creditLimitValue, openingBalance: openingBalanceValue };
+      const payload = { name, type: type || null, whatsAppNumber: whatsAppNumber || undefined, address: address || undefined, notes: notes || undefined, creditLimit: creditLimitValue, openingBalance: openingBalanceValue, includeOpeningBalanceInInvoices };
       if (partner) {
         await updatePartner(partner.id, payload);
         onSaved();
@@ -301,8 +304,18 @@ function PartnerEditModal({ partner, onClose, onSaved }: {
               placeholder="مبلغ كان مستحقًا قبل استخدام البرنامج — اتركه فارغًا إذا لا يوجد" />
             <p className="text-xs text-gray-400 mt-1">
               للمشتري: مبلغ كان عليه قبل هيك. للبائع/السائق: مبلغ كان مستحق إلو من السوق قبل هيك.
-              بيضاف تلقائيًا على كل كشف حساب وعلى "الرصيد السابق" بالفاتورة المطبوعة.
+              بيظهر بكشف حسابه كسطر "دين قديم" وبينحسب ضمن المتبقي.
             </p>
+            <label className="flex items-start gap-2 mt-3 text-sm cursor-pointer">
+              <input type="checkbox" className="mt-1" checked={includeOpeningBalanceInInvoices}
+                onChange={(e) => setIncludeOpeningBalanceInInvoices(e.target.checked)} />
+              <span>
+                اجمع الدين القديم على "الرصيد السابق" بالفاتورة المطبوعة
+                <span className="block text-xs text-gray-400">
+                  مطفي افتراضيًا — الفاتورة بتضل عن بضاعة اليوم بس، والدين القديم بيضل على الحساب.
+                </span>
+              </span>
+            </label>
           </div>
           <div>
             <label className="label">ملاحظات</label>

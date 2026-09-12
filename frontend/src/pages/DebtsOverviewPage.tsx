@@ -125,6 +125,8 @@ function DebtSection({
 }) {
   const pager = usePagination(rows);
   const total = rows.reduce((sum, r) => sum + r.remaining, 0);
+  const oldTotal = rows.reduce((sum, r) => sum + r.oldDebt, 0);
+  const currentTotal = rows.reduce((sum, r) => sum + r.currentDebt, 0);
 
   return (
     <div>
@@ -134,20 +136,26 @@ function DebtSection({
           <thead>
             <tr>
               <th>الاسم</th>
-              <th>المبلغ</th>
+              <th>دين قديم</th>
+              <th>دين حالي</th>
+              <th>المجموع</th>
               <th></th>
               <th></th>
             </tr>
           </thead>
           <tbody>
             {rows.length === 0 ? (
-              <tr><td colSpan={4} className="text-center text-gray-400 py-6">{emptyText}</td></tr>
+              <tr><td colSpan={6} className="text-center text-gray-400 py-6">{emptyText}</td></tr>
             ) : (
               pager.pageRows.map((r) => (
                 <tr key={r.partnerId}>
                   <td className="font-medium">
                     <Link to={linkFor(r.partnerId)} className="hover:underline">{r.name}</Link>
                   </td>
+                  {/* The two halves, then their sum. A dash where nothing was carried over, so the
+                      column reads as "no old debt" rather than a wall of zeros. */}
+                  <td className="text-gray-500">{r.oldDebt !== 0 ? formatCurrency(Math.abs(r.oldDebt)) : "—"}</td>
+                  <td className="text-gray-500">{r.currentDebt !== 0 ? formatCurrency(Math.abs(r.currentDebt)) : "—"}</td>
                   <td className={r.remaining > 0 ? "text-red-700 font-semibold" : "text-brand-700 font-semibold"}>
                     {formatCurrency(Math.abs(r.remaining))}
                   </td>
@@ -165,6 +173,8 @@ function DebtSection({
             <tfoot>
               <tr className="font-semibold border-t">
                 <td className="text-gray-500">الصافي الإجمالي</td>
+                <td className="text-gray-400">{oldTotal !== 0 ? formatCurrency(oldTotal) : "—"}</td>
+                <td className="text-gray-400">{currentTotal !== 0 ? formatCurrency(currentTotal) : "—"}</td>
                 <td colSpan={3} className={total > 0 ? "text-red-700" : total < 0 ? "text-brand-700" : ""}>
                   {formatCurrency(total)}
                 </td>

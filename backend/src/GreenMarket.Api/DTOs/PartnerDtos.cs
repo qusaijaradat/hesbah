@@ -17,14 +17,18 @@ namespace GreenMarket.Api.DTOs;
 /// GetAsync/CreateAsync/UpdateAsync, which don't compute this at all.</summary>
 public record PartnerDto(
     int Id, string Name, PartnerType? Type, string? WhatsAppNumber, string? Address, string? Notes,
-    decimal? CreditLimit, decimal? OpeningBalance,
+    decimal? CreditLimit, decimal? OpeningBalance, bool IncludeOpeningBalanceInInvoices,
     decimal? FarmerRemaining = null, decimal? MerchantRemaining = null);
 
 public record PartnerSuggestionDto(int Id, string Name, PartnerType? Type);
 
-public record CreatePartnerRequest(string Name, PartnerType? Type, string? WhatsAppNumber, string? Notes, decimal? CreditLimit, string? Address = null, decimal? OpeningBalance = null);
+public record CreatePartnerRequest(
+    string Name, PartnerType? Type, string? WhatsAppNumber, string? Notes, decimal? CreditLimit,
+    string? Address = null, decimal? OpeningBalance = null, bool IncludeOpeningBalanceInInvoices = false);
 
-public record UpdatePartnerRequest(string Name, PartnerType? Type, string? WhatsAppNumber, string? Notes, decimal? CreditLimit, string? Address = null, decimal? OpeningBalance = null);
+public record UpdatePartnerRequest(
+    string Name, PartnerType? Type, string? WhatsAppNumber, string? Notes, decimal? CreditLimit,
+    string? Address = null, decimal? OpeningBalance = null, bool IncludeOpeningBalanceInInvoices = false);
 
 /// <summary>Requirement doc §6: merchant account = invoices, total purchases, paid, remaining.
 /// CreditLimit/IsOverCreditLimit mirror the roadmap's "credit limit per merchant" feature — null
@@ -71,7 +75,14 @@ public record StatementLineDto(
 /// <summary>One row on the "قيمة الدين" overview page — same Remaining figure and sign convention
 /// as MerchantAccountDto.Remaining / FarmerAccountDto.Remaining for this partner (opening balance
 /// already folded in). Rows with Remaining == 0 are filtered out before this reaches the client.</summary>
-public record PartnerDebtRow(int PartnerId, string Name, decimal Remaining);
+/// <summary>
+/// One person's balance on "قيمة الديون", split into where it came from: OldDebt is their
+/// الرصيد الافتتاحي — the debt carried over from before this system — and CurrentDebt is
+/// everything since, from invoices and payments recorded here. Remaining is the two added up, and
+/// stays the authoritative figure: the halves exist so the page can say WHICH part of an amount is
+/// old business, not so anyone re-adds them somewhere else.
+/// </summary>
+public record PartnerDebtRow(int PartnerId, string Name, decimal OldDebt, decimal CurrentDebt, decimal Remaining);
 
 /// <summary>Requirement: a single page with 3 sections (بائع/سائق/مشتري) listing everyone who
 /// currently has a non-zero balance. A partner of type Both appears in BOTH Farmers (their farmer-side

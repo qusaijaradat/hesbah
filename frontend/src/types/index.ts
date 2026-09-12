@@ -55,6 +55,9 @@ export interface PartnerDto {
   /** "الرصيد الافتتاحي" — manually-entered starting balance from before this system was in use.
    * See backend Partner.OpeningBalance's doc comment for the sign convention. */
   openingBalance?: number | null;
+  /** Whether that الرصيد الافتتاحي is added into the "الرصيد السابق" printed on this person's
+   *  invoices. Off by default — see the backend Partner for why an old debt stays off a bill. */
+  includeOpeningBalanceInInvoices: boolean;
   /** "الرصيد" on the partners list (PartnersPage) — only populated by the list endpoint, and only
    * for the side that applies to this partner's type. A Both partner (farmer+merchant) can have
    * BOTH non-null at once — two entirely separate balances, never combined into one number. */
@@ -691,6 +694,11 @@ export interface FarmerGoodsStockDto {
 export interface PartnerDebtRow {
   partnerId: number;
   name: string;
+  /** The person's الرصيد الافتتاحي — debt carried over from before this system. */
+  oldDebt: number;
+  /** Everything since: invoices and payments recorded here. */
+  currentDebt: number;
+  /** oldDebt + currentDebt. The authoritative figure — never re-add the halves to it. */
   remaining: number;
 }
 
@@ -748,6 +756,8 @@ export interface SettingDto {
 export interface PartnerDebtRow {
   partnerId: number;
   name: string;
+  oldDebt: number;
+  currentDebt: number;
   remaining: number;
 }
 

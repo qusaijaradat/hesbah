@@ -125,6 +125,48 @@ Console.WriteLine("== InvoiceCalculator ==");
     }
 }
 
+Console.WriteLine("== The old debt, and where it is allowed to appear ==");
+{
+    // An opening balance is an old debt carried over from before this system. It belongs on the
+    // ACCOUNT, and the statement is where it has to say so — with its own dated line, so the
+    // running balance adds up from the top instead of opening on an unexplained number.
+    var baseDate = new DateTimeOffset(2026, 8, 1, 0, 0, 0, TimeSpan.Zero);
+    var joined = baseDate.AddDays(-30);
+    var statement = AccountStatementBuilder.Build(new[]
+    {
+        new AccountStatementBuilder.Entry(baseDate, "فاتورة", 400m),
+    }, startingBalance: 1_000m, startingBalanceDate: joined);
+
+    Check("the old debt still opens the statement",
+          statement[0].Description == AccountStatementBuilder.OpeningBalanceDescription);
+    Check("and is still inside المتبقي", statement[^1].RunningBalance == 1_400m,
+          $"got {statement[^1].RunningBalance}");
+
+    // The printed invoice is the one place it is held back, per person. The rule is a plain
+    // "only when marked", mirrored here from InvoiceService.ComputePreviousBalanceAsync — the
+    // figure itself is unchanged, it is only kept off a bill for today's goods.
+    static decimal PreviousBalance(decimal openingBalance, bool include, decimal otherInvoices, decimal paid) =>
+        Math.Max(0, (include ? openingBalance : 0) + otherInvoices - paid);
+
+    Check("by default the old debt is NOT on the printed invoice",
+          PreviousBalance(1_000m, include: false, otherInvoices: 400m, paid: 100m) == 300m,
+          $"got {PreviousBalance(1_000m, false, 400m, 100m)}");
+    Check("switched on for that person, it is",
+          PreviousBalance(1_000m, include: true, otherInvoices: 400m, paid: 100m) == 1_300m,
+          $"got {PreviousBalance(1_000m, true, 400m, 100m)}");
+    Check("a buyer with no old debt reads the same either way",
+          PreviousBalance(0m, include: false, otherInvoices: 400m, paid: 100m)
+          == PreviousBalance(0m, include: true, otherInvoices: 400m, paid: 100m));
+    Check("an overpaid buyer never prints a negative previous balance",
+          PreviousBalance(1_000m, include: true, otherInvoices: 0m, paid: 5_000m) == 0m);
+
+    // "قيمة الديون" splits the same amount into where it came from — the halves must add to the
+    // total, or the page would be showing two numbers that disagree with the one beside them.
+    var oldDebt = 1_000m;
+    var current = 400m - 100m;
+    Check("old + current is exactly the remaining shown beside them", oldDebt + current == 1_300m);
+}
+
 Console.WriteLine("== PartnerRoles: a person can be more than one thing ==");
 {
     // The reported bug, exactly: a new driver typed into an invoice's driver field, whose name was

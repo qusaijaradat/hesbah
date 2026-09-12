@@ -5,12 +5,16 @@ import { formatCurrency } from "../lib/format";
 /**
  * "اسأل" — a question in Arabic, answered from figures the app already computes.
  *
- * What the model does and does not do is worth being plain about, because it decides how much to
- * trust the answer: it reads the question and picks ONE query from a fixed list (backend AskIntent),
- * and that is all. Every number below comes from the same service the matching report screen calls.
- * The model never sees the database and never writes a query, so a wrong answer here is a wrong
- * QUESTION — which is why what it understood is printed above the answer, and the dates it used
- * beside it. A misread question is invisible otherwise.
+ * Nothing here costs anything. The question is read on the server by matching words and the names
+ * already on file (backend KeywordAskPlanner) — no model, no request off the machine — and every
+ * number comes from the same service the matching report screen calls.
+ *
+ * A wrong answer here is therefore a wrong QUESTION, never a wrong figure, which is why what it
+ * understood is printed above the answer and the dates it used beside it. A misread question is
+ * invisible otherwise.
+ *
+ * A question the words cannot place says so. If a model key is ever configured on the server, only
+ * those unplaced questions are sent to it — the ones already understood never are.
  */
 
 interface AskRow { label: string; detail?: string | null; amount?: number | null }
@@ -31,12 +35,14 @@ export function AskPage() {
   const [answer, setAnswer] = useState<AskAnswer | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [configured, setConfigured] = useState<boolean | null>(null);
+  // Whether a model is ALSO configured for the questions keywords cannot place. The feature itself
+  // always works, so this only changes the hint shown when a question is not understood.
+  const [modelAssist, setModelAssist] = useState(false);
 
   useEffect(() => {
-    apiClient.get<{ configured: boolean }>("/ask/status")
-      .then((r) => setConfigured(r.data.configured))
-      .catch(() => setConfigured(false));
+    apiClient.get<{ configured: boolean; modelAssist: boolean }>("/ask/status")
+      .then((r) => setModelAssist(r.data.modelAssist))
+      .catch(() => setModelAssist(false));
   }, []);
 
   async function ask(text: string) {
@@ -61,17 +67,13 @@ export function AskPage() {
         <div>
           <h1 className="text-2xl font-bold">اسأل</h1>
           <p className="text-sm text-gray-500 mt-1">
-            اسأل بالعربي عن أي إشي بالنظام — الأرقام بتيجي من نفس التقارير، مش من الذكاء الاصطناعي.
+            اسأل بالعربي عن أي إشي بالنظام. السؤال بينقرا على السيرفر بدون أي خدمة خارجية،
+            والأرقام بتيجي من نفس التقارير.
           </p>
         </div>
         <span className="text-xs bg-amber-100 text-amber-800 rounded-full px-3 py-1 font-medium">تجريبي</span>
       </div>
 
-      {configured === false && (
-        <div className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-md p-3 mb-4">
-          الميزة مش مفعّلة — لازم مفتاح Anthropic ينحط بمتغيّر البيئة <code className="font-mono">ANTHROPIC_API_KEY</code> على السيرفر.
-        </div>
-      )}
 
       <div className="card p-4 mb-4">
         <div className="flex gap-2 flex-wrap">
@@ -79,11 +81,10 @@ export function AskPage() {
             className="input flex-1 min-w-64"
             placeholder="مثال: كم على أبو علي؟"
             value={question}
-            disabled={configured === false}
             onChange={(e) => setQuestion(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); ask(question); } }}
           />
-          <button className="btn-primary" onClick={() => ask(question)} disabled={busy || !question.trim() || configured === false}>
+          <button className="btn-primary" onClick={() => ask(question)} disabled={busy || !question.trim()}>
             {busy ? "جاري..." : "اسأل"}
           </button>
         </div>
@@ -92,8 +93,7 @@ export function AskPage() {
             <button
               key={e}
               className="text-xs bg-gray-100 hover:bg-gray-200 rounded-full px-3 py-1"
-              disabled={configured === false}
-              onClick={() => { setQuestion(e); ask(e); }}
+                onClick={() => { setQuestion(e); ask(e); }}
             >
               {e}
             </button>
@@ -116,6 +116,16 @@ export function AskPage() {
           )}
 
           <div className="font-semibold mb-3">{answer.text}</div>
+
+          {/* A phrasing the words did not cover is a gap to fill, not a failure — say so plainly,
+              and mention the one thing that would have changed the outcome. */}
+          {answer.intent === "Unknown" && (
+            <div className="text-xs text-gray-500">
+              {modelAssist
+                ? "جرّب تكتبه بصيغة تانية."
+                : "جرّب تكتبه بصيغة تانية — أو احكيلي الصيغة وبنضيفها، وبتشتغل بعدها دايمًا وببلاش."}
+            </div>
+          )}
 
           {answer.rows.length > 0 && (
             <table className="table-base">

@@ -50,10 +50,28 @@ public class AskService : IAskService
             throw new ValidationAppException("اكتب سؤالك أولًا.");
         if (question.Length > 500)
             throw new ValidationAppException("السؤال طويل — اختصره.");
-        if (!_planner.IsConfigured)
-            throw new ValidationAppException("ميزة السؤال مش مفعّلة — لازم مفتاح Anthropic بالإعدادات.");
+        // Read it here first, for nothing: twelve questions in a handful of phrasings, with the
+        // names matched against the partners actually on file rather than guessed at. This is the
+        // whole feature on its own — there is no key to buy and no request to wait for.
+        var names = await _db.Partners.Select(p => p.Name).ToListAsync(cancellationToken);
+        var plan = KeywordAskPlanner.Plan(question, names, DateTimeOffset.Now);
 
-        var plan = await _planner.PlanAsync(question, cancellationToken);
+        // A model is consulted ONLY for a question the words above could not place, and only when
+        // someone has deliberately configured a key. With no key — the default — nothing leaves
+        // this server and nothing is billed; the unplaced question simply answers "ما بعرف".
+        if (plan.Intent == AskIntent.Unknown && _planner.IsConfigured)
+        {
+            try
+            {
+                plan = await _planner.PlanAsync(question, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                // A question that cannot be read is not an outage — keep the "ما بعرف" answer.
+                _logger.LogWarning(ex, "Ask: the model could not be reached; answering from keywords only.");
+            }
+        }
+
         _logger.LogInformation("Ask: {Intent} for {Question}", plan.Intent, question);
 
         var limit = Math.Clamp(plan.Limit ?? 5, 1, MaxRows);

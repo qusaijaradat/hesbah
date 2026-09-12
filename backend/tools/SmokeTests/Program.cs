@@ -135,6 +135,80 @@ Console.WriteLine("== InvoiceCalculator ==");
     }
 }
 
+Console.WriteLine("== Ask: reading the question without a model ==");
+{
+    // The whole feature, free: twelve questions, a handful of phrasings, and names matched against
+    // the partners actually on file. Every question below is one someone would really type.
+    var people = new[] { "أبو علي", "أبو علي النجار", "سامي حسن", "خالد السائق" };
+    var today = new DateTimeOffset(2026, 9, 13, 10, 0, 0, TimeSpan.Zero);
+    AskPlan Ask(string q) => KeywordAskPlanner.Plan(q, people, today);
+
+    void Intent(string question, AskIntent expected)
+    {
+        var p = Ask(question);
+        Check($"\"{question}\" => {expected}", p.Intent == expected, $"got {p.Intent}");
+    }
+
+    Intent("كم على أبو علي؟", AskIntent.PartnerBalance);
+    Intent("شو رصيد سامي حسن", AskIntent.PartnerBalance);
+    Intent("كم باع سامي حسن هالشهر؟", AskIntent.PartnerSales);
+    Intent("كم اشترى أبو علي هالأسبوع", AskIntent.PartnerPurchases);
+    Intent("مين أكتر واحد عليه دين؟", AskIntent.TopDebtors);
+    Intent("مين إلو مستحقات عنا", AskIntent.TopCreditors);
+    Intent("شو أكتر صنف بينباع؟", AskIntent.TopItems);
+    Intent("كم ربحت المصلحة هالشهر", AskIntent.MarketProfit);
+    Intent("شو صار اليوم", AskIntent.DailyClosing);
+    Intent("شو الشيكات المستحقة", AskIntent.ChecksDue);
+    Intent("مين ماسك صناديقي", AskIntent.ContainersHeld);
+    Intent("في فواتير فيها أصناف بدون سعر؟", AskIntent.UnpricedInvoices);
+    Intent("مين ما دفع", AskIntent.UnpaidInvoices);
+
+    // Spelling that differs only in ways Arabic writes both ways must not change the answer.
+    Intent("كم علي ابو علي", AskIntent.PartnerBalance);
+    Intent("مين اكتر واحد عليه دين", AskIntent.TopDebtors);
+
+    // The longer name wins when both are on file and the question says the longer one — otherwise
+    // a question about النجار is answered about a different man with a shorter name.
+    Check("the longest matching name wins",
+          Ask("كم على أبو علي النجار؟").PartnerName == "أبو علي النجار",
+          $"got {Ask("كم على أبو علي النجار؟").PartnerName}");
+    Check("and the shorter one still matches on its own",
+          Ask("كم على أبو علي؟").PartnerName == "أبو علي");
+
+    // Periods, because an answer over the wrong dates is the wrong answer that looks right.
+    Check("\"هالشهر\" starts at the first of this month",
+          Ask("كم ربحت هالشهر").DateFrom?.ToString("yyyy-MM-dd") == "2026-09-01",
+          $"got {Ask("كم ربحت هالشهر").DateFrom}");
+    Check("\"امبارح\" is yesterday, and bounded",
+          Ask("شو صار امبارح").DateFrom?.ToString("yyyy-MM-dd") == "2026-09-12");
+    Check("\"هالأسبوع\" is the last seven days",
+          Ask("كم ربحت هالأسبوع").DateFrom?.ToString("yyyy-MM-dd") == "2026-09-06");
+    Check("no period words leaves the dates unset (all time, never a wrong window)",
+          Ask("كم ربحت المصلحة").DateFrom is null);
+
+    // Refusing is a feature: a question outside the twelve has to say so, not land on a near one
+    // and answer it with real figures.
+    Check("a question outside the list is Unknown", Ask("شو الطقس اليوم بنابلس").Intent == AskIntent.Unknown);
+    Check("an empty question is Unknown", Ask("").Intent == AskIntent.Unknown);
+    Check("a name nobody has is not invented", Ask("كم على محمود الغريب؟").PartnerName is null);
+
+    // Asked about a person without naming one: say which half is missing rather than a bare shrug.
+    {
+        var p = Ask("كم باع؟");
+        Check("\"كم باع\" with nobody named is Unknown but says why",
+              p.Intent == AskIntent.Unknown && p.Understood != null, $"got {p.Intent} / {p.Understood}");
+    }
+
+    // A request to CHANGE something must never map onto a query. Nothing in the catalog writes,
+    // but the reader should not pretend to understand it either.
+    Check("a request to delete is not a question", Ask("احذف كل الفواتير").Intent == AskIntent.Unknown);
+
+    // Arabic-Indic digits are the digits the notebook is written in.
+    Check("٢٣ normalizes to 23", KeywordAskPlanner.Normalize("٢٣") == "23");
+    Check("أ إ آ all normalize to ا", KeywordAskPlanner.Normalize("أإآ") == "ااا");
+    Check("ة normalizes to ه", KeywordAskPlanner.Normalize("مصلحة") == KeywordAskPlanner.Normalize("مصلحه"));
+}
+
 Console.WriteLine("== Ask: reading the model's answer ==");
 {
     // The model's reply is the one input here that nothing else validates, so every shape it could

@@ -29,11 +29,14 @@ public class AskController : ControllerBase
         _planner = planner;
     }
 
-    /// <summary>Whether a key is configured, so the screen can say "مش مفعّلة" instead of offering a
-    /// box that fails on every question.</summary>
+    /// <summary>
+    /// The feature always works — questions are read from keywords, free and offline. This only
+    /// reports whether a model is ALSO configured to take the ones those keywords cannot place, so
+    /// the screen can say which of the two answered.
+    /// </summary>
     [HttpGet("status")]
     [RequirePermission(PermissionKeys.ReportsView)]
-    public ActionResult<object> Status() => Ok(new { configured = _planner.IsConfigured });
+    public ActionResult<object> Status() => Ok(new { configured = true, modelAssist = _planner.IsConfigured });
 
     [HttpPost]
     [RequirePermission(PermissionKeys.ReportsView)]

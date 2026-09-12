@@ -3,6 +3,7 @@ using System.Text.Json.Serialization;
 using GreenMarket.Api.Auth;
 using GreenMarket.Api.Common;
 using GreenMarket.Api.Services;
+using GreenMarket.Api.Services.Ask;
 using GreenMarket.Domain.Entities;
 using GreenMarket.Domain.Enums;
 using GreenMarket.Infrastructure.Persistence;
@@ -42,6 +43,10 @@ builder.Services.AddScoped<IItemService, ItemService>();
 builder.Services.AddScoped<IInvoiceService, InvoiceService>();
 builder.Services.AddScoped<IPaymentService, PaymentService>();
 builder.Services.AddScoped<IContainerService, ContainerService>();
+// "اسأل" — the planner is a singleton because it holds one HTTP client and reads its key once at
+// startup; the service that runs the chosen query is scoped like every other service here.
+builder.Services.AddSingleton<IAskPlanner, AskPlanner>();
+builder.Services.AddScoped<IAskService, AskService>();
 builder.Services.AddScoped<IGoodsReturnService, GoodsReturnService>();
 builder.Services.AddScoped<IExpenseService, ExpenseService>();
 builder.Services.AddScoped<IEmployeeService, EmployeeService>();

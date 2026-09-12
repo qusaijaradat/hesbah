@@ -9,6 +9,7 @@
 
 using GreenMarket.Domain.Enums;
 using GreenMarket.Domain.Services;
+using GreenMarket.Domain.Services.Ask;
 
 int passed = 0;
 int failed = 0;
@@ -132,6 +133,46 @@ Console.WriteLine("== InvoiceCalculator ==");
     {
         Check("zero count throws even when a weight is given", true);
     }
+}
+
+Console.WriteLine("== Ask: reading the model's answer ==");
+{
+    // The model's reply is the one input here that nothing else validates, so every shape it could
+    // come back in is handled — and anything unrecognised has to land on Unknown, which answers
+    // "ما بعرف". Falling through to some nearby intent would answer a question nobody asked, with
+    // real figures, and look entirely correct.
+    var ok = AskPlanParser.Parse("""
+        {"intent":"PartnerBalance","partnerName":"أبو علي","dateFrom":null,"dateTo":null,"limit":null,"understood":"رصيد أبو علي"}
+        """);
+    Check("a well-formed plan is read", ok.Intent == AskIntent.PartnerBalance && ok.PartnerName == "أبو علي",
+          $"got {ok.Intent} / {ok.PartnerName}");
+    Check("a null date stays null", ok.DateFrom is null && ok.DateTo is null);
+
+    var dated = AskPlanParser.Parse("""
+        {"intent":"MarketProfit","partnerName":null,"dateFrom":"2026-09-01","dateTo":"2026-09-13","limit":5,"understood":"ربح الشهر"}
+        """);
+    Check("dates are read", dated.DateFrom?.ToString("yyyy-MM-dd") == "2026-09-01" && dated.DateTo?.ToString("yyyy-MM-dd") == "2026-09-13",
+          $"got {dated.DateFrom} / {dated.DateTo}");
+    Check("limit is read", dated.Limit == 5);
+
+    Check("an intent name we do not have becomes Unknown",
+          AskPlanParser.Parse("""{"intent":"DropAllTables","understood":"x"}""").Intent == AskIntent.Unknown);
+    Check("Unknown itself round-trips",
+          AskPlanParser.Parse("""{"intent":"Unknown","understood":"مش فاهم"}""").Intent == AskIntent.Unknown);
+    Check("a missing intent becomes Unknown",
+          AskPlanParser.Parse("""{"understood":"x"}""").Intent == AskIntent.Unknown);
+    Check("broken JSON becomes Unknown rather than throwing",
+          AskPlanParser.Parse("not json at all").Intent == AskIntent.Unknown);
+    Check("an empty reply becomes Unknown", AskPlanParser.Parse("").Intent == AskIntent.Unknown);
+    Check("a nonsense date is dropped, not guessed",
+          AskPlanParser.Parse("""{"intent":"MarketProfit","dateFrom":"يوم الثلاثاء"}""").DateFrom is null);
+    Check("a limit that is not a number is dropped",
+          AskPlanParser.Parse("""{"intent":"TopDebtors","limit":"كتير"}""").Limit is null);
+
+    // Case drift in the intent name must not silently become Unknown — the model writing
+    // "partnerbalance" is a formatting difference, not a different question.
+    Check("the intent name is matched case-insensitively",
+          AskPlanParser.Parse("""{"intent":"partnerbalance","partnerName":"x"}""").Intent == AskIntent.PartnerBalance);
 }
 
 Console.WriteLine("== One whole invoice, every party, composed the way InvoiceService composes it ==");

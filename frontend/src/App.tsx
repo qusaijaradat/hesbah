@@ -22,6 +22,7 @@ import { BulkPrintPage } from "./pages/BulkPrintPage";
 import { PaymentsPage } from "./pages/PaymentsPage";
 import { ChecksPage } from "./pages/ChecksPage";
 import { EmployeesPage } from "./pages/EmployeesPage";
+import { AskPage } from "./pages/AskPage";
 import { ReportsPage } from "./pages/ReportsPage";
 import { DailyClosingPage } from "./pages/DailyClosingPage";
 import { ContainersPage } from "./pages/ContainersPage";
@@ -73,6 +74,8 @@ export default function App() {
           <Route path="/checks" element={<Protected permission="payments.view"><ChecksPage /></Protected>} />
           <Route path="/employees" element={<Protected permission="employees.view"><EmployeesPage /></Protected>} />
           <Route path="/reports" element={<Protected permission="reports.view"><ReportsPage /></Protected>} />
+          {/* Reads only, and every question it answers is a report — so the same permission. */}
+          <Route path="/ask" element={<Protected permission="reports.view"><AskPage /></Protected>} />
           <Route path="/daily-closing" element={<Protected permission="reports.view"><DailyClosingPage /></Protected>} />
           <Route path="/containers" element={<Protected permission="boxes.view"><ContainersPage /></Protected>} />
           <Route path="/settings" element={<Protected permission="settings.view"><SettingsPage /></Protected>} />

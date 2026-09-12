@@ -18,6 +18,7 @@ const NAV_ITEMS = [
   { to: "/checks", label: "الشيكات", permission: "payments.view" },
   { to: "/employees", label: "الموظفون", permission: "employees.view" },
   { to: "/reports", label: "التقارير", permission: "reports.view" },
+  { to: "/ask", label: "اسأل (تجريبي)", permission: "reports.view" },
   { to: "/settings", label: "الإعدادات", permission: "settings.view" },
   { to: "/users", label: "المستخدمون", permission: "users.view" },
   { to: "/roles", label: "الأدوار والصلاحيات", permission: "roles.view" },

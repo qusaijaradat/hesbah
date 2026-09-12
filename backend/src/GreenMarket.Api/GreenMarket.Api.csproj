@@ -15,6 +15,7 @@
     at the time of writing; bump with `dotnet outdated` or the NuGet UI as you like.
   -->
   <ItemGroup>
+    <PackageReference Include="Anthropic" Version="12.47.0" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="8.0.10" />
     <PackageReference Include="Swashbuckle.AspNetCore" Version="6.6.2" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="8.0.10">

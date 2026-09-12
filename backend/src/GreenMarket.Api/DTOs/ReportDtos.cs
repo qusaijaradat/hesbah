@@ -210,3 +210,22 @@ public record DashboardSummaryDto(
     // not the قيمة الديون page.
     IReadOnlyList<PartnerDebtRow> TopMerchantDebts,
     IReadOnlyList<PartnerDebtRow> TopSellerDues);
+
+/// <summary>
+/// One line of an answer from "اسأل" — a label, a bit of context, and (usually) a number. Kept this
+/// plain on purpose: the screen renders whatever comes back without knowing which question was
+/// asked, so a new intent needs no frontend change.
+/// </summary>
+public record AskRowDto(string Label, string? Detail, decimal? Amount);
+
+/// <summary>
+/// The answer to one question. Intent and Understood are shown beside it — a question read wrongly
+/// is the failure mode here, and it is invisible unless what the system thought you asked is
+/// printed next to what it answered. Period says which dates the figures cover, for the same reason.
+/// </summary>
+public record AskAnswerDto(
+    string Intent,
+    string? Understood,
+    string Text,
+    IReadOnlyList<AskRowDto> Rows,
+    string? Period);

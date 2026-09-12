@@ -122,13 +122,13 @@ function FarmersTable({ rows }: { rows: FarmerReportRow[] }) {
         <thead>
           <tr>
             <th>البائع</th><th>عدد الفواتير</th><th>الوزن</th><th>الصناديق</th><th>المبيعات</th>
-            <th>العمولة</th><th>صافي المستحق</th><th>المدفوع</th><th>الرصيد الافتتاحي</th>
+            <th>العمولة</th><th>صافي المستحق</th><th>المدفوع</th>
             <th>المتبقي</th><th>آخر فاتورة</th>
           </tr>
         </thead>
         <tbody>
           {rows.length === 0 ? (
-            <tr><td colSpan={11} className="text-center text-gray-400 py-6">لا توجد بيانات</td></tr>
+            <tr><td colSpan={10} className="text-center text-gray-400 py-6">لا توجد بيانات</td></tr>
           ) : pager.pageRows.map((r) => (
             <tr key={r.farmerId}>
               <td className="font-medium"><PartnerLink partnerId={r.farmerId} name={r.farmerName} side="seller" /></td>
@@ -139,7 +139,6 @@ function FarmersTable({ rows }: { rows: FarmerReportRow[] }) {
               <td>{formatCurrency(r.totalCommission)}</td>
               <td>{formatCurrency(r.netDue)}</td>
               <td>{formatCurrency(r.totalPaid)}</td>
-              <td>{formatCurrency(r.openingBalance)}</td>
               <td className="font-semibold">{formatCurrency(r.remaining)}</td>
               <td>{r.lastInvoiceDate ? formatDate(r.lastInvoiceDate) : "-"}</td>
             </tr>
@@ -163,12 +162,12 @@ function MerchantsTable({ rows }: { rows: MerchantReportRow[] }) {
           <tr>
             <th>المشتري</th><th>عدد الفواتير</th><th>الوزن</th><th>الصناديق</th><th>المشتريات</th>
             <th>سعر الخشب</th><th>رسوم الصناديق</th><th>الإجمالي الكلي</th><th>المدفوع</th>
-            <th>الرصيد الافتتاحي</th><th>المتبقي</th><th>آخر فاتورة</th>
+            <th>المتبقي</th><th>آخر فاتورة</th>
           </tr>
         </thead>
         <tbody>
           {rows.length === 0 ? (
-            <tr><td colSpan={12} className="text-center text-gray-400 py-6">لا توجد بيانات</td></tr>
+            <tr><td colSpan={11} className="text-center text-gray-400 py-6">لا توجد بيانات</td></tr>
           ) : pager.pageRows.map((r) => (
             <tr key={r.merchantId}>
               <td className="font-medium"><PartnerLink partnerId={r.merchantId} name={r.merchantName} side="merchant" /></td>
@@ -180,7 +179,6 @@ function MerchantsTable({ rows }: { rows: MerchantReportRow[] }) {
               <td>{formatCurrency(r.totalBoxFee)}</td>
               <td>{formatCurrency(r.grandTotal)}</td>
               <td>{formatCurrency(r.totalPaid)}</td>
-              <td>{formatCurrency(r.openingBalance)}</td>
               <td className="font-semibold">{formatCurrency(r.remaining)}</td>
               <td>{r.lastInvoiceDate ? formatDate(r.lastInvoiceDate) : "-"}</td>
             </tr>
@@ -203,19 +201,18 @@ function DriversTable({ rows }: { rows: DriverReportRow[] }) {
         <thead>
           <tr>
             <th>السائق</th><th>عدد الفواتير</th><th>أجرة النقل</th><th>المدفوع</th>
-            <th>الرصيد الافتتاحي</th><th>المتبقي</th><th>آخر فاتورة</th>
+            <th>المتبقي</th><th>آخر فاتورة</th>
           </tr>
         </thead>
         <tbody>
           {rows.length === 0 ? (
-            <tr><td colSpan={7} className="text-center text-gray-400 py-6">لا توجد بيانات</td></tr>
+            <tr><td colSpan={6} className="text-center text-gray-400 py-6">لا توجد بيانات</td></tr>
           ) : pager.pageRows.map((r) => (
             <tr key={r.driverId}>
               <td className="font-medium"><PartnerLink partnerId={r.driverId} name={r.driverName} side="seller" /></td>
               <td>{r.invoiceCount}</td>
               <td>{formatCurrency(r.totalTransportFee)}</td>
               <td>{formatCurrency(r.totalPaid)}</td>
-              <td>{formatCurrency(r.openingBalance)}</td>
               <td className="font-semibold">{formatCurrency(r.remaining)}</td>
               <td>{r.lastInvoiceDate ? formatDate(r.lastInvoiceDate) : "-"}</td>
             </tr>

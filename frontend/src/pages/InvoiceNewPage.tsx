@@ -268,22 +268,7 @@ export function InvoiceNewPage() {
       <div className="card p-5 mb-4">
         <h2 className="font-semibold mb-3">بنود البضاعة</h2>
         <div className="space-y-3 sm:space-y-2">
-          {/* Column labels only make sense once fields sit side-by-side (sm+) — on mobile
-              each field gets its own inline label instead (see below). */}
-          <div className="hidden lg:flex gap-2 text-xs text-gray-500 px-1">
-            <div className="grid grid-cols-12 gap-2 flex-1">
-              <div className="col-span-3">الصنف</div>
-              <div className="col-span-1">العدد</div>
-              <div className="col-span-2">الوزن (كغم)</div>
-              <div className="col-span-1">السعر (₪)</div>
-              <div className="col-span-1">صناديق</div>
-              <div className="col-span-1">كرتون</div>
-              <div className="col-span-2">سعر الخشب</div>
-              <div className="col-span-1">الإجمالي</div>
-            </div>
-            {/* Matches the delete button's own width below, so the columns stay lined up. */}
-            <div className="w-7 shrink-0"></div>
-          </div>
+
           {rows.map((row, idx) => {
             // Through the same function the invoice total and the backend use — this multiplied
             // العدد by the price unconditionally, so a weighed line showed one number on its own row
@@ -294,48 +279,79 @@ export function InvoiceNewPage() {
               pricePerUnit: parseFloat(row.pricePerUnit) || 0,
             });
             return (
-              <div key={idx} className="flex items-start gap-2 border-b lg:border-0 pb-3 lg:pb-0">
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-2 lg:items-center flex-1">
-                  <div className="sm:col-span-2 lg:col-span-3">
-                    <label className="label lg:hidden">الصنف</label>
+              /* One line, one bordered card, and every field keeps its label at every width.
+                 Eight fields were sharing a single twelve-column row, so العدد, السعر, صناديق and
+                 كرتون had one column each — about sixty pixels — with their names in a strip at the
+                 top that you had to count across to use. Two comfortable rows instead: what the line
+                 IS on top, what it is measured and charged by underneath, six across at full width
+                 and folding to three then two as it narrows. */
+              <div key={idx} className="rounded-lg border border-gray-200 bg-gray-50/60 p-3 space-y-3">
+                <div className="flex items-end gap-3">
+                  <div className="flex-1 min-w-0">
+                    <label className="label">الصنف</label>
                     <ItemAutocomplete value={row.itemName} placeholder="مثال: بندورة"
                       onChange={(name) => updateRow(idx, { itemName: name })} />
                   </div>
-                  <div className="lg:col-span-1">
-                    <label className="label lg:hidden">العدد</label>
+                  <div className="shrink-0 text-end min-w-24">
+                    <label className="label">الإجمالي</label>
+                    {/* A blank/zero price means "not priced yet", not "free" (produce is never sold
+                        for ₪0 here) — flagged now so it is obvious at a glance which lines still
+                        need a price, same convention as the detail page and the printed copy. */}
+                    {row.pricePerUnit.trim() === "" || (parseFloat(row.pricePerUnit) || 0) === 0 ? (
+                      <div className="h-9 flex items-center justify-end text-sm font-semibold text-amber-600 whitespace-nowrap">غير مسعّر</div>
+                    ) : (
+                      <div className="h-9 flex items-center justify-end text-sm font-semibold whitespace-nowrap">{formatCurrency(lineTotal)}</div>
+                    )}
+                  </div>
+                  <button
+                    className="w-9 h-9 shrink-0 text-red-500 hover:bg-red-50 rounded-md"
+                    onClick={() => removeRow(idx)}
+                    title="حذف الصنف"
+                    aria-label="حذف الصنف"
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+                  <div>
+                    <label className="label">العدد</label>
                     <input className="input" type="number" min="0" step="0.001" value={row.quantity}
-                      placeholder="عدد"
+                      placeholder="مثال: 20"
                       onChange={(e) => updateRow(idx, { quantity: e.target.value })} />
                   </div>
-                  <div className="lg:col-span-2">
-                    <label className="label lg:hidden">الوزن (كغم، اختياري)</label>
+                  <div>
+                    <label className="label">الوزن (كغم)</label>
                     <input className="input" type="number" step="0.001" min="0" value={row.weightKg}
-                      placeholder="اتركه فارغًا إذا مش موزون"
+                      placeholder="اتركه فارغًا"
                       title="إذا حطيت وزن، بينحسب السطر بالوزن × السعر. إذا تركته فاضي، بينحسب بالعدد × السعر."
                       onChange={(e) => updateRow(idx, { weightKg: e.target.value })} />
                   </div>
-                  <div className="lg:col-span-1">
-                    <label className="label lg:hidden">{row.weightKg.trim() === "" ? "سعر الوحدة (₪)" : "سعر الكيلو (₪)"}</label>
+                  <div>
+                    {/* The label says which of the two the price is per, because the weight being
+                        filled in is what decides it — and a price entered against the wrong one is
+                        wrong by whatever the weight-to-count ratio happens to be. */}
+                    <label className="label">{row.weightKg.trim() === "" ? "سعر الوحدة (₪)" : "سعر الكيلو (₪)"}</label>
                     <input className="input" type="number" min="0" step="0.01" value={row.pricePerUnit}
                       placeholder="اتركه فارغًا"
                       onChange={(e) => updateRow(idx, { pricePerUnit: e.target.value })} />
                   </div>
-                  {/* The two container counts. Only الصناديق carries رسوم الصناديق and the driver's
-                      أجرة الصناديق; الكرتون is counted and tracked, never charged. */}
-                  <div className="lg:col-span-1">
-                    <label className="label lg:hidden">عدد الصناديق</label>
+                  {/* Only الصناديق carries رسوم الصناديق and the driver's أجرة الصناديق; الكرتون is
+                      counted and tracked on the containers screen, never charged for. */}
+                  <div>
+                    <label className="label">عدد الصناديق</label>
                     <input className="input" type="number" step="1" min="0" value={row.boxQuantity}
-                      placeholder="صناديق"
+                      placeholder="0"
                       onChange={(e) => updateRow(idx, { boxQuantity: e.target.value })} />
                   </div>
-                  <div className="lg:col-span-1">
-                    <label className="label lg:hidden">عدد الكرتون</label>
+                  <div>
+                    <label className="label">عدد الكرتون</label>
                     <input className="input" type="number" step="1" min="0" value={row.cartonQuantity}
-                      placeholder="كرتون"
+                      placeholder="0"
                       onChange={(e) => updateRow(idx, { cartonQuantity: e.target.value })} />
                   </div>
-                  <div className="lg:col-span-2">
-                    <label className="label lg:hidden">سعر الخشب (اختياري)</label>
+                  <div>
+                    <label className="label">سعر الخشب</label>
                     <select className="input" value={row.woodPrice}
                       onChange={(e) => updateRow(idx, { woodPrice: e.target.value })}>
                       <option value="">بدون</option>
@@ -348,28 +364,7 @@ export function InvoiceNewPage() {
                         onChange={(e) => updateRow(idx, { woodPriceCustom: e.target.value })} />
                     )}
                   </div>
-                  <div className="lg:col-span-1 flex items-center justify-between lg:block">
-                    <label className="label lg:hidden">الإجمالي</label>
-                    {/* A blank/zero price means "not priced yet", not "free" (produce is never sold
-                        for ₪0 here) — flagging it now so it's obvious at a glance which lines still
-                        need a price before/after saving, same convention as the detail page/PDF. */}
-                    {row.pricePerUnit.trim() === "" || (parseFloat(row.pricePerUnit) || 0) === 0 ? (
-                      <div className="text-xs font-medium text-amber-600 whitespace-nowrap">غير مسعّر</div>
-                    ) : (
-                      <div className="text-xs font-medium whitespace-nowrap">{formatCurrency(lineTotal)}</div>
-                    )}
-                  </div>
                 </div>
-                {/* Outside the grid, not a twelve-column row of its own underneath — that row was
-                    both wasted height and the reason every field above it was a column too narrow. */}
-                <button
-                  className="w-7 h-9 shrink-0 text-red-500 hover:bg-red-50 rounded-md lg:mt-0"
-                  onClick={() => removeRow(idx)}
-                  title="حذف الصنف"
-                  aria-label="حذف الصنف"
-                >
-                  ✕
-                </button>
               </div>
             );
           })}

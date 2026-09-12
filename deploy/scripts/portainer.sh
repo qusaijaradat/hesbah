@@ -4,8 +4,17 @@
 #
 # A deploy names an exact image tag (never `latest`) and the script waits for
 # the public URL to answer before declaring victory — so a failed rollout fails
-# the pipeline instead of quietly leaving the environment down, and a rollback
-# is just re-running the deploy workflow with an older tag.
+# the pipeline instead of quietly leaving the environment down.
+#
+# Portainer replaces the running containers the moment it accepts the stack,
+# which is BEFORE the health gate has said anything. So a failed gate does not
+# leave the previous version serving — by then it is already gone. That is why
+# cmd_deploy snapshots the stack definition it is about to overwrite and puts
+# it back when the gate fails: the environment ends the run on the last
+# definition known to answer, not on the one that just failed to.
+#
+# Rolling back further, to a version older than the one being replaced, is
+# still manual: re-run the deploy workflow with an older image tag.
 #
 # The CI runner never touches the Docker host directly: the host accepts no
 # inbound SSH, so Portainer's API is the only way in.
@@ -55,6 +64,17 @@ api() {
       # jq if it parses, raw otherwise — an HTML error page or a curl message
       # is still worth showing verbatim.
       jq -r '.message // .details // .' <<<"$out" 2>/dev/null || echo "$out"
+      # A gateway error is not about this request at all: it means whatever sits
+      # in front of Portainer could not reach Portainer. Worth spelling out,
+      # because the interesting part is what did NOT happen — the deploy stopped
+      # before touching the host, so the running environment is untouched.
+      if [[ "$out" == *"error: 50"[234]* ]]; then
+        echo
+        echo "50x here is Portainer's own front door, not the application being deployed."
+        echo "Portainer itself is down or unreachable; nothing was deployed and the"
+        echo "environment is still running whatever it was running before."
+        echo "Start the Portainer container on the Docker host, then re-run this workflow."
+      fi
       if [[ "$out" == *409* || "$out" == *"error: 409"* ]]; then
         echo
         echo "409 usually means the stack exists but is not in a state Portainer will update"
@@ -136,6 +156,21 @@ env_json() {
   '
 }
 
+# The exact definition Portainer is serving right now, in the shape the update
+# endpoint accepts — so restoring it is one PUT with no reassembly.
+#
+# This is taken BEFORE the update, not reconstructed afterwards from the
+# compose file and env on disk: those are the NEW ones. The only description of
+# the version currently running is the one Portainer is holding.
+snapshot_stack() {
+  local sid="$1" file env
+  file="$(api GET "/api/stacks/${sid}/file" | jq -r '.StackFileContent')"
+  env="$(api GET "/api/stacks/${sid}" | jq -c '.Env // []')"
+  [[ -z "$file" || "$file" == "null" ]] && return 1
+  jq -n --arg f "$file" --argjson e "$env" \
+    '{stackFileContent: $f, env: $e, prune: true, pullImage: true}'
+}
+
 wait_healthy() {
   local url="$1" timeout="${HEALTH_TIMEOUT:-180}" waited=0 code streak=0
   local settle="${HEALTH_SETTLE:-25}" need="${HEALTH_CONSECUTIVE:-3}"
@@ -173,10 +208,22 @@ wait_healthy() {
 
 cmd_deploy() {
   local name="$1" compose="$2" envfile="$3" health="${4:-}"
-  local eid sid body
+  local eid sid body previous=""
   eid="$(resolve_endpoint)"
   sid="$(stack_id_by_name "$name" "$eid")"
   warn_other_endpoints "$name" "$eid"
+
+  # Take the safety net before the trapeze, not after. A snapshot that fails is
+  # not a reason to refuse to deploy — it is a reason to say, now rather than in
+  # fifteen minutes, that this particular rollout has no way back.
+  if [[ -n "$sid" ]]; then
+    if previous="$(snapshot_stack "$sid")"; then
+      echo "snapshotted the current definition of '${name}' in case the health gate fails"
+    else
+      previous=""
+      echo "warning: could not snapshot the current stack; this deploy cannot roll itself back" >&2
+    fi
+  fi
 
   body="$(jq -n \
     --arg name "$name" \
@@ -199,7 +246,40 @@ cmd_deploy() {
   fi
 
   echo "stack '${name}' submitted"
-  wait_healthy "$health"
+  wait_healthy "$health" && return 0
+
+  # From here the rollout has failed, and the failure is already live: Portainer
+  # swapped the containers when it accepted the stack. Whatever happens below,
+  # this function returns non-zero — a restored environment is a contained
+  # failure, not a success, and CI must not report the new version as deployed.
+  if [[ -z "$previous" ]]; then
+    {
+      echo
+      if [[ -z "$sid" ]]; then
+        echo "'${name}' was created by this run, so there is no earlier version to restore."
+        echo "Inspect it with '$0 status ${name}', or remove it with '$0 destroy ${name}'."
+      else
+        echo "No snapshot was taken, so '${name}' is left on the version that just failed."
+        echo "Roll back by re-running the deploy workflow with a previously good image tag."
+      fi
+    } >&2
+    return 1
+  fi
+
+  echo "restoring the previous definition of '${name}'" >&2
+  if ! printf '%s' "$previous" \
+    | api PUT "/api/stacks/${sid}?endpointId=${eid}" --data-binary @- > /dev/null; then
+    echo "ROLLBACK FAILED — '${name}' is on the failed version and Portainer refused the restore." >&2
+    return 1
+  fi
+
+  if wait_healthy "$health"; then
+    echo "rolled back: '${name}' is serving the previous version again" >&2
+  else
+    echo "ROLLBACK DID NOT RECOVER — '${name}' was restored but is still not answering." >&2
+    echo "The cause is then outside the image: the database, the host, or the edge." >&2
+  fi
+  return 1
 }
 
 cmd_destroy() {

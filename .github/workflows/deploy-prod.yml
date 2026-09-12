@@ -159,11 +159,20 @@ jobs:
           deploy/scripts/portainer.sh prune \
             "ghcr.io/$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')"
 
+      # What this step can say is limited: it cannot tell a rollout that came up
+      # sick from one that never started, so it points at the log above rather
+      # than guessing. The distinction matters — portainer.sh restores the
+      # previous stack itself when the health gate fails, so in that case the
+      # environment is already back and nothing here needs doing.
       - name: Explain rollback if the rollout failed
         if: failure()
         run: |
           echo "::error::Production rollout of ${{ needs.build.outputs.tag }} did not become healthy."
-          echo "Roll back by re-running this workflow with image_tag set to a previously good short SHA."
+          echo "Read the Deploy step above first:"
+          echo "  \"rolled back\"            — the previous version is serving again; fix and re-push."
+          echo "  \"ROLLBACK FAILED\"        — production is on the failed version; roll back by hand, below."
+          echo "  \"Portainer itself is down\" — nothing was deployed; start Portainer and re-run this workflow."
+          echo "Manual rollback: re-run this workflow with image_tag set to a previously good short SHA."
           echo "Published tags: https://github.com/${{ github.repository }}/pkgs/container/hesbah-api"
 
       - name: Report

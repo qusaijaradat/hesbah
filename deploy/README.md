@@ -219,6 +219,29 @@ call that a successful deploy.
 rule, answers `index.html` with a 200, and every deploy goes green even when
 the API is dead.
 
+### When the gate fails
+
+Portainer swaps the containers the moment it *accepts* the stack, which is
+before the gate has said anything. A failed gate therefore does not leave the
+previous version serving — by then it is gone. So `portainer.sh` snapshots the
+stack definition it is about to overwrite and puts it back when the gate fails,
+then waits for the restored version to answer.
+
+The deploy still fails. A restored environment is a contained failure, not a
+success, and CI must never report the new version as deployed. Read the Deploy
+step's log to tell the cases apart:
+
+| In the log | Where production is | What to do |
+|---|---|---|
+| `rolled back` | previous version, serving | fix the cause, push again |
+| `ROLLBACK FAILED` | the failed version | re-run the workflow with an older `image_tag` |
+| `ROLLBACK DID NOT RECOVER` | previous version, still not answering | the cause is outside the image — database, host, or edge |
+| `Portainer itself is down` | untouched, nothing was deployed | start the Portainer container, re-run the workflow |
+
+Rolling back *further* — past the version being replaced — is still manual:
+re-run `deploy-prod.yml` with `image_tag` set to an older short SHA. Nothing is
+rebuilt; the image that already passed is redeployed.
+
 ## Running the scripts by hand
 
 ```bash

@@ -176,10 +176,42 @@ catch (Exception ex)
 //   dotnet ef migrations add InitialCreate --project src/GreenMarket.Infrastructure --startup-project src/GreenMarket.Api
 //   dotnet ef database update            --project src/GreenMarket.Infrastructure --startup-project src/GreenMarket.Api
 // and switch this call to db.Database.MigrateAsync() from then on.
+// Why this is guarded at all: every line inside this block runs before the first request is
+// served, and an exception escaping it kills the process. Docker restarts it, it dies again, and
+// the whole site answers 503 through nginx — with the actual reason visible only in container
+// logs nobody is watching at that moment. A schema problem should degrade this app, never black-
+// hole it. Everything below already had its own try/catch for that reason; EnsureCreatedAsync,
+// the one call that touches the database FIRST, did not.
+string? startupFailure = null;
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-    await db.Database.EnsureCreatedAsync();
+
+    // A few attempts, because the commonest failure here is simply a database still coming up.
+    // compose gates on pg_isready, but that reports the server listening, not this database ready
+    // to be connected to, and losing that race used to mean a crash loop.
+    for (var attempt = 1; ; attempt++)
+    {
+        try
+        {
+            await db.Database.EnsureCreatedAsync();
+            break;
+        }
+        catch (Exception ex) when (attempt < 10)
+        {
+            app.Logger.LogWarning(ex, "Database not reachable yet (attempt {Attempt}/10) — retrying in 3s.", attempt);
+            await Task.Delay(TimeSpan.FromSeconds(3));
+        }
+        catch (Exception ex)
+        {
+            // Out of attempts. Start anyway and say so through /health, which is what the deploy
+            // gate reads — a failed gate leaves the previous version serving, which is a far better
+            // outcome than this one restarting forever behind a 503.
+            startupFailure = ex.Message;
+            app.Logger.LogCritical(ex, "Could not prepare the database schema. The API is starting anyway and /health will report it as degraded; every request that needs the database will fail until this is fixed.");
+            break;
+        }
+    }
 
     // EnsureCreated only builds the schema on a brand-new (tableless) database — on an
     // already-running installation (e.g. production, which already has "settings", "invoices",
@@ -713,7 +745,19 @@ using (var scope = app.Services.CreateScope())
         app.Logger.LogError(ex, "Failed to create the composite (FarmerId, Date) index on farmer_transactions — statements will still work correctly, just slower as the table grows.");
     }
 
-    await DbSeeder.SeedAsync(db);
+    // The last unguarded call in this block, and the same hazard as EnsureCreatedAsync above: it
+    // seeds roles, permissions and the first admin, and anything it throws would kill the process
+    // after everything else had carefully survived. A stack that cannot seed is broken and should
+    // say so through /health — not disappear behind a 503 with the reason only in container logs.
+    try
+    {
+        await DbSeeder.SeedAsync(db);
+    }
+    catch (Exception ex)
+    {
+        startupFailure ??= ex.Message;
+        app.Logger.LogCritical(ex, "Failed to seed roles/permissions/the first admin. The API is starting anyway and /health will report it as degraded; signing in will not work until this is fixed.");
+    }
 
     // One-time correction: the actual market commission is 10%, but this system originally
     // seeded (and every invoice before this fix locked in) 7% — DbSeeder's own seed is guarded
@@ -906,6 +950,12 @@ app.MapControllers();
 // listed above in the same commit.
 app.MapGet("/health", async (GreenMarket.Infrastructure.Persistence.AppDbContext db) =>
 {
+    // Startup trouble is reported here too, not just a live connection failure: the database can be
+    // perfectly reachable while the schema this build needs was never applied, and answering 200 to
+    // that lets a broken version through the deploy gate.
+    if (startupFailure is not null)
+        return Results.Json(new { status = "degraded", database = "schema-not-prepared", error = startupFailure }, statusCode: 503);
+
     try
     {
         await db.Database.ExecuteSqlRawAsync("SELECT 1");

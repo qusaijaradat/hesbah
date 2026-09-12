@@ -18,7 +18,7 @@ import { canShareFiles, shareFile } from "../lib/share";
  * time; printing always works.
  */
 export function PdfActions({
-  fetchPdf, fileName, shareTitle, disabled, printLabel = "🖨️ طباعة", printMode = "download", className = "",
+  fetchPdf, fileName, shareTitle, documentName, disabled, printLabel = "🖨️ طباعة", printMode = "download", className = "",
 }: {
   /** Generates the PDF. Called fresh on each click, so the file is never a stale copy. */
   fetchPdf: () => Promise<Blob>;
@@ -26,6 +26,16 @@ export function PdfActions({
   fileName: string;
   /** Shown in the share sheet, e.g. "فاتورة INV-2026-000042". Defaults to the file name. */
   shareTitle?: string;
+  /**
+   * What this document IS — "فاتورة المشتري (A4)", "نسخة السائق". When given, it is printed above
+   * the pair of buttons and they shorten to طباعة / مشاركة.
+   *
+   * A screen offering several documents rendered several identical "📤 مشاركة" buttons with nothing
+   * tying each one to its document; on the invoice page there were four, wrapping across two lines,
+   * and which share belonged to which print was a guess. A name over each pair answers that without
+   * anyone having to trace the layout.
+   */
+  documentName?: string;
   disabled?: boolean;
   printLabel?: string;
   /**
@@ -68,23 +78,53 @@ export function PdfActions({
     }
   }
 
-  return (
-    <div className={`flex items-center gap-2 flex-wrap ${className}`}>
-      <button className="btn-secondary" onClick={() => run("print")} disabled={disabled || busy !== null}>
-        {busy === "print" ? "جاري التجهيز..." : printLabel}
+  // Named documents get their own bordered box with the name on top, so a screen full of them reads
+  // as a list of documents each with two actions — not a row of interchangeable buttons. Unnamed
+  // ones (a single export on a page that offers nothing else) stay the plain inline pair.
+  const printText = busy === "print" ? "جاري التجهيز..." : (documentName ? "🖨️ طباعة" : printLabel);
+  const shareText = busy === "share" ? "جاري التجهيز..." : "📤 مشاركة";
+  // Named on the button itself as well as above it: a tooltip and a screen reader both land here,
+  // and "مشاركة" alone is the thing that was ambiguous in the first place.
+  const shareHint = documentName
+    ? `مشاركة ${documentName} — بيفتح قائمة مشاركة الجهاز (واتساب وغيره) والملف مرفق`
+    : "يفتح قائمة مشاركة الجهاز (واتساب وغيره) والملف مرفق";
+
+  const buttons = (
+    <>
+      <button className="btn-secondary" onClick={() => run("print")} disabled={disabled || busy !== null}
+        title={documentName ? `طباعة ${documentName}` : undefined}>
+        {printText}
       </button>
       {canShare && (
         <button
           className="btn-secondary"
           onClick={() => run("share")}
           disabled={disabled || busy !== null}
-          title="يفتح قائمة مشاركة الجهاز (واتساب وغيره) والملف مرفق"
+          title={shareHint}
+          aria-label={documentName ? `مشاركة ${documentName}` : undefined}
         >
-          {busy === "share" ? "جاري التجهيز..." : "📤 مشاركة"}
+          {shareText}
         </button>
       )}
-      {error && <span className="text-sm text-red-600">{error}</span>}
-      {notice && <span className="text-sm text-gray-600">{notice}</span>}
+    </>
+  );
+
+  if (!documentName) {
+    return (
+      <div className={`flex items-center gap-2 flex-wrap ${className}`}>
+        {buttons}
+        {error && <span className="text-sm text-red-600">{error}</span>}
+        {notice && <span className="text-sm text-gray-600">{notice}</span>}
+      </div>
+    );
+  }
+
+  return (
+    <div className={`rounded-lg border border-gray-200 bg-gray-50/60 p-3 ${className}`}>
+      <div className="text-sm font-semibold text-gray-700 mb-2">{documentName}</div>
+      <div className="flex items-center gap-2 flex-wrap">{buttons}</div>
+      {error && <div className="text-sm text-red-600 mt-2">{error}</div>}
+      {notice && <div className="text-sm text-gray-600 mt-2">{notice}</div>}
     </div>
   );
 }

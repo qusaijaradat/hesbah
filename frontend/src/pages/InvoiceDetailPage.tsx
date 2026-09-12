@@ -252,28 +252,31 @@ export function InvoiceDetailPage() {
 
         {error && <div className="text-sm text-red-600 bg-red-50 rounded-md p-3 mt-4">{error}</div>}
 
-        <div className="flex justify-end gap-2 mt-6 flex-wrap">
+        {/* Each party's document is its own named box with its own two actions. They used to be
+            four bare pairs in one wrapping row — four identical "📤 مشاركة" buttons with nothing
+            saying which document each belonged to. */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mt-6">
           <PdfActions
             fetchPdf={() => downloadInvoicePdf(invoice.id, false)}
             fileName={`${invoice.invoiceNumber}.pdf`}
             shareTitle={`فاتورة ${invoice.invoiceNumber}`}
+            documentName="فاتورة المشتري (A4)"
             printMode="tab"
-            printLabel="🖨️ طباعة (A4)"
           />
           <PdfActions
             fetchPdf={() => downloadInvoicePdf(invoice.id, true)}
             fileName={`${invoice.invoiceNumber}-80mm.pdf`}
-            shareTitle={`فاتورة ${invoice.invoiceNumber}`}
+            shareTitle={`فاتورة ${invoice.invoiceNumber} (حرارية)`}
+            documentName="فاتورة المشتري (حرارية 80mm)"
             printMode="tab"
-            printLabel="🖨️ طباعة (طابعة حرارية 80mm)"
           />
           {invoice.farmerId && (
             <PdfActions
               fetchPdf={() => downloadFarmerInvoicePdf(invoice.id)}
               fileName={`${invoice.invoiceNumber}-بائع.pdf`}
               shareTitle={`فاتورة بائع ${invoice.invoiceNumber}`}
+              documentName="نسخة البائع (مع العمولة)"
               printMode="tab"
-              printLabel="🖨️ نسخة البائع (مع العمولة)"
             />
           )}
           {invoice.driverId && (
@@ -281,10 +284,14 @@ export function InvoiceDetailPage() {
               fetchPdf={() => printInvoicesBulkPdf([invoice.id], "Driver")}
               fileName={`${invoice.invoiceNumber}-سائق.pdf`}
               shareTitle={`فاتورة سائق ${invoice.invoiceNumber}`}
+              documentName="نسخة السائق"
               printMode="tab"
-              printLabel="🖨️ نسخة السائق"
             />
           )}
+        </div>
+
+        {/* Sending and editing are actions on the invoice itself, not documents of it. */}
+        <div className="flex justify-end gap-2 mt-4 flex-wrap">
           {invoice.merchantWhatsApp && (
             <button className="btn-primary" disabled={sendingRole === "merchant"} onClick={() => handleSendWhatsApp(invoice.merchantWhatsApp!, invoice.merchantName, "merchant")}>
               {sendingRole === "merchant" ? "جاري التجهيز..." : "📤 إرسال للمشتري عبر واتساب"}

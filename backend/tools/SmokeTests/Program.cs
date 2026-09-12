@@ -134,6 +134,85 @@ Console.WriteLine("== InvoiceCalculator ==");
     }
 }
 
+Console.WriteLine("== One whole invoice, every party, composed the way InvoiceService composes it ==");
+{
+    // The pieces are each covered on their own above. This checks the COMPOSITION: the same calls,
+    // in the same order, that InvoiceService.CreateAsync makes — because every money bug this
+    // codebase has had lived in the seam between two correct functions, not inside either of them.
+    //
+    // A realistic invoice in the shape a line has now:
+    //   بندورة  — 12 crates, weighed 300kg, priced 3.50/kg, 12 crates out, wood 5
+    //   خيار    — 40 counted, not weighed, priced 12.00 each, 40 crates out
+    //   نعنع    — 30 counted, not weighed, priced 2.00 each, 0 crates, 30 cartons
+    var lines = new[]
+    {
+        new InvoiceCalculator.LineInput("بندورة", 12m, 300m, 3.50m, BoxQuantity: 12m, WoodPrice: 5m),
+        new InvoiceCalculator.LineInput("خيار", 40m, null, 12m, BoxQuantity: 40m),
+        new InvoiceCalculator.LineInput("نعنع", 30m, null, 2m, CartonQuantity: 30m),
+    };
+    var totals = InvoiceCalculator.Calculate(lines);
+
+    // Settings as the owner set them: 10% commission, ₪1 a crate from the buyer, 0.3 to the driver.
+    const decimal rate = 0.10m, boxPrice = 1m, driverBoxFee = 0.3m, transport = 200m;
+
+    Check("produce value = 1050 + 480 + 60 = 1590", totals.TotalValue == 1_590m, $"got {totals.TotalValue}");
+    Check("weight counts only the weighed line", totals.TotalWeightKg == 300m, $"got {totals.TotalWeightKg}");
+    Check("crates = 12 + 40, including the weighed line's", totals.TotalBoxes == 52m, $"got {totals.TotalBoxes}");
+    Check("cartons are their own count", totals.TotalCartons == 30m, $"got {totals.TotalCartons}");
+    Check("wood is a flat per-line add-on, not multiplied", totals.WoodTotal == 5m, $"got {totals.WoodTotal}");
+
+    var commission = CommissionCalculator.Calculate(totals.TotalValue, rate).Commission;
+    var boxFeeTotal = totals.TotalBoxes * boxPrice;
+    var driverBoxFeeTotal = totals.TotalBoxes * driverBoxFee;
+    Check("commission is on the produce alone — never +wood, +crates, +transport",
+          commission == 159m, $"got {commission}");
+
+    // The three parties, each from the one function that owns its side.
+    var buyerPays = InvoiceCharge.ForMerchant(totals.TotalValue, totals.WoodTotal, boxFeeTotal, returnsTotal: 0m);
+    var sellerDue = InvoiceCharge.ForSeller(totals.TotalValue, commission, transport);
+    var driverDue = InvoiceCharge.ForDriver(transport, driverBoxFeeTotal);
+    var market = MarketEarnings.ForInvoice(commission, boxFeeTotal, driverBoxFeeTotal, transport, totals.WoodTotal, hasDriver: true);
+
+    Check("buyer pays 1590 + 5 wood + 52 crates = 1647", buyerPays == 1_647m, $"got {buyerPays}");
+    Check("seller is due 1590 - 159 - 200 = 1231", sellerDue == 1_231m, $"got {sellerDue}");
+    Check("driver is due 200 + 15.6 = 215.6", driverDue == 215.6m, $"got {driverDue}");
+    Check("market keeps 159 + 52 + 5 - 15.6 = 200.4", market == 200.4m, $"got {market}");
+    Check("and the three sides close: buyer - seller - driver == market",
+          buyerPays - sellerDue - driverDue == market,
+          $"{buyerPays} - {sellerDue} - {driverDue} = {buyerPays - sellerDue - driverDue}, market says {market}");
+
+    // Now a return: 100kg of the بندورة comes back, priced as it was sold.
+    var returnedValue = InvoiceCalculator.LineTotalFor(4m, 100m, 3.50m);
+    Check("the return is priced by weight, like the line it comes off", returnedValue == 350m, $"got {returnedValue}");
+
+    var buyerAfter = InvoiceCharge.ForMerchant(totals.TotalValue, totals.WoodTotal, boxFeeTotal, returnedValue);
+    var commissionBack = MarketEarnings.CommissionCreditOnReturn(returnedValue, rate);
+    // The seller's side moves by the return MINUS the commission that was charged on it — the
+    // offsetting Adjustment GoodsReturnService posts.
+    var sellerAfter = sellerDue - (returnedValue - commissionBack);
+    var marketAfter = market - commissionBack;
+
+    Check("the buyer owes 350 less", buyerAfter == buyerPays - 350m, $"got {buyerAfter}");
+    Check("the market hands back only the 35 of commission it had earned on it",
+          commissionBack == 35m, $"got {commissionBack}");
+    Check("and the three sides STILL close after the return",
+          buyerAfter - sellerAfter - driverDue == marketAfter,
+          $"{buyerAfter} - {sellerAfter} - {driverDue} = {buyerAfter - sellerAfter - driverDue}, market says {marketAfter}");
+
+    // The same invoice with nobody to drive it: the transport stays with the market instead.
+    var marketNoDriver = MarketEarnings.ForInvoice(commission, boxFeeTotal, driverBoxFeeTotal, transport, totals.WoodTotal, hasDriver: false);
+    Check("with no driver the sides still close, transport included",
+          buyerPays - sellerDue - 0m == marketNoDriver,
+          $"{buyerPays} - {sellerDue} = {buyerPays - sellerDue}, market says {marketNoDriver}");
+
+    // Crates are charged once and split two ways: ₪1 from the buyer, 0.3 to the driver, 0.7 kept.
+    Check("52 crates: 52 off the buyer, 15.6 to the driver, 36.4 kept",
+          boxFeeTotal == 52m && driverBoxFeeTotal == 15.6m && boxFeeTotal - driverBoxFeeTotal == 36.4m,
+          $"{boxFeeTotal} / {driverBoxFeeTotal}");
+    Check("cartons are charged to nobody", 
+          MarketEarnings.ForInvoice(0m, 0m, 0m, 0m, 0m, hasDriver: true) == 0m);
+}
+
 Console.WriteLine("== The old debt, and where it is allowed to appear ==");
 {
     // An opening balance is an old debt carried over from before this system. It belongs on the

@@ -6,6 +6,7 @@
 //
 using GreenMarket.Api.DTOs;
 using GreenMarket.Api.Services;
+using GreenMarket.Domain.Services;
 using GreenMarket.Domain.Enums;
 using QuestPDF.Infrastructure;
 
@@ -23,12 +24,17 @@ var company = new CompanyInfo(
     "562-431-908",
     logo);
 
+// The fixture is checked against itself below before anything renders. A preview whose own
+// numbers do not add up cannot show that a document adds up, and this one had drifted: its
+// WoodTotal was 180.5, left over from when سعر الخشب was charged per unit rather than as a flat
+// per-line add-on, so the buyer's total, the driver's due and the market's profit were each built
+// on a figure the lines underneath them contradicted.
 var items = new List<InvoiceItemDto>
 {
     // (id, name, العدد, الوزن, السعر, صناديق, كرتون, سعر الخشب, الإجمالي)
     // Line 1 is the case the old shape could not hold at all: weighed AND out in 12 crates.
-    new(1, "بندورة", 12m, 120.5m, 3.5m, 12m, 0m, 1.0m, 421.75m),
-    new(2, "خيار", 40m, null, 12m, 40m, 0m, 1.5m, 480m),
+    new(1, "بندورة", 12m, 120.5m, 3.5m, 12m, 0m, 5m, 421.75m),
+    new(2, "خيار", 40m, null, 12m, 40m, 0m, 6m, 480m),
     new(3, "باذنجان", 30m, 75.25m, 2.75m, 0m, 30m, 0m, 206.94m),
 };
 
@@ -38,20 +44,60 @@ var invoice = new InvoiceDto(
     9, "المزارع سامي حسن", "970599333444",
     11, "السائق خالد", "970599555666",
     InvoiceStatus.Active,
-    TotalWeightKg: 195.75m, TotalValue: 1108.69m, TransportFee: 80m, WoodTotal: 180.5m,
+    TotalWeightKg: 195.75m, TotalValue: 1108.69m, TransportFee: 80m, WoodTotal: 11m,
     TotalBoxes: 52m, TotalCartons: 30m, BoxPriceApplied: 1.5m, BoxFeeTotal: 78m,
-    DriverBoxFeeApplied: 0.5m, DriverBoxFeeTotal: 20m,
-    GrandTotal: 1329.19m,
+    DriverBoxFeeApplied: 0.5m, DriverBoxFeeTotal: 26m,
+    GrandTotal: 1147.69m,
     PreviousBalance: 2450m,
-    // 1108.69 − 110.87 commission − 80 transport (InvoiceCharge.ForSeller); the fixture still
-    // had the pre-transport figure. DriverDue is 80 transport + 20 crate handling (ForDriver).
-    CommissionRateApplied: 0.10m, Commission: 110.87m, NetDueToFarmer: 917.82m, DriverDue: 100m,
+    CommissionRateApplied: 0.10m, Commission: 110.87m, NetDueToFarmer: 917.82m, DriverDue: 106m,
     ReturnsTotal: 50m,
-    PaidAmount: 500m, RemainingAmount: 829.19m, PaymentStatus: InvoicePaymentStatus.Partial,
-    MarketProfit: 150.87m,
+    PaidAmount: 500m, RemainingAmount: 647.69m, PaymentStatus: InvoicePaymentStatus.Partial,
+    MarketProfit: 168.87m,
     HasUnpricedItems: false,
     Items: items,
     Returns: new List<GoodsReturnDto>());
+
+// Every figure on the fixture, checked against the domain functions that produce it in the real
+// thing — so the eight documents below are rendered from an invoice that actually reconciles,
+// and a future edit to any one number fails here instead of quietly printing a wrong example.
+void Same(string what, decimal actual, decimal expected)
+{
+    if (actual == expected) return;
+    Console.Error.WriteLine($"fixture is inconsistent — {what}: has {actual}, should be {expected}");
+    Environment.Exit(1);
+}
+
+Same("TotalValue", invoice.TotalValue, items.Sum(i => i.LineTotal));
+Same("TotalWeightKg", invoice.TotalWeightKg, items.Sum(i => i.WeightKg ?? 0m));
+Same("WoodTotal", invoice.WoodTotal, items.Sum(i => i.WoodPrice));
+Same("TotalBoxes", invoice.TotalBoxes, items.Sum(i => i.BoxQuantity));
+Same("TotalCartons", invoice.TotalCartons, items.Sum(i => i.CartonQuantity));
+Same("BoxFeeTotal", invoice.BoxFeeTotal, invoice.TotalBoxes * invoice.BoxPriceApplied);
+Same("DriverBoxFeeTotal", invoice.DriverBoxFeeTotal, invoice.TotalBoxes * invoice.DriverBoxFeeApplied);
+foreach (var line in items)
+    Same($"line total for {line.ItemName}", line.LineTotal,
+         InvoiceCalculator.LineTotalFor(line.Quantity, line.WeightKg, line.PricePerUnit));
+
+var fixtureCommission = CommissionCalculator.Calculate(invoice.TotalValue, invoice.CommissionRateApplied).Commission;
+Same("Commission", invoice.Commission, fixtureCommission);
+Same("GrandTotal", invoice.GrandTotal,
+     InvoiceCharge.ForMerchant(invoice.TotalValue, invoice.WoodTotal, invoice.BoxFeeTotal, invoice.ReturnsTotal));
+Same("NetDueToFarmer", invoice.NetDueToFarmer,
+     InvoiceCharge.ForSeller(invoice.TotalValue, invoice.Commission, invoice.TransportFee));
+Same("DriverDue", invoice.DriverDue, InvoiceCharge.ForDriver(invoice.TransportFee, invoice.DriverBoxFeeTotal));
+Same("RemainingAmount", invoice.RemainingAmount, invoice.GrandTotal - invoice.PaidAmount);
+Same("MarketProfit", invoice.MarketProfit,
+     MarketEarnings.ForInvoice(invoice.Commission, invoice.BoxFeeTotal, invoice.DriverBoxFeeTotal,
+         invoice.TransportFee, invoice.WoodTotal, hasDriver: invoice.DriverId != null)
+     - MarketEarnings.CommissionCreditOnReturn(invoice.ReturnsTotal, invoice.CommissionRateApplied));
+
+// And the identity itself, on the fixture: what the buyer pays, less what the seller and driver
+// are due, is what the market keeps. The seller's side moves by the return net of its commission.
+Same("buyer - seller - driver == market",
+     invoice.GrandTotal
+     - (invoice.NetDueToFarmer - (invoice.ReturnsTotal - MarketEarnings.CommissionCreditOnReturn(invoice.ReturnsTotal, invoice.CommissionRateApplied)))
+     - invoice.DriverDue,
+     invoice.MarketProfit);
 
 var export = new ExportService();
 

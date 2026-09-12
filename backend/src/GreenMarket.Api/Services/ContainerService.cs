@@ -222,15 +222,22 @@ public class ContainerService : IContainerService
     /// </summary>
     private async Task<decimal> InvoiceContainersFor(int partnerId, ContainerType type)
     {
+        // Every kind is named. Written as "Carton, else crates", a call for Sack would have come
+        // back holding CRATE counts — silently, and on a screen whose whole job is telling the kinds
+        // apart. Nothing asks for sacks here today; the point is that it cannot start lying if
+        // something does.
+        if (type is not (ContainerType.Box or ContainerType.Carton)) return 0m;
+        var wantsCartons = type == ContainerType.Carton;
+
         var issued = await _db.Invoices
             .Where(i => i.MerchantId == partnerId && i.Status == InvoiceStatus.Active)
             .SelectMany(i => i.Items)
-            .SumAsync(it => (decimal?)(type == ContainerType.Carton ? it.CartonQuantity : it.BoxQuantity)) ?? 0;
+            .SumAsync(it => (decimal?)(wantsCartons ? it.CartonQuantity : it.BoxQuantity)) ?? 0;
 
         var back = await _db.GoodsReturns
             .Where(r => r.Invoice.MerchantId == partnerId && r.Invoice.Status == InvoiceStatus.Active)
             .SelectMany(r => r.Items)
-            .SumAsync(ri => (decimal?)(type == ContainerType.Carton ? ri.CartonQuantity : ri.BoxQuantity)) ?? 0;
+            .SumAsync(ri => (decimal?)(wantsCartons ? ri.CartonQuantity : ri.BoxQuantity)) ?? 0;
 
         return issued - back;
     }

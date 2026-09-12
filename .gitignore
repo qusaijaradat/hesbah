@@ -44,3 +44,7 @@ desktop.ini
 
 # PdfPreview output (backend/tools/PdfPreview writes here)
 out/
+
+# Belt-and-braces: `dotnet run ... --nologo` feeds the flag to PdfPreview as its output
+# directory. Use `dotnet run --project backend/tools/PdfPreview -- out` instead.
+--nologo/

@@ -7,6 +7,7 @@ const NAV_ITEMS = [
   { to: "/", label: "لوحة التحكم", permission: null },
   { to: "/invoices", label: "الفواتير", permission: "invoices.view" },
   { to: "/invoices/print", label: "طباعة الفواتير", permission: "invoices.view" },
+  { to: "/invoices/quick-entry", label: "إدخال الدفتر (تجريبي)", permission: "invoices.create" },
   { to: "/items", label: "الأصناف", permission: "items.view" },
   { to: "/daily-closing", label: "الإغلاق اليومي", permission: "reports.view" },
   { to: "/containers", label: "الصناديق والمخالات", permission: "boxes.view" },

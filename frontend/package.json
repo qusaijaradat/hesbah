@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "check:ledger": "tsc tools/ledgerAuditCheck.ts src/lib/ledgerAudit.ts --ignoreConfig --outDir .ledgercheck --target es2020 --module es2020 --moduleResolution bundler --skipLibCheck && node .ledgercheck/tools/ledgerAuditCheck.js",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "preview": "vite preview"

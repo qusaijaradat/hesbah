@@ -15,6 +15,7 @@ import { FarmerAccountPage, MerchantAccountPage } from "./pages/PartnerAccountPa
 import { FarmerInvoiceDetailPage, MerchantInvoiceDetailPage } from "./pages/PartnerInvoiceDetailPage";
 import { InvoicesPage } from "./pages/InvoicesPage";
 import { InvoiceNewPage } from "./pages/InvoiceNewPage";
+import { QuickEntryPage } from "./pages/QuickEntryPage";
 import { InvoiceEditPage } from "./pages/InvoiceEditPage";
 import { InvoiceDetailPage } from "./pages/InvoiceDetailPage";
 import { BulkPrintPage } from "./pages/BulkPrintPage";
@@ -54,6 +55,9 @@ export default function App() {
           <Route path="/" element={<Protected><DashboardPage /></Protected>} />
           <Route path="/invoices" element={<Protected permission="invoices.view"><InvoicesPage /></Protected>} />
           <Route path="/invoices/new" element={<Protected permission="invoices.create"><InvoiceNewPage /></Protected>} />
+          {/* Experimental — see QuickEntryPage. Same permission as the normal form, since it
+              creates invoices through exactly the same endpoint. */}
+          <Route path="/invoices/quick-entry" element={<Protected permission="invoices.create"><QuickEntryPage /></Protected>} />
           <Route path="/invoices/print" element={<Protected permission="invoices.view"><BulkPrintPage /></Protected>} />
           <Route path="/invoices/:id/edit" element={<Protected permission="invoices.edit"><InvoiceEditPage /></Protected>} />
           <Route path="/invoices/:id" element={<Protected permission="invoices.view"><InvoiceDetailPage /></Protected>} />

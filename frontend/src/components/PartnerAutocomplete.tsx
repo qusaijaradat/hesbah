@@ -23,9 +23,12 @@ import type { PartnerSuggestionDto, PartnerType } from "../types";
  * needed.
  */
 export function PartnerAutocomplete({
-  label, value, onChange, placeholder, allowNew, onFreeTextChange, types, newTypeLabel, onCreateNew, text,
+  label, labelHidden, value, onChange, placeholder, allowNew, onFreeTextChange, types, newTypeLabel, onCreateNew, text,
 }: {
   label: string;
+  /** Keeps the label for screen readers but takes it off the page — for a dense grid where the
+   *  column header already names the field and a label per cell would treble the row height. */
+  labelHidden?: boolean;
   value: { id: number; name: string } | null;
   onChange: (partner: { id: number; name: string } | null) => void;
   placeholder?: string;
@@ -163,7 +166,7 @@ export function PartnerAutocomplete({
 
   return (
     <div className="relative">
-      <label className="label">{label}</label>
+      <label className={labelHidden ? "sr-only" : "label"}>{label}</label>
       <input
         className="input pe-6"
         value={query}

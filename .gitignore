@@ -48,3 +48,6 @@ out/
 # Belt-and-braces: `dotnet run ... --nologo` feeds the flag to PdfPreview as its output
 # directory. Use `dotnet run --project backend/tools/PdfPreview -- out` instead.
 --nologo/
+
+# frontend/tools/ledgerAuditCheck.ts compiles here (npm run check:ledger)
+frontend/.ledgercheck/

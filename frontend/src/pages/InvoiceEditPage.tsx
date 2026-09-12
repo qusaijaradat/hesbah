@@ -307,11 +307,15 @@ export function InvoiceEditPage() {
             placeholder="اتركه فارغًا إن لم يكن معروفًا..."
             types={["Farmer"]}
           />
+          {/* Sellers are listed in the driver field too: the same man often brings his own produce
+              in. Picking him adds the driver role to the account he already has instead of opening
+              a second one — see the backend PartnerService.GetWithRoleAsync. Each suggestion shows
+              what the person already is, so بائع and سائق are still told apart in the list. */}
           <PartnerAutocomplete
             label="السائق (اختياري)" value={driver} onChange={setDriver}
             allowNew newTypeLabel="سائق" text={driverText} onFreeTextChange={setDriverText}
             placeholder="اتركه فارغًا إن لم يكن معروفًا..."
-            types={["Driver"]}
+            types={["Driver", "Farmer"]}
           />
         </div>
         {CREDIT_LIMIT_UI_ENABLED && wouldExceedCreditLimit && (

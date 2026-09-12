@@ -237,13 +237,11 @@ public class PaymentService : IPaymentService
     {
         var expectedType = ExpectedPartnerType(direction);
 
+        // Paying someone as a driver IS the statement that they drive, exactly as on an invoice —
+        // and typing their name here has always granted the role, so refusing the id was the odd one
+        // out. See PartnerService.GetWithRoleAsync.
         if (id is not null)
-        {
-            var existing = await _db.Partners.FindAsync(id) ?? throw new NotFoundAppException("Partner", id);
-            if (!PartnerTypeMatches(existing.Type, expectedType))
-                throw new ValidationAppException($"الشخص المحدد ليس من نوع {PartnerTypeLabel(expectedType)} — لا يمكن تسجيل دفعة بهذا الاتجاه له.");
-            return existing;
-        }
+            return await _partners.GetWithRoleAsync(id.Value, expectedType, PartnerTypeLabel(expectedType));
 
         if (!string.IsNullOrWhiteSpace(name))
             return await _partners.FindOrCreateAsync(name, expectedType);

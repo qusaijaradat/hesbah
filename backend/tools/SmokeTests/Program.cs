@@ -145,6 +145,19 @@ Console.WriteLine("== PartnerRoles: a person can be more than one thing ==");
     Check("and still as a buyer", PartnerRoles.CanBe(nowAlsoDrives, PartnerType.Merchant));
     Check("but not as a seller", !PartnerRoles.CanBe(nowAlsoDrives, PartnerType.Farmer));
 
+    // The seller who hauls his own produce: picked in an invoice's driver field, he must come back
+    // as the SAME person holding both roles — one account, one balance — not a second record under
+    // a near-identical name. (PartnerService.GetWithRoleAsync does this for a picked id, and
+    // FindOrCreateAsync for a typed name; both go through Add.)
+    var sellerWhoDrives = PartnerRoles.Add(PartnerType.Farmer, PartnerType.Driver);
+    Check("a seller used as a driver becomes seller+driver",
+          sellerWhoDrives == PartnerType.FarmerDriver, $"got {sellerWhoDrives}");
+    Check("and is still a seller afterwards", PartnerRoles.Has(sellerWhoDrives, PartnerType.Farmer));
+    Check("the driver field lists him, because he holds Driver",
+          PartnerRoles.Has(sellerWhoDrives, PartnerType.Driver));
+    Check("the seller field still lists him too", PartnerRoles.Has(sellerWhoDrives, PartnerType.Farmer));
+    Check("he reads as both", PartnerRoles.Label(sellerWhoDrives) == "بائع/سائق", PartnerRoles.Label(sellerWhoDrives));
+
     // The reverse direction lost the driver role instead.
     var driverWhoBuys = PartnerRoles.Add(PartnerType.Driver, PartnerType.Merchant);
     Check("a driver entered as a buyer stays a driver", PartnerRoles.Has(driverWhoBuys, PartnerType.Driver));

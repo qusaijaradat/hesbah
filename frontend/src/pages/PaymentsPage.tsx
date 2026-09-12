@@ -334,7 +334,9 @@ function PaymentFormModal({ onClose, onSaved }: { onClose: () => void; onSaved: 
             allowNew
             text={partnerText}
             onFreeTextChange={setPartnerText}
-            types={direction === "FromMerchant" ? ["Merchant", "Both"] : direction === "ToFarmer" ? ["Farmer", "Both"] : ["Driver"]}
+            // ToDriver lists sellers as well — the man who hauls his own produce is one account,
+            // and paying him here grants him the driver role rather than making a second record.
+            types={direction === "FromMerchant" ? ["Merchant"] : direction === "ToFarmer" ? ["Farmer"] : ["Driver", "Farmer"]}
             // The chosen direction is what decides which side a new name is created as — the same
             // mapping the backend applies to PartnerName (see PaymentService.ResolvePartnerAsync).
             newTypeLabel={direction === "FromMerchant" ? "مشتري" : direction === "ToFarmer" ? "بائع" : "سائق"}

@@ -842,21 +842,18 @@ public class InvoiceService : IInvoiceService
         return new FarmerGoodsDto(farmer.Id, farmer.Name, rows);
     }
 
-    /// <summary>An Id reuses an existing partner exactly — but only after checking it's actually
-    /// the right kind of partner for this role (see PartnerTypeMatches's doc comment); previously
-    /// any partner id was accepted as-is, so a merchant id passed as FarmerId would silently get
-    /// charged a commission and posted onto the farmer ledger. A Name resolves via find-or-create
-    /// so a brand new trader can be typed straight onto the invoice with no separate "add partner"
-    /// step first. Used for the merchant side, which is always required.</summary>
+    /// <summary>An Id reuses that exact partner, granting them this role if they did not already
+    /// hold it (PartnerService.GetWithRoleAsync); a Name resolves via find-or-create, which does the
+    /// same thing for a name already on file and creates the person otherwise. Either way the person
+    /// is reused, never duplicated, and their roles only ever grow — one man, one account, one
+    /// balance, whether he sells today and drives tomorrow. Used for the merchant side, which is
+    /// always required.</summary>
     private async Task<Partner> ResolvePartnerAsync(int? id, string? name, PartnerType type, string role)
     {
+        // Picked off the list, or typed — either way, using them here is what makes them this. See
+        // PartnerService.GetWithRoleAsync for why the id path no longer refuses.
         if (id is not null)
-        {
-            var existing = await _db.Partners.FindAsync(id) ?? throw new NotFoundAppException($"Partner ({role})", id);
-            if (!PartnerTypeMatches(existing.Type, type))
-                throw new ValidationAppException($"الشخص المحدد ({existing.Name}) ليس من نوع {PartnerTypeLabel(type)} — لا يمكن استخدامه كـ{role} على هذه الفاتورة.");
-            return existing;
-        }
+            return await _partners.GetWithRoleAsync(id.Value, type, role);
 
         if (!string.IsNullOrWhiteSpace(name))
             return await _partners.FindOrCreateAsync(name, type);
@@ -864,28 +861,6 @@ public class InvoiceService : IInvoiceService
         throw new ValidationAppException($"Either an existing {role} or a {role} name is required.");
     }
 
-    /// <summary>Same "Both" allowance used everywhere a partner's type is checked (see
-    /// PartnerService.ListAsync's sellerIds/merchantIds grouping and PaymentService's own copy of
-    /// this same check): a partner marked Both can act as either Farmer or Merchant, since that's
-    /// exactly what Both means (requirement doc §3). Driver is its own type, never folded into
-    /// Both, so only an actual Driver partner satisfies a Driver expectation. Partner.Type itself
-    /// is nullable (staff can record a person before knowing their role — see
-    /// PartnerService.ValidateNameAndType/PartnersPage's "النوع (اختياري)" field): a still-unset
-    /// Type can't fail this check without also blocking that pre-existing, intentional flow, so it
-    /// is passed through here rather than rejected.</summary>
-    // PartnerRoles.CanBe: one bitwise test that covers every combination of roles, including the
-    // two this used to have no way to express. The hand-written version denied a driver who was
-    // also a buyer — which is precisely the state the find-or-create bug kept putting people in.
-    private static bool PartnerTypeMatches(PartnerType? actual, PartnerType expected) =>
-        PartnerRoles.CanBe(actual, expected);
-
-    private static string PartnerTypeLabel(PartnerType type) => type switch
-    {
-        PartnerType.Farmer => "بائع",
-        PartnerType.Merchant => "مشتري",
-        PartnerType.Driver => "سائق",
-        _ => type.ToString()
-    };
 
     /// <summary>Same resolution as <see cref="ResolvePartnerAsync"/>, but returns null instead of
     /// throwing when neither an Id nor a name is supplied — used for the seller/driver sides, which
@@ -893,12 +868,7 @@ public class InvoiceService : IInvoiceService
     private async Task<Partner?> ResolveOptionalPartnerAsync(int? id, string? name, PartnerType type, string role)
     {
         if (id is not null)
-        {
-            var existing = await _db.Partners.FindAsync(id) ?? throw new NotFoundAppException($"Partner ({role})", id);
-            if (!PartnerTypeMatches(existing.Type, type))
-                throw new ValidationAppException($"الشخص المحدد ({existing.Name}) ليس من نوع {PartnerTypeLabel(type)} — لا يمكن استخدامه كـ{role} على هذه الفاتورة.");
-            return existing;
-        }
+            return await _partners.GetWithRoleAsync(id.Value, type, role);
 
         if (!string.IsNullOrWhiteSpace(name))
             return await _partners.FindOrCreateAsync(name, type);

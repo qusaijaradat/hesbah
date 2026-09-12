@@ -40,6 +40,19 @@ public interface IPartnerService
     /// one invoice and a merchant on another). If no match exists, creates a brand new partner.
     /// </summary>
     Task<Partner> FindOrCreateAsync(string name, PartnerType type);
+
+    /// <summary>
+    /// The picked-from-the-list counterpart of <see cref="FindOrCreateAsync"/>: returns the partner,
+    /// having gained <paramref name="role"/> if they did not already hold it.
+    ///
+    /// Using someone as a driver IS the statement that they drive — the same statement typing their
+    /// name makes, which has always promoted them. Only the id path refused, so picking سامي off the
+    /// driver list because he also hauls produce failed with "ليس من نوع سائق", while typing the
+    /// same name letter for letter worked. Worse, refusing was the reason people re-entered him
+    /// under a slightly different spelling and ended up with two records and two balances for one
+    /// person — which is exactly what one account is supposed to prevent.
+    /// </summary>
+    Task<Partner> GetWithRoleAsync(int id, PartnerType role, string roleLabel);
     /// <summary>
     /// Posts a manual "تسوية/تعويض" line to a seller's or driver's ledger — the one case the
     /// market actually has for the word "خصم": an item's price collapsed after it was taken in and
@@ -192,6 +205,21 @@ public class PartnerService : IPartnerService
         _db.Partners.Add(partner);
         await _db.SaveChangesAsync();
         return ToDto(partner);
+    }
+
+    public async Task<Partner> GetWithRoleAsync(int id, PartnerType role, string roleLabel)
+    {
+        var partner = await _db.Partners.FindAsync(id)
+            ?? throw new NotFoundAppException($"Partner ({roleLabel})", id);
+
+        // Same additive rule as FindOrCreateAsync — roles combine and are never taken away.
+        var combined = PartnerRoles.Add(partner.Type, role);
+        if (partner.Type != combined)
+        {
+            partner.Type = combined;
+            await _db.SaveChangesAsync();
+        }
+        return partner;
     }
 
     public async Task<Partner> FindOrCreateAsync(string name, PartnerType type)

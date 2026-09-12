@@ -159,7 +159,7 @@ public class ExportService : IExportService
     {
         using var workbook = new XLWorkbook();
         var sheet = workbook.Worksheets.Add("Farmer Report");
-        var headers = new[] { "Farmer", "Invoices", "Total Weight (kg)", "Total Boxes", "Total Sales (₪)", "Commission (₪)", "Net Due (₪)", "Paid (₪)", "Remaining (₪)", "Last Invoice" };
+        var headers = new[] { "Farmer", "Invoices", "Total Weight (kg)", "Total Boxes", "Total Cartons", "Total Sales (₪)", "Commission (₪)", "Net Due (₪)", "Paid (₪)", "Remaining (₪)", "Last Invoice" };
         for (var c = 0; c < headers.Length; c++) sheet.Cell(1, c + 1).Value = headers[c];
         sheet.Row(1).Style.Font.Bold = true;
 
@@ -170,12 +170,13 @@ public class ExportService : IExportService
             sheet.Cell(row, 2).Value = r.InvoiceCount;
             sheet.Cell(row, 3).Value = (double)r.TotalWeightKg;
             sheet.Cell(row, 4).Value = (double)r.TotalBoxes;
-            sheet.Cell(row, 5).Value = (double)r.TotalSalesValue;
-            sheet.Cell(row, 6).Value = (double)r.TotalCommission;
-            sheet.Cell(row, 7).Value = (double)r.NetDue;
-            sheet.Cell(row, 8).Value = (double)r.TotalPaid;
-            sheet.Cell(row, 9).Value = (double)r.Remaining;
-            sheet.Cell(row, 10).Value = r.LastInvoiceDate?.ToLocalTime().DateTime.ToString("yyyy-MM-dd") ?? "-";
+            sheet.Cell(row, 5).Value = (double)r.TotalCartons;
+            sheet.Cell(row, 6).Value = (double)r.TotalSalesValue;
+            sheet.Cell(row, 7).Value = (double)r.TotalCommission;
+            sheet.Cell(row, 8).Value = (double)r.NetDue;
+            sheet.Cell(row, 9).Value = (double)r.TotalPaid;
+            sheet.Cell(row, 10).Value = (double)r.Remaining;
+            sheet.Cell(row, 11).Value = r.LastInvoiceDate?.ToLocalTime().DateTime.ToString("yyyy-MM-dd") ?? "-";
             row++;
         }
         sheet.Columns().AdjustToContents();
@@ -186,7 +187,7 @@ public class ExportService : IExportService
     {
         using var workbook = new XLWorkbook();
         var sheet = workbook.Worksheets.Add("Merchant Report");
-        var headers = new[] { "Buyer", "Invoices", "Total Weight (kg)", "Total Boxes", "Purchases (₪)", "Wood (₪)", "Box Fee (₪)", "Grand Total (₪)", "Paid (₪)", "Remaining (₪)", "Last Invoice" };
+        var headers = new[] { "Buyer", "Invoices", "Total Weight (kg)", "Total Boxes", "Total Cartons", "Purchases (₪)", "Wood (₪)", "Box Fee (₪)", "Grand Total (₪)", "Paid (₪)", "Remaining (₪)", "Last Invoice" };
         for (var c = 0; c < headers.Length; c++) sheet.Cell(1, c + 1).Value = headers[c];
         sheet.Row(1).Style.Font.Bold = true;
 
@@ -197,13 +198,14 @@ public class ExportService : IExportService
             sheet.Cell(row, 2).Value = r.InvoiceCount;
             sheet.Cell(row, 3).Value = (double)r.TotalWeightKg;
             sheet.Cell(row, 4).Value = (double)r.TotalBoxes;
-            sheet.Cell(row, 5).Value = (double)r.TotalPurchases;
-            sheet.Cell(row, 6).Value = (double)r.TotalWoodTotal;
-            sheet.Cell(row, 7).Value = (double)r.TotalBoxFee;
-            sheet.Cell(row, 8).Value = (double)r.GrandTotal;
-            sheet.Cell(row, 9).Value = (double)r.TotalPaid;
-            sheet.Cell(row, 10).Value = (double)r.Remaining;
-            sheet.Cell(row, 11).Value = r.LastInvoiceDate?.ToLocalTime().DateTime.ToString("yyyy-MM-dd") ?? "-";
+            sheet.Cell(row, 5).Value = (double)r.TotalCartons;
+            sheet.Cell(row, 6).Value = (double)r.TotalPurchases;
+            sheet.Cell(row, 7).Value = (double)r.TotalWoodTotal;
+            sheet.Cell(row, 8).Value = (double)r.TotalBoxFee;
+            sheet.Cell(row, 9).Value = (double)r.GrandTotal;
+            sheet.Cell(row, 10).Value = (double)r.TotalPaid;
+            sheet.Cell(row, 11).Value = (double)r.Remaining;
+            sheet.Cell(row, 12).Value = r.LastInvoiceDate?.ToLocalTime().DateTime.ToString("yyyy-MM-dd") ?? "-";
             row++;
         }
         sheet.Columns().AdjustToContents();
@@ -214,7 +216,7 @@ public class ExportService : IExportService
     {
         using var workbook = new XLWorkbook();
         var sheet = workbook.Worksheets.Add("Driver Report");
-        var headers = new[] { "Driver", "Invoices", "Transport Fee (₪)", "Paid (₪)", "Remaining (₪)", "Last Invoice" };
+        var headers = new[] { "Driver", "Invoices", "Boxes", "Cartons", "Transport Fee (₪)", "Paid (₪)", "Remaining (₪)", "Last Invoice" };
         for (var c = 0; c < headers.Length; c++) sheet.Cell(1, c + 1).Value = headers[c];
         sheet.Row(1).Style.Font.Bold = true;
 
@@ -223,10 +225,12 @@ public class ExportService : IExportService
         {
             sheet.Cell(row, 1).Value = r.DriverName;
             sheet.Cell(row, 2).Value = r.InvoiceCount;
-            sheet.Cell(row, 3).Value = (double)r.TotalTransportFee;
-            sheet.Cell(row, 4).Value = (double)r.TotalPaid;
-            sheet.Cell(row, 5).Value = (double)r.Remaining;
-            sheet.Cell(row, 6).Value = r.LastInvoiceDate?.ToLocalTime().DateTime.ToString("yyyy-MM-dd") ?? "-";
+            sheet.Cell(row, 3).Value = (double)r.TotalBoxes;
+            sheet.Cell(row, 4).Value = (double)r.TotalCartons;
+            sheet.Cell(row, 5).Value = (double)r.TotalTransportFee;
+            sheet.Cell(row, 6).Value = (double)r.TotalPaid;
+            sheet.Cell(row, 7).Value = (double)r.Remaining;
+            sheet.Cell(row, 8).Value = r.LastInvoiceDate?.ToLocalTime().DateTime.ToString("yyyy-MM-dd") ?? "-";
             row++;
         }
         sheet.Columns().AdjustToContents();
@@ -1633,6 +1637,10 @@ public class ExportService : IExportService
             ("Invoices today", closing.InvoiceCount.ToString()),
             ("Total sales value", $"₪ {closing.TotalSalesValue:0.##}"),
             ("Total commission earned", $"₪ {closing.TotalCommission:0.##}"),
+            // The counts before the fee they produce — the printed sheet is what gets checked
+            // against the day, and a fee with no count behind it cannot be.
+            ("Boxes out", closing.TotalBoxes.ToString("0.###")),
+            ("Cartons out", closing.TotalCartons.ToString("0.###")),
             ("Box fee income", $"₪ {closing.BoxFeeIncome:0.##}"),
             ("Wood income", $"₪ {closing.WoodIncome:0.##}"),
             ("Driver box fee paid", $"- ₪ {closing.DriverBoxFeeCost:0.##}"),

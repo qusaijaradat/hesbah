@@ -453,6 +453,7 @@ export interface FarmerReportRow {
   invoiceCount: number;
   totalWeightKg: number;
   totalBoxes: number;
+  totalCartons: number;
   totalSalesValue: number;
   totalCommission: number;
   netDue: number;
@@ -468,6 +469,7 @@ export interface MerchantReportRow {
   invoiceCount: number;
   totalWeightKg: number;
   totalBoxes: number;
+  totalCartons: number;
   totalPurchases: number;
   totalWoodTotal: number;
   /** رسوم الصناديق — broken out so purchases + wood + this adds up to grandTotal. No transport:
@@ -487,6 +489,9 @@ export interface DriverReportRow {
   driverId: number;
   driverName: string;
   invoiceCount: number;
+  /** The containers he handled — crates are what his أجرة الصناديق is paid on. */
+  totalBoxes: number;
+  totalCartons: number;
   totalTransportFee: number;
   totalPaid: number;
   remaining: number;
@@ -534,6 +539,9 @@ export interface MarketReportRow {
   period: string;
   totalSalesValue: number;
   totalCommission: number;
+  /** Containers that went out over the period — crates carry the fee shown beside them. */
+  totalBoxes: number;
+  totalCartons: number;
   /** See DailyClosingDto below — the same four terms, over a period instead of a day. */
   boxFeeIncome: number;
   woodIncome: number;
@@ -576,6 +584,10 @@ export interface DailyClosingDto {
   invoiceCount: number;
   totalSalesValue: number;
   totalCommission: number;
+  /** The counts behind the fee below, so a day's رسوم الصناديق reads back to something countable. */
+  totalBoxes: number;
+  /** Cartons that went out. Counted, charged to nobody. */
+  totalCartons: number;
   /** رسوم الصناديق charged to buyers — the market keeps it. */
   boxFeeIncome: number;
   /** سعر الخشب charged to buyers — the market keeps this too. */
@@ -764,6 +776,9 @@ export interface DashboardSummaryDto {
   todayInvoiceCount: number;
   todaySalesValue: number;
   todayCommission: number;
+  /** Containers that went out today — crates carry the fee, cartons are counted only. */
+  todayBoxes: number;
+  todayCartons: number;
   todayCashIn: number;
   todayCashOut: number;
   merchantsOwe: number;

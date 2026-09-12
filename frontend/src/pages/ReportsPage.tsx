@@ -121,20 +121,21 @@ function FarmersTable({ rows }: { rows: FarmerReportRow[] }) {
       <table className="table-base">
         <thead>
           <tr>
-            <th>البائع</th><th>عدد الفواتير</th><th>الوزن</th><th>الصناديق</th><th>المبيعات</th>
+            <th>البائع</th><th>عدد الفواتير</th><th>الوزن</th><th>الصناديق</th><th>الكرتون</th><th>المبيعات</th>
             <th>العمولة</th><th>صافي المستحق</th><th>المدفوع</th>
             <th>المتبقي</th><th>آخر فاتورة</th>
           </tr>
         </thead>
         <tbody>
           {rows.length === 0 ? (
-            <tr><td colSpan={10} className="text-center text-gray-400 py-6">لا توجد بيانات</td></tr>
+            <tr><td colSpan={11} className="text-center text-gray-400 py-6">لا توجد بيانات</td></tr>
           ) : pager.pageRows.map((r) => (
             <tr key={r.farmerId}>
               <td className="font-medium"><PartnerLink partnerId={r.farmerId} name={r.farmerName} side="seller" /></td>
               <td>{r.invoiceCount}</td>
               <td>{formatWeight(r.totalWeightKg)}</td>
               <td>{r.totalBoxes.toLocaleString("en-US", { maximumFractionDigits: 3 })}</td>
+              <td>{r.totalCartons.toLocaleString("en-US", { maximumFractionDigits: 3 })}</td>
               <td>{formatCurrency(r.totalSalesValue)}</td>
               <td>{formatCurrency(r.totalCommission)}</td>
               <td>{formatCurrency(r.netDue)}</td>
@@ -160,20 +161,21 @@ function MerchantsTable({ rows }: { rows: MerchantReportRow[] }) {
       <table className="table-base">
         <thead>
           <tr>
-            <th>المشتري</th><th>عدد الفواتير</th><th>الوزن</th><th>الصناديق</th><th>المشتريات</th>
+            <th>المشتري</th><th>عدد الفواتير</th><th>الوزن</th><th>الصناديق</th><th>الكرتون</th><th>المشتريات</th>
             <th>سعر الخشب</th><th>رسوم الصناديق</th><th>الإجمالي الكلي</th><th>المدفوع</th>
             <th>المتبقي</th><th>آخر فاتورة</th>
           </tr>
         </thead>
         <tbody>
           {rows.length === 0 ? (
-            <tr><td colSpan={11} className="text-center text-gray-400 py-6">لا توجد بيانات</td></tr>
+            <tr><td colSpan={12} className="text-center text-gray-400 py-6">لا توجد بيانات</td></tr>
           ) : pager.pageRows.map((r) => (
             <tr key={r.merchantId}>
               <td className="font-medium"><PartnerLink partnerId={r.merchantId} name={r.merchantName} side="merchant" /></td>
               <td>{r.invoiceCount}</td>
               <td>{formatWeight(r.totalWeightKg)}</td>
               <td>{r.totalBoxes.toLocaleString("en-US", { maximumFractionDigits: 3 })}</td>
+              <td>{r.totalCartons.toLocaleString("en-US", { maximumFractionDigits: 3 })}</td>
               <td>{formatCurrency(r.totalPurchases)}</td>
               <td>{formatCurrency(r.totalWoodTotal)}</td>
               <td>{formatCurrency(r.totalBoxFee)}</td>
@@ -200,17 +202,19 @@ function DriversTable({ rows }: { rows: DriverReportRow[] }) {
       <table className="table-base">
         <thead>
           <tr>
-            <th>السائق</th><th>عدد الفواتير</th><th>أجرة النقل</th><th>المدفوع</th>
+            <th>السائق</th><th>عدد الفواتير</th><th>الصناديق</th><th>الكرتون</th><th>أجرة النقل</th><th>المدفوع</th>
             <th>المتبقي</th><th>آخر فاتورة</th>
           </tr>
         </thead>
         <tbody>
           {rows.length === 0 ? (
-            <tr><td colSpan={6} className="text-center text-gray-400 py-6">لا توجد بيانات</td></tr>
+            <tr><td colSpan={8} className="text-center text-gray-400 py-6">لا توجد بيانات</td></tr>
           ) : pager.pageRows.map((r) => (
             <tr key={r.driverId}>
               <td className="font-medium"><PartnerLink partnerId={r.driverId} name={r.driverName} side="seller" /></td>
               <td>{r.invoiceCount}</td>
+              <td>{r.totalBoxes.toLocaleString("en-US", { maximumFractionDigits: 3 })}</td>
+              <td>{r.totalCartons.toLocaleString("en-US", { maximumFractionDigits: 3 })}</td>
               <td>{formatCurrency(r.totalTransportFee)}</td>
               <td>{formatCurrency(r.totalPaid)}</td>
               <td className="font-semibold">{formatCurrency(r.remaining)}</td>
@@ -265,15 +269,17 @@ function MarketTable({ rows }: { rows: MarketReportRow[] }) {
       <table className="table-base">
         {/* Every term of the profit, not just commission and expenses — the crate fees are real
             margin and used to be missing from it (see the backend MarketEarnings). */}
-        <thead><tr><th>الفترة</th><th>المبيعات</th><th>العمولة</th><th>رسوم الصناديق</th><th>سعر الخشب</th><th>أجرة صناديق السائق</th><th>نقل بدون سائق</th><th>عمولة مرتجعة</th><th>المصاريف</th><th>الربح الصافي</th></tr></thead>
+        <thead><tr><th>الفترة</th><th>المبيعات</th><th>العمولة</th><th>الصناديق</th><th>الكرتون</th><th>رسوم الصناديق</th><th>سعر الخشب</th><th>أجرة صناديق السائق</th><th>نقل بدون سائق</th><th>عمولة مرتجعة</th><th>المصاريف</th><th>الربح الصافي</th></tr></thead>
         <tbody>
           {rows.length === 0 ? (
-            <tr><td colSpan={10} className="text-center text-gray-400 py-6">لا توجد بيانات</td></tr>
+            <tr><td colSpan={12} className="text-center text-gray-400 py-6">لا توجد بيانات</td></tr>
           ) : pager.pageRows.map((r) => (
             <tr key={r.period}>
               <td className="font-medium">{r.period}</td>
               <td>{formatCurrency(r.totalSalesValue)}</td>
               <td>{formatCurrency(r.totalCommission)}</td>
+              <td>{r.totalBoxes.toLocaleString("en-US", { maximumFractionDigits: 3 })}</td>
+              <td>{r.totalCartons.toLocaleString("en-US", { maximumFractionDigits: 3 })}</td>
               <td>{formatCurrency(r.boxFeeIncome)}</td>
               <td>{formatCurrency(r.woodIncome)}</td>
               <td>{formatCurrency(r.driverBoxFeeCost)}</td>

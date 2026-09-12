@@ -76,6 +76,10 @@ export function DailyClosingPage() {
               and left the crate margin out entirely (see the backend MarketEarnings). */}
           <h2 className="text-sm font-semibold text-gray-500 mb-2">صافي الربح (محاسبي)</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-3">
+            {/* The counts first, then the fee they produce — a day's رسوم الصناديق that cannot be
+                read back to a number of crates is a figure nobody can check. */}
+            <StatCard label="عدد الصناديق" value={closing.totalBoxes.toLocaleString("en-US", { maximumFractionDigits: 3 })} />
+            <StatCard label="عدد الكرتون" value={closing.totalCartons.toLocaleString("en-US", { maximumFractionDigits: 3 })} />
             <StatCard label="رسوم الصناديق (من المشترين)" value={formatCurrency(closing.boxFeeIncome)} tone="positive" />
             <StatCard label="سعر الخشب (من المشترين)" value={formatCurrency(closing.woodIncome)} tone="positive" />
             <StatCard label="عمولة مرتجعة" value={formatCurrency(closing.returnsCommissionCredit)} tone="negative" />

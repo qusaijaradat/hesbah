@@ -62,6 +62,7 @@ public class ReportService : IReportService
                 InvoiceCount = g.Count(),
                 TotalWeightKg = g.Sum(i => i.TotalWeightKg),
                 TotalBoxes = g.Sum(i => i.Items.Sum(it => it.BoxQuantity)),
+                TotalCartons = g.Sum(i => i.Items.Sum(it => it.CartonQuantity)),
                 TotalSalesValue = g.Sum(i => i.TotalValue),
                 // No wood total here: سعر الخشب is the DRIVER's (see InvoiceCharge), so it is not
                 // part of what the market owes this seller. أجرة النقل IS — it comes off his due
@@ -114,7 +115,7 @@ public class ReportService : IReportService
             var commission = commissionByFarmer.GetValueOrDefault(a.FarmerId);
             var opening = openingBalances.GetValueOrDefault(a.FarmerId);
             return new FarmerReportRow(
-                a.FarmerId, a.FarmerName, a.InvoiceCount, a.TotalWeightKg, a.TotalBoxes, a.TotalSalesValue,
+                a.FarmerId, a.FarmerName, a.InvoiceCount, a.TotalWeightKg, a.TotalBoxes, a.TotalCartons, a.TotalSalesValue,
                 // InvoiceCharge.ForSeller itself, over the aggregate — it said "ForSeller" in this
                 // comment while spelling the formula out again below it, which is exactly how the
                 // other copies of this rule drifted. Called now, so NetDue here cannot disagree with
@@ -149,6 +150,7 @@ public class ReportService : IReportService
                 InvoiceCount = g.Count(),
                 TotalWeightKg = g.Sum(i => i.TotalWeightKg),
                 TotalBoxes = g.Sum(i => i.Items.Sum(it => it.BoxQuantity)),
+                TotalCartons = g.Sum(i => i.Items.Sum(it => it.CartonQuantity)),
                 TotalPurchases = g.Sum(i => i.TotalValue),
                 TotalWoodTotal = g.Sum(i => i.Items.Sum(it => it.WoodPrice)),
                 // No transport: أجرة النقل comes off the SELLER now and goes to the driver, so it
@@ -197,7 +199,7 @@ public class ReportService : IReportService
             var opening = openingBalances.GetValueOrDefault(a.MerchantId);
             var remaining = opening + allTimePurchases.GetValueOrDefault(a.MerchantId) - totalPaid;
             return new MerchantReportRow(
-                a.MerchantId, a.MerchantName, a.InvoiceCount, a.TotalWeightKg, a.TotalBoxes,
+                a.MerchantId, a.MerchantName, a.InvoiceCount, a.TotalWeightKg, a.TotalBoxes, a.TotalCartons,
                 a.TotalPurchases, a.TotalWoodTotal, a.TotalBoxFee, a.GrandTotal,
                 totalPaid, remaining, opening, a.LastInvoiceDate);
         })
@@ -230,6 +232,10 @@ public class ReportService : IReportService
                 DriverId = g.Key.DriverId,
                 DriverName = g.Key.Name,
                 InvoiceCount = g.Count(),
+                // The containers he handled — crates are what his أجرة الصناديق is paid on, and
+                // cartons are counted beside them so his sheet shows everything that moved.
+                TotalBoxes = g.Sum(i => i.Items.Sum(it => it.BoxQuantity)),
+                TotalCartons = g.Sum(i => i.Items.Sum(it => it.CartonQuantity)),
                 // No wood: سعر الخشب is the market's, not the driver's (see MarketEarnings).
                 TotalTransportFee = g.Sum(i => i.TransportFee
                     + i.Items.Sum(it => it.BoxQuantity) * i.DriverBoxFeeApplied),
@@ -261,7 +267,8 @@ public class ReportService : IReportService
         {
             var opening = openingBalances.GetValueOrDefault(a.DriverId);
             return new DriverReportRow(
-                a.DriverId, a.DriverName, a.InvoiceCount, a.TotalTransportFee, paidByDriver.GetValueOrDefault(a.DriverId),
+                a.DriverId, a.DriverName, a.InvoiceCount, a.TotalBoxes, a.TotalCartons,
+                a.TotalTransportFee, paidByDriver.GetValueOrDefault(a.DriverId),
                 opening + allTimeBalance.GetValueOrDefault(a.DriverId), opening, a.LastInvoiceDate);
         })
         .OrderBy(r => r.DriverName)
@@ -376,6 +383,7 @@ public class ReportService : IReportService
             i.Date, i.TotalValue, i.CommissionRateApplied, i.TransportFee,
             i.BoxPriceApplied, i.DriverBoxFeeApplied, HasDriver = i.DriverId != null,
             Boxes = i.Items.Sum(it => (decimal?)it.BoxQuantity) ?? 0,
+            Cartons = i.Items.Sum(it => (decimal?)it.CartonQuantity) ?? 0,
             Wood = i.Items.Sum(it => (decimal?)it.WoodPrice) ?? 0
         }).ToListAsync();
 
@@ -405,6 +413,8 @@ public class ReportService : IReportService
             .ToDictionary(g => g.Key, g => (
                 Sales: g.Sum(x => x.TotalValue),
                 Commission: g.Sum(x => CommissionCalculator.Calculate(x.TotalValue, x.CommissionRateApplied).Commission),
+                Boxes: g.Sum(x => x.Boxes),
+                Cartons: g.Sum(x => x.Cartons),
                 BoxFee: g.Sum(x => x.Boxes * x.BoxPriceApplied),
                 Wood: g.Sum(x => x.Wood),
                 DriverBoxFee: g.Sum(x => x.HasDriver ? x.Boxes * x.DriverBoxFeeApplied : 0m),
@@ -427,11 +437,12 @@ public class ReportService : IReportService
 
         return periods.Select(p =>
         {
-            var agg = salesByPeriod.GetValueOrDefault(p, (Sales: 0m, Commission: 0m, BoxFee: 0m, Wood: 0m, DriverBoxFee: 0m, KeptPassThrough: 0m, Earned: 0m));
+            var agg = salesByPeriod.GetValueOrDefault(p, (Sales: 0m, Commission: 0m, Boxes: 0m, Cartons: 0m, BoxFee: 0m, Wood: 0m, DriverBoxFee: 0m, KeptPassThrough: 0m, Earned: 0m));
             var returnsCredit = returnsCreditByPeriod.GetValueOrDefault(p, 0m);
             var totalExpenses = expensesByPeriod.GetValueOrDefault(p, 0m);
             return new MarketReportRow(
                 p, agg.Sales, agg.Commission,
+                agg.Boxes, agg.Cartons,
                 agg.BoxFee, agg.Wood, agg.DriverBoxFee, agg.KeptPassThrough, returnsCredit,
                 totalExpenses, agg.Earned - returnsCredit - totalExpenses);
         }).ToList();
@@ -539,6 +550,7 @@ public class ReportService : IReportService
                 i.TotalValue, i.CommissionRateApplied, i.TransportFee,
                 i.BoxPriceApplied, i.DriverBoxFeeApplied, HasDriver = i.DriverId != null,
                 Boxes = i.Items.Sum(it => (decimal?)it.BoxQuantity) ?? 0,
+                Cartons = i.Items.Sum(it => (decimal?)it.CartonQuantity) ?? 0,
                 Wood = i.Items.Sum(it => (decimal?)it.WoodPrice) ?? 0
             })
             .ToListAsync();
@@ -593,8 +605,14 @@ public class ReportService : IReportService
                 && p.Date >= dayStart && p.Date < dayEnd)
             .SumAsync(p => p.Amount);
 
+        // The counts behind the fee, so a day's رسوم الصناديق can be read back to something
+        // countable — and the cartons beside them, which carry no money but did leave the market.
+        var totalBoxes = invoicesToday.Sum(i => i.Boxes);
+        var totalCartons = invoicesToday.Sum(i => i.Cartons);
+
         return new DailyClosingDto(
             dayStart, invoiceCount, totalSalesValue, totalCommission,
+            totalBoxes, totalCartons,
             boxFeeIncome, woodIncome, driverBoxFeeCost, keptPassThrough, returnsCommissionCredit,
             totalExpenses,
             earnedToday - returnsCommissionCredit - totalExpenses,
@@ -624,7 +642,15 @@ public class ReportService : IReportService
 
         var todayInvoices = await _db.Invoices
             .Where(i => i.Status == InvoiceStatus.Active && i.Date >= dayStart && i.Date < dayEnd)
-            .Select(i => new { i.TotalValue, i.CommissionRateApplied })
+            // The container counts come along so the dashboard can say how many went out today —
+            // projected here rather than fetched again, since this query already has the rows.
+            .Select(i => new
+            {
+                i.TotalValue,
+                i.CommissionRateApplied,
+                Boxes = i.Items.Sum(it => (decimal?)it.BoxQuantity) ?? 0,
+                Cartons = i.Items.Sum(it => (decimal?)it.CartonQuantity) ?? 0,
+            })
             .ToListAsync();
         var todaySalesValue = todayInvoices.Sum(i => i.TotalValue);
         // Commission per invoice at ITS own locked-in rate, never today's settings rate over the
@@ -707,7 +733,10 @@ public class ReportService : IReportService
             .CountAsync(i => i.Status == InvoiceStatus.Active && i.Items.Any(it => it.PricePerUnit == 0));
 
         return new DashboardSummaryDto(
-            todayInvoices.Count, todaySalesValue, todayCommission, todayCashIn, todayCashOut,
+            todayInvoices.Count, todaySalesValue, todayCommission,
+            todayInvoices.Sum(i => i.Boxes),
+            todayInvoices.Sum(i => i.Cartons),
+            todayCashIn, todayCashOut,
             merchantDebts.Sum(r => r.Remaining), sellerDues.Sum(r => r.Remaining),
             dueToday.Count, dueToday.Sum(c => c.Amount),
             overdue.Count, overdue.Sum(c => c.Amount),

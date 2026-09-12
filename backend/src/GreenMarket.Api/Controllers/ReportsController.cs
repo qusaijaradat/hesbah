@@ -202,10 +202,10 @@ public class ReportsController : ControllerBase
     public async Task<IActionResult> FarmersPdf([FromQuery] ReportFilterRequest filter)
     {
         var rows = await _reportService.FarmerReportAsync(filter);
-        var headers = new[] { "Farmer", "Invoices", "Weight (kg)", "Boxes", "Sales (₪)", "Commission (₪)", "Net Due (₪)", "Paid (₪)", "Remaining (₪)", "Last Invoice" };
+        var headers = new[] { "Farmer", "Invoices", "Weight (kg)", "Boxes", "Cartons", "Sales (₪)", "Commission (₪)", "Net Due (₪)", "Paid (₪)", "Remaining (₪)", "Last Invoice" };
         var body = rows.Select(r => new[]
         {
-            r.FarmerName, r.InvoiceCount.ToString(), r.TotalWeightKg.ToString("0.###"), r.TotalBoxes.ToString("0.###"),
+            r.FarmerName, r.InvoiceCount.ToString(), r.TotalWeightKg.ToString("0.###"), r.TotalBoxes.ToString("0.###"), r.TotalCartons.ToString("0.###"),
             r.TotalSalesValue.ToString("0.##"), r.TotalCommission.ToString("0.##"), r.NetDue.ToString("0.##"),
             r.TotalPaid.ToString("0.##"), r.Remaining.ToString("0.##"),
             r.LastInvoiceDate?.ToString("yyyy-MM-dd") ?? "-"
@@ -218,10 +218,10 @@ public class ReportsController : ControllerBase
     public async Task<IActionResult> MerchantsPdf([FromQuery] ReportFilterRequest filter)
     {
         var rows = await _reportService.MerchantReportAsync(filter);
-        var headers = new[] { "Merchant", "Invoices", "Weight (kg)", "Boxes", "Purchases (₪)", "Wood (₪)", "Box Fee (₪)", "Grand Total (₪)", "Paid (₪)", "Remaining (₪)", "Last Invoice" };
+        var headers = new[] { "Merchant", "Invoices", "Weight (kg)", "Boxes", "Cartons", "Purchases (₪)", "Wood (₪)", "Box Fee (₪)", "Grand Total (₪)", "Paid (₪)", "Remaining (₪)", "Last Invoice" };
         var body = rows.Select(r => new[]
         {
-            r.MerchantName, r.InvoiceCount.ToString(), r.TotalWeightKg.ToString("0.###"), r.TotalBoxes.ToString("0.###"),
+            r.MerchantName, r.InvoiceCount.ToString(), r.TotalWeightKg.ToString("0.###"), r.TotalBoxes.ToString("0.###"), r.TotalCartons.ToString("0.###"),
             r.TotalPurchases.ToString("0.##"), r.TotalWoodTotal.ToString("0.##"), r.TotalBoxFee.ToString("0.##"),
             r.GrandTotal.ToString("0.##"), r.TotalPaid.ToString("0.##"),
             r.Remaining.ToString("0.##"), r.LastInvoiceDate?.ToString("yyyy-MM-dd") ?? "-"
@@ -234,10 +234,10 @@ public class ReportsController : ControllerBase
     public async Task<IActionResult> DriversPdf([FromQuery] ReportFilterRequest filter)
     {
         var rows = await _reportService.DriverReportAsync(filter);
-        var headers = new[] { "Driver", "Invoices", "Transport Fee (₪)", "Paid (₪)", "Remaining (₪)", "Last Invoice" };
+        var headers = new[] { "Driver", "Invoices", "Boxes", "Cartons", "Transport Fee (₪)", "Paid (₪)", "Remaining (₪)", "Last Invoice" };
         var body = rows.Select(r => new[]
         {
-            r.DriverName, r.InvoiceCount.ToString(), r.TotalTransportFee.ToString("0.##"),
+            r.DriverName, r.InvoiceCount.ToString(), r.TotalBoxes.ToString("0.###"), r.TotalCartons.ToString("0.###"), r.TotalTransportFee.ToString("0.##"),
             r.TotalPaid.ToString("0.##"), r.Remaining.ToString("0.##"),
             r.LastInvoiceDate?.ToString("yyyy-MM-dd") ?? "-"
         });

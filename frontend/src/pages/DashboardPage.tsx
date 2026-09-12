@@ -99,6 +99,10 @@ export function DashboardPage() {
             <StatCard label="فواتير اليوم" value={String(summary.todayInvoiceCount)} />
             <StatCard label="مبيعات اليوم" value={formatCurrency(summary.todaySalesValue)} />
             <StatCard label="عمولة الحسبة اليوم" value={formatCurrency(summary.todayCommission)} tone="positive" />
+            {/* How many containers went out today — the dashboard answered every money version of
+                this and stayed silent on the countable one. */}
+            <StatCard label="صناديق اليوم" value={formatCount(summary.todayBoxes)} />
+            <StatCard label="كرتون اليوم" value={formatCount(summary.todayCartons)} />
             {/* Cash actually in and out today — an uncleared check is neither (see PaymentRules),
                 which is what makes these safe to read as a drawer count. */}
             <StatCard label="مقبوض اليوم" value={formatCurrency(summary.todayCashIn)} tone="positive" hint="نقد فعلي — الشيك ما بينحسب إلا لما ينصرف" />

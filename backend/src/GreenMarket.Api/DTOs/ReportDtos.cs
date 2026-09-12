@@ -28,7 +28,7 @@ public class ReportFilterRequest
 /// </summary>
 public record FarmerReportRow(
     int FarmerId, string FarmerName,
-    int InvoiceCount, decimal TotalWeightKg, decimal TotalBoxes, decimal TotalSalesValue,
+    int InvoiceCount, decimal TotalWeightKg, decimal TotalBoxes, decimal TotalCartons, decimal TotalSalesValue,
     decimal TotalCommission, decimal NetDue, decimal TotalPaid, decimal Remaining,
     decimal OpeningBalance, DateTimeOffset? LastInvoiceDate);
 
@@ -49,7 +49,7 @@ public record FarmerReportRow(
 /// </summary>
 public record MerchantReportRow(
     int MerchantId, string MerchantName,
-    int InvoiceCount, decimal TotalWeightKg, decimal TotalBoxes,
+    int InvoiceCount, decimal TotalWeightKg, decimal TotalBoxes, decimal TotalCartons,
     decimal TotalPurchases, decimal TotalWoodTotal, decimal TotalBoxFee, decimal GrandTotal,
     decimal TotalPaid, decimal Remaining, decimal OpeningBalance, DateTimeOffset? LastInvoiceDate);
 
@@ -66,7 +66,8 @@ public record MerchantReportRow(
 /// </summary>
 public record DriverReportRow(
     int DriverId, string DriverName,
-    int InvoiceCount, decimal TotalTransportFee, decimal TotalPaid, decimal Remaining,
+    int InvoiceCount, decimal TotalBoxes, decimal TotalCartons,
+    decimal TotalTransportFee, decimal TotalPaid, decimal Remaining,
     decimal OpeningBalance, DateTimeOffset? LastInvoiceDate);
 
 /// <summary>
@@ -121,6 +122,7 @@ public record DriverItemBreakdownRow(
 /// </summary>
 public record MarketReportRow(
     string Period, decimal TotalSalesValue, decimal TotalCommission,
+    decimal TotalBoxes, decimal TotalCartons,
     decimal BoxFeeIncome, decimal WoodIncome, decimal DriverBoxFeeCost, decimal KeptPassThrough, decimal ReturnsCommissionCredit,
     decimal TotalExpenses, decimal NetProfit);
 
@@ -154,6 +156,12 @@ public record DailyClosingDto(
     int InvoiceCount,
     decimal TotalSalesValue,
     decimal TotalCommission,
+    /// <summary>عدد الصناديق that went out on the day's invoices — the count BoxFeeIncome below is
+    /// charged on, shown beside it so the fee can be read back to something countable.</summary>
+    decimal TotalBoxes,
+    /// <summary>عدد الكرتون that went out. Counted, and charged to nobody — it is here so the day's
+    /// containers are all visible in one place, not because any money hangs on it.</summary>
+    decimal TotalCartons,
     /// <summary>رسوم الصناديق charged to buyers on the day's invoices — the market keeps this.</summary>
     decimal BoxFeeIncome,
     /// <summary>سعر الخشب charged to buyers — the market keeps this too; neither the seller nor
@@ -188,6 +196,11 @@ public record DashboardSummaryDto(
     int TodayInvoiceCount,
     decimal TodaySalesValue,
     decimal TodayCommission,
+    /// <summary>Containers that went out today — crates are what رسوم الصناديق is charged on,
+    /// cartons are counted only. Both are here because "how many went out today" is a question the
+    /// dashboard was silent on while answering every money version of it.</summary>
+    decimal TodayBoxes,
+    decimal TodayCartons,
     decimal TodayCashIn,
     decimal TodayCashOut,
 

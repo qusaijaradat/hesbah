@@ -1,4 +1,4 @@
-import { formatQuantity } from "../lib/format";
+import { formatCount, formatWeight } from "../lib/format";
 import { usePagination } from "../lib/usePagination";
 import { TablePagination } from "./TablePagination";
 import type { GoodsStockRow } from "../types";
@@ -32,7 +32,7 @@ export function GoodsGlobalStockCard({
       {error && <div className="text-sm text-red-600 bg-red-50 rounded-md p-2 mx-4">{error}</div>}
       <table className="table-base">
         <thead>
-          <tr><th>البائع</th><th>الصنف</th><th>الوحدة</th><th>الوارد</th><th>المباع</th><th>المتوفر</th><th>صناديق خشب</th><th>مخالات</th></tr>
+          <tr><th>البائع</th><th>الصنف</th><th>الوارد (عدد)</th><th>المباع (عدد)</th><th>المتوفر (عدد)</th><th>المتوفر (وزن)</th><th>صناديق خشب</th><th>مخالات</th></tr>
         </thead>
         <tbody>
           {loading ? (
@@ -51,11 +51,11 @@ export function GoodsGlobalStockCard({
                   <PartnerLink partnerId={r.farmerId} name={r.farmerName} side="seller" />
                 </td>
                 <td>{r.itemName}</td>
-                <td>{r.unit === "Kg" ? "كيلو" : "صندوق"}</td>
-                <td>{formatQuantity(r.totalReceived, r.unit)}</td>
-                <td>{formatQuantity(r.totalSold, r.unit)}</td>
-                <td className={`font-semibold ${r.available < 0 ? "text-red-600" : ""}`}>{formatQuantity(r.available, r.unit)}</td>
-                <td>{r.woodReceived > 0 ? formatQuantity(r.woodReceived, "Box") : "—"}</td>
+                <td>{formatCount(r.totalReceived)}</td>
+                <td>{formatCount(r.totalSold)}</td>
+                <td className={`font-semibold ${r.available < 0 ? "text-red-600" : ""}`}>{formatCount(r.available)}</td>
+                <td className={`font-semibold ${r.weightAvailable < 0 ? "text-red-600" : ""}`}>{formatWeight(r.weightAvailable)}</td>
+                <td>{r.woodReceived > 0 ? formatCount(r.woodReceived) : "—"}</td>
                 <td>{r.sackReceived > 0 ? r.sackReceived.toLocaleString("en-US") : "—"}</td>
               </tr>
             ))

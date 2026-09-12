@@ -56,7 +56,9 @@ public enum ContainerType
     /// <summary>"صندوق" — the crate produce is sold in.</summary>
     Box = 1,
     /// <summary>"مخلاة" — its own kind, its own balance.</summary>
-    Sack = 2
+    Sack = 2,
+    /// <summary>"كرتونة" — counted per invoice line beside the crates, and tracked here like them.</summary>
+    Carton = 3
 }
 
 /// <summary>Which way containers moved on one record.</summary>

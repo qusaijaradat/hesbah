@@ -68,28 +68,40 @@ public class GoodsReturnService : IGoodsReturnService
         if (invoice.Status != InvoiceStatus.Active)
             throw new ValidationAppException("لا يمكن تسجيل مرتجع على فاتورة ملغاة.");
 
-        // How much of each (item, unit) is still returnable: sold minus everything already back.
-        // Matched on the same trimmed/case-insensitive name key the rest of the app groups item
-        // names by — invoice item names are free text, not a foreign key into the catalog.
-        static string Key(string name, UnitOfMeasure unit) => $"{name.Trim().ToLowerInvariant()}|{unit}";
+        // How much of each item is still returnable: sold minus everything already back, counted
+        // BOTH ways — العدد and الوزن — since a line now carries both and a return of a weighed line
+        // has to be checked against its weight, not just its count. Matched on the same trimmed/
+        // case-insensitive name key the rest of the app groups item names by; the key used to carry
+        // the line's Kg/Box unit too, which a line no longer has.
+        static string Key(string name) => name.Trim().ToLowerInvariant();
 
         var soldByKey = invoice.Items
-            .GroupBy(it => Key(it.ItemName, it.Unit))
-            .ToDictionary(g => g.Key, g => (Quantity: g.Sum(it => it.Quantity), Price: g.First().PricePerUnit, Display: g.First().ItemName.Trim(), g.First().Unit));
+            .GroupBy(it => Key(it.ItemName))
+            .ToDictionary(g => g.Key, g => (
+                Quantity: g.Sum(it => it.Quantity),
+                Weight: g.Sum(it => it.WeightKg ?? 0m),
+                Boxes: g.Sum(it => it.BoxQuantity),
+                Cartons: g.Sum(it => it.CartonQuantity),
+                Price: g.First().PricePerUnit,
+                Display: g.First().ItemName.Trim()));
 
         var alreadyReturnedByKey = invoice.Returns
             .SelectMany(r => r.Items)
-            .GroupBy(ri => Key(ri.ItemName, ri.Unit))
-            .ToDictionary(g => g.Key, g => g.Sum(ri => ri.Quantity));
+            .GroupBy(ri => Key(ri.ItemName))
+            .ToDictionary(g => g.Key, g => (
+                Quantity: g.Sum(ri => ri.Quantity),
+                Weight: g.Sum(ri => ri.WeightKg ?? 0m),
+                Boxes: g.Sum(ri => ri.BoxQuantity),
+                Cartons: g.Sum(ri => ri.CartonQuantity)));
 
         var lines = new List<GoodsReturnItem>();
         foreach (var input in request.Items)
         {
             if (input.Quantity <= 0) continue; // a blank row on the form, not an error
 
-            var key = Key(input.ItemName, input.Unit);
+            var key = Key(input.ItemName);
             if (!soldByKey.TryGetValue(key, out var sold))
-                throw new ValidationAppException($"الصنف \"{input.ItemName}\" غير موجود على هذه الفاتورة بنفس الوحدة.");
+                throw new ValidationAppException($"الصنف \"{input.ItemName}\" غير موجود على هذه الفاتورة.");
 
             // A return is priced from the invoice line as it stands right now, and that price is
             // then frozen into this document. An unpriced line (goods that went out before the
@@ -102,19 +114,42 @@ public class GoodsReturnService : IGoodsReturnService
                 throw new ValidationAppException(
                     $"الصنف \"{sold.Display}\" لسه غير مسعّر على الفاتورة — سعّره أولًا، وبعدها سجّل المرتجع (وإلا رح ينحسب المرتجع بقيمة صفر).");
 
-            var remaining = sold.Quantity - alreadyReturnedByKey.GetValueOrDefault(key);
+            var back = alreadyReturnedByKey.GetValueOrDefault(key);
+
+            var remaining = sold.Quantity - back.Quantity;
             if (input.Quantity > remaining)
                 throw new ValidationAppException(
                     $"الكمية المرتجعة من \"{sold.Display}\" ({input.Quantity:0.###}) أكبر من المتبقي القابل للإرجاع ({remaining:0.###}).");
 
+            // The weight is checked on its own, because it is what a weighed line is priced by: a
+            // return within the count but over the weight would credit back more money than the line
+            // was ever worth.
+            var remainingWeight = sold.Weight - back.Weight;
+            if ((input.WeightKg ?? 0m) > remainingWeight)
+                throw new ValidationAppException(
+                    $"الوزن المرتجع من \"{sold.Display}\" ({input.WeightKg:0.###} كغم) أكبر من المتبقي القابل للإرجاع ({remainingWeight:0.###} كغم).");
+
+            // Containers are their own physical count and cannot exceed what went out either.
+            var remainingBoxes = sold.Boxes - back.Boxes;
+            if (input.BoxQuantity > remainingBoxes)
+                throw new ValidationAppException(
+                    $"عدد الصناديق المرتجعة من \"{sold.Display}\" ({input.BoxQuantity:0.###}) أكبر من اللي طلع ({remainingBoxes:0.###}).");
+            var remainingCartons = sold.Cartons - back.Cartons;
+            if (input.CartonQuantity > remainingCartons)
+                throw new ValidationAppException(
+                    $"عدد الكرتون المرتجع من \"{sold.Display}\" ({input.CartonQuantity:0.###}) أكبر من اللي طلع ({remainingCartons:0.###}).");
+
             lines.Add(new GoodsReturnItem
             {
                 ItemName = sold.Display,
-                Unit = sold.Unit,
                 Quantity = input.Quantity,
+                WeightKg = input.WeightKg,
+                BoxQuantity = input.BoxQuantity,
+                CartonQuantity = input.CartonQuantity,
                 // Credited back at the price it was SOLD at, never a price the caller supplies.
                 PricePerUnit = sold.Price,
-                LineTotal = input.Quantity * sold.Price
+                // Priced the same way the invoice line was — by weight when there is one.
+                LineTotal = InvoiceCalculator.LineTotalFor(input.Quantity, input.WeightKg, sold.Price)
             });
         }
 
@@ -213,7 +248,7 @@ public class GoodsReturnService : IGoodsReturnService
     private static void RecomputeGrandTotal(Invoice invoice, decimal returnsTotal)
     {
         var woodTotal = invoice.Items.Sum(it => it.WoodPrice);
-        var boxFeeTotal = invoice.Items.Where(it => it.Unit == UnitOfMeasure.Box).Sum(it => it.Quantity) * invoice.BoxPriceApplied;
+        var boxFeeTotal = invoice.Items.Sum(it => it.BoxQuantity) * invoice.BoxPriceApplied;
         invoice.GrandTotal = InvoiceCharge.ForMerchant(
             invoice.TotalValue, woodTotal, boxFeeTotal, returnsTotal);
     }
@@ -221,5 +256,5 @@ public class GoodsReturnService : IGoodsReturnService
     private static GoodsReturnDto ToDto(GoodsReturn r) => new(
         r.Id, r.InvoiceId, r.Invoice?.InvoiceNumber ?? string.Empty, r.Date, r.Reason,
         r.TotalValue, r.CommissionRateApplied,
-        r.Items.Select(i => new GoodsReturnItemDto(i.ItemName, i.Quantity, i.Unit, i.PricePerUnit, i.LineTotal)).ToList());
+        r.Items.Select(i => new GoodsReturnItemDto(i.ItemName, i.Quantity, i.WeightKg, i.BoxQuantity, i.CartonQuantity, i.PricePerUnit, i.LineTotal)).ToList());
 }

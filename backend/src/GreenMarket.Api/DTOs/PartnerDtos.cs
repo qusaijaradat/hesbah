@@ -96,7 +96,7 @@ public record DebtsOverviewDto(
 /// </summary>
 public record PartnerInvoiceItemLineDto(
     int InvoiceId, string InvoiceNumber, DateTimeOffset Date,
-    string ItemName, UnitOfMeasure Unit, decimal Quantity, decimal PricePerUnit, decimal WoodPrice, decimal LineTotal,
+    string ItemName, decimal Quantity, decimal? WeightKg, decimal PricePerUnit, decimal WoodPrice, decimal LineTotal,
     decimal TransportFee, decimal GrandTotal);
 
 /// <summary>Wraps the itemized lines above with the partner's own id/name — see

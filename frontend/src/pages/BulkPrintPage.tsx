@@ -7,8 +7,8 @@ import { listSettings } from "../api/settings";
 import { PartnerAutocomplete } from "../components/PartnerAutocomplete";
 import { usePagination } from "../lib/usePagination";
 import { TablePagination } from "../components/TablePagination";
-import { buildStatementMessage, buildWhatsAppLink, formatCurrency, formatDate, formatQuantity, formatWeight, todayLocalDateString } from "../lib/format";
-import type { DriverItemBreakdownRow, FarmerItemBreakdownRow, InvoiceFilter, InvoiceListItemDto, MerchantItemBreakdownRow, PartnerType, UnitOfMeasure } from "../types";
+import { buildStatementMessage, buildWhatsAppLink, formatCount, formatCurrency, formatDate, formatWeight, todayLocalDateString } from "../lib/format";
+import type { DriverItemBreakdownRow, FarmerItemBreakdownRow, InvoiceFilter, InvoiceListItemDto, MerchantItemBreakdownRow, PartnerType } from "../types";
 import { InvoiceLink, PartnerLink } from "../components/RecordLinks";
 import { PdfActions } from "../components/PdfActions";
 
@@ -471,7 +471,7 @@ function SectionTable({ section }: { section: RoleSection }) {
                   <td className="text-xs">{inv.itemsSummary || "—"}</td>
                   <td>
                     {inv.totalWeightKg > 0 && <div>{formatWeight(inv.totalWeightKg)}</div>}
-                    {inv.totalBoxes > 0 && <div>{formatQuantity(inv.totalBoxes, "Box")}</div>}
+                    {inv.totalBoxes > 0 && <div>{formatCount(inv.totalBoxes)}</div>}
                     {inv.totalWeightKg === 0 && inv.totalBoxes === 0 && "—"}
                   </td>
                   {moneyColumns.map((column) => {
@@ -544,8 +544,8 @@ function SectionPrintBar({ section }: { section: RoleSection }) {
 
 interface BreakdownItem {
   itemName: string;
-  unit: UnitOfMeasure;
   totalQuantity: number;
+  totalWeightKg: number;
 }
 
 /**
@@ -591,8 +591,8 @@ function ItemValueBreakdownCard({
                     <tr key={idx}>
                       <td className="font-medium">{group.name}</td>
                       <td>{item.itemName}</td>
-                      <td>{item.unit === "Box" ? formatQuantity(item.totalQuantity, "Box") : "—"}</td>
-                      <td>{item.unit === "Kg" ? formatQuantity(item.totalQuantity, "Kg") : "—"}</td>
+                      <td>{formatCount(item.totalQuantity)}</td>
+                      <td>{formatWeight(item.totalWeightKg)}</td>
                       <td>{formatCurrency(item.totalValue)}</td>
                     </tr>
                   ))}
@@ -660,8 +660,8 @@ function DriverItemBreakdownCard({
                     <tr key={idx}>
                       <td className="font-medium">{group.name}</td>
                       <td>{item.itemName}</td>
-                      <td>{item.unit === "Box" ? formatQuantity(item.totalQuantity, "Box") : "—"}</td>
-                      <td>{item.unit === "Kg" ? formatQuantity(item.totalQuantity, "Kg") : "—"}</td>
+                      <td>{formatCount(item.totalQuantity)}</td>
+                      <td>{formatWeight(item.totalWeightKg)}</td>
                       <td>—</td>
                     </tr>
                   ))}

@@ -17,7 +17,9 @@ export function formatWeight(value: number): string {
   return `${value.toLocaleString("en-US", { maximumFractionDigits: 3 })} كغم`;
 }
 
-export const UNIT_LABELS: Record<"Kg" | "Box", string> = { Kg: "كغم", Box: "صندوق" };
+/** Container kinds, for the containers ledger. The old Kg/Box "unit" on an invoice line is gone —
+ *  a line carries العدد and الوزن now, and its crates and cartons as counts of their own. */
+export const CONTAINER_LABELS: Record<"Box" | "Carton" | "Sack", string> = { Box: "صندوق", Carton: "كرتونة", Sack: "مخلاة" };
 
 /** Payment direction labels — ToFarmer/ToDriver are separate directions (see the backend
  * PaymentDirection enum's doc comment), each shown under its own label everywhere a payment's
@@ -29,14 +31,12 @@ export const PAYMENT_DIRECTION_LABELS: Record<"FromMerchant" | "ToFarmer" | "ToD
 };
 
 /**
- * Same rule as formatWeight for a Kg quantity — it IS a weight, just reached through the
- * unit-generic helper, so "0 كغم" turns into "—" here too. A zero BOX count is left as a real
- * "0 صندوق": that's a count of physical crates, where zero is a genuine answer rather than an
- * absent measurement, and the request was specifically about الوزن.
+ * A plain count — العدد, or a number of crates/cartons. Zero stays a real 0: a count of physical
+ * things has zero as a genuine answer, unlike a weight, where "0 كغم" means "not weighed" and
+ * formatWeight turns it into "—".
  */
-export function formatQuantity(value: number, unit: "Kg" | "Box"): string {
-  if (value === 0 && unit === "Kg") return "—";
-  return `${value.toLocaleString("en-US", { maximumFractionDigits: 3 })} ${UNIT_LABELS[unit]}`;
+export function formatCount(value: number): string {
+  return value.toLocaleString("en-US", { maximumFractionDigits: 3 });
 }
 
 export function formatDate(iso: string): string {
@@ -117,7 +117,7 @@ export function buildWhatsAppLink(phone: string, message: string): string {
 interface StatementInvoiceLike {
   invoiceNumber: string;
   date: string;
-  items: { itemName: string; quantity: number; unit: "Kg" | "Box"; pricePerUnit: number; lineTotal: number; woodPrice: number }[];
+  items: { itemName: string; quantity: number; weightKg?: number | null; pricePerUnit: number; lineTotal: number; woodPrice: number }[];
   totalValue: number;
   transportFee: number;
   woodTotal: number;
@@ -187,7 +187,13 @@ export function buildStatementMessage(
     lines.push(`فاتورة ${inv.invoiceNumber} (${formatDate(inv.date)})`);
     for (const it of inv.items) {
       const woodNote = it.woodPrice > 0 ? ` (منها سعر خشب: ${formatCurrency(it.woodPrice)})` : "";
-      lines.push(`- ${it.itemName}: ${formatQuantity(it.quantity, it.unit)} × ${formatCurrency(it.pricePerUnit)} = ${formatCurrency(it.lineTotal)}${woodNote}`);
+      // The line says what it was actually priced by: its weight when it has one, otherwise its
+      // count. Reading a total back against the wrong figure is how a recipient disputes a bill.
+      const priced = it.weightKg && it.weightKg > 0
+        ? `${formatWeight(it.weightKg)}`
+        : `${formatCount(it.quantity)} عدد`;
+      const countNote = it.weightKg && it.weightKg > 0 ? ` (عدد: ${formatCount(it.quantity)})` : "";
+      lines.push(`- ${it.itemName}: ${priced}${countNote} × ${formatCurrency(it.pricePerUnit)} = ${formatCurrency(it.lineTotal)}${woodNote}`);
     }
     if (inv.woodTotal > 0) lines.push(`  إجمالي سعر الخشب لهذه الفاتورة: ${formatCurrency(inv.woodTotal)}`);
     // Not part of the total below: أجرة النقل comes off the SELLER and goes to the driver, so the

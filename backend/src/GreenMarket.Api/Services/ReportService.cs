@@ -61,7 +61,7 @@ public class ReportService : IReportService
                 FarmerName = g.Key.Name,
                 InvoiceCount = g.Count(),
                 TotalWeightKg = g.Sum(i => i.TotalWeightKg),
-                TotalBoxes = g.Sum(i => i.Items.Where(it => it.Unit == UnitOfMeasure.Box).Sum(it => it.Quantity)),
+                TotalBoxes = g.Sum(i => i.Items.Sum(it => it.BoxQuantity)),
                 TotalSalesValue = g.Sum(i => i.TotalValue),
                 // No wood total here: سعر الخشب is the DRIVER's (see InvoiceCharge), so it is not
                 // part of what the market owes this seller. أجرة النقل IS — it comes off his due
@@ -148,14 +148,14 @@ public class ReportService : IReportService
                 MerchantName = g.Key.Name,
                 InvoiceCount = g.Count(),
                 TotalWeightKg = g.Sum(i => i.TotalWeightKg),
-                TotalBoxes = g.Sum(i => i.Items.Where(it => it.Unit == UnitOfMeasure.Box).Sum(it => it.Quantity)),
+                TotalBoxes = g.Sum(i => i.Items.Sum(it => it.BoxQuantity)),
                 TotalPurchases = g.Sum(i => i.TotalValue),
                 TotalWoodTotal = g.Sum(i => i.Items.Sum(it => it.WoodPrice)),
                 // No transport: أجرة النقل comes off the SELLER now and goes to the driver, so it
                 // is no part of what this buyer is charged (see InvoiceCharge).
                 // Shown on its own so the row adds up: without it, purchases + wood
                 // visibly fell short of the total by exactly this.
-                TotalBoxFee = g.Sum(i => i.Items.Where(it => it.Unit == UnitOfMeasure.Box).Sum(it => it.Quantity) * i.BoxPriceApplied),
+                TotalBoxFee = g.Sum(i => i.Items.Sum(it => it.BoxQuantity) * i.BoxPriceApplied),
                 // READ, not re-derived. What a buyer is charged is defined once, in InvoiceCharge,
                 // and stored on the invoice — and it includes رسوم الصناديق and nets out any
                 // مرتجع, neither of which the columns above carry. Adding the visible parts back
@@ -232,7 +232,7 @@ public class ReportService : IReportService
                 InvoiceCount = g.Count(),
                 // No wood: سعر الخشب is the market's, not the driver's (see MarketEarnings).
                 TotalTransportFee = g.Sum(i => i.TransportFee
-                    + i.Items.Where(it => it.Unit == UnitOfMeasure.Box).Sum(it => it.Quantity) * i.DriverBoxFeeApplied),
+                    + i.Items.Sum(it => it.BoxQuantity) * i.DriverBoxFeeApplied),
                 LastInvoiceDate = (DateTimeOffset?)g.Max(i => i.Date)
             })
             .ToList();
@@ -289,9 +289,11 @@ public class ReportService : IReportService
             .ToListAsync();
 
         return invoices
-            .SelectMany(i => i.Items.Select(it => new { i.MerchantId, MerchantName = i.Merchant.Name, it.ItemName, it.Unit, it.Quantity, it.LineTotal }))
-            .GroupBy(x => new { x.MerchantId, x.MerchantName, x.ItemName, x.Unit })
-            .Select(g => new MerchantItemBreakdownRow(g.Key.MerchantId, g.Key.MerchantName, g.Key.ItemName, g.Key.Unit, g.Sum(x => x.Quantity), g.Sum(x => x.LineTotal)))
+            .SelectMany(i => i.Items.Select(it => new { i.MerchantId, MerchantName = i.Merchant.Name, it.ItemName, it.Quantity, it.WeightKg, it.LineTotal }))
+            .GroupBy(x => new { x.MerchantId, x.MerchantName, x.ItemName })
+            .Select(g => new MerchantItemBreakdownRow(
+                g.Key.MerchantId, g.Key.MerchantName, g.Key.ItemName,
+                g.Sum(x => x.Quantity), g.Sum(x => x.WeightKg ?? 0m), g.Sum(x => x.LineTotal)))
             .OrderBy(r => r.MerchantName).ThenBy(r => r.ItemName)
             .ToList();
     }
@@ -312,9 +314,11 @@ public class ReportService : IReportService
             .ToListAsync();
 
         return invoices
-            .SelectMany(i => i.Items.Select(it => new { FarmerId = i.FarmerId!.Value, FarmerName = i.Farmer!.Name, it.ItemName, it.Unit, it.Quantity, it.LineTotal }))
-            .GroupBy(x => new { x.FarmerId, x.FarmerName, x.ItemName, x.Unit })
-            .Select(g => new FarmerItemBreakdownRow(g.Key.FarmerId, g.Key.FarmerName, g.Key.ItemName, g.Key.Unit, g.Sum(x => x.Quantity), g.Sum(x => x.LineTotal)))
+            .SelectMany(i => i.Items.Select(it => new { FarmerId = i.FarmerId!.Value, FarmerName = i.Farmer!.Name, it.ItemName, it.Quantity, it.WeightKg, it.LineTotal }))
+            .GroupBy(x => new { x.FarmerId, x.FarmerName, x.ItemName })
+            .Select(g => new FarmerItemBreakdownRow(
+                g.Key.FarmerId, g.Key.FarmerName, g.Key.ItemName,
+                g.Sum(x => x.Quantity), g.Sum(x => x.WeightKg ?? 0m), g.Sum(x => x.LineTotal)))
             .OrderBy(r => r.FarmerName).ThenBy(r => r.ItemName)
             .ToList();
     }
@@ -339,12 +343,14 @@ public class ReportService : IReportService
             .GroupBy(i => i.DriverId!.Value)
             // No wood — see the driver report above.
             .ToDictionary(g => g.Key, g => g.Sum(i => i.TransportFee
-                + i.Items.Where(it => it.Unit == UnitOfMeasure.Box).Sum(it => it.Quantity) * i.DriverBoxFeeApplied));
+                + i.Items.Sum(it => it.BoxQuantity) * i.DriverBoxFeeApplied));
 
         return invoices
-            .SelectMany(i => i.Items.Select(it => new { DriverId = i.DriverId!.Value, DriverName = i.Driver!.Name, it.ItemName, it.Unit, it.Quantity }))
-            .GroupBy(x => new { x.DriverId, x.DriverName, x.ItemName, x.Unit })
-            .Select(g => new DriverItemBreakdownRow(g.Key.DriverId, g.Key.DriverName, g.Key.ItemName, g.Key.Unit, g.Sum(x => x.Quantity), feeByDriver.GetValueOrDefault(g.Key.DriverId)))
+            .SelectMany(i => i.Items.Select(it => new { DriverId = i.DriverId!.Value, DriverName = i.Driver!.Name, it.ItemName, it.Quantity, it.WeightKg }))
+            .GroupBy(x => new { x.DriverId, x.DriverName, x.ItemName })
+            .Select(g => new DriverItemBreakdownRow(
+                g.Key.DriverId, g.Key.DriverName, g.Key.ItemName,
+                g.Sum(x => x.Quantity), g.Sum(x => x.WeightKg ?? 0m), feeByDriver.GetValueOrDefault(g.Key.DriverId)))
             .OrderBy(r => r.DriverName).ThenBy(r => r.ItemName)
             .ToList();
     }
@@ -369,7 +375,7 @@ public class ReportService : IReportService
         {
             i.Date, i.TotalValue, i.CommissionRateApplied, i.TransportFee,
             i.BoxPriceApplied, i.DriverBoxFeeApplied, HasDriver = i.DriverId != null,
-            Boxes = i.Items.Where(it => it.Unit == UnitOfMeasure.Box).Sum(it => (decimal?)it.Quantity) ?? 0,
+            Boxes = i.Items.Sum(it => (decimal?)it.BoxQuantity) ?? 0,
             Wood = i.Items.Sum(it => (decimal?)it.WoodPrice) ?? 0
         }).ToListAsync();
 
@@ -532,7 +538,7 @@ public class ReportService : IReportService
             {
                 i.TotalValue, i.CommissionRateApplied, i.TransportFee,
                 i.BoxPriceApplied, i.DriverBoxFeeApplied, HasDriver = i.DriverId != null,
-                Boxes = i.Items.Where(it => it.Unit == UnitOfMeasure.Box).Sum(it => (decimal?)it.Quantity) ?? 0,
+                Boxes = i.Items.Sum(it => (decimal?)it.BoxQuantity) ?? 0,
                 Wood = i.Items.Sum(it => (decimal?)it.WoodPrice) ?? 0
             })
             .ToListAsync();

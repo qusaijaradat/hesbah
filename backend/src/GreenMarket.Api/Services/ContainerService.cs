@@ -58,12 +58,15 @@ public class ContainerService : IContainerService
         var partner = await _db.Partners.FindAsync(partnerId) ?? throw new NotFoundAppException("Partner", partnerId);
         var movements = await ListAsync(partnerId);
 
-        // A crate physically leaves with every box-unit line a buyer takes, so that side is read
-        // from their own invoices rather than re-typed — and netted against produce that came back
-        // on a مرتجع, which arrives in its crates. Same figures PartnerService shows on the buyer's
-        // account page; see its own comment for why. Sellers and drivers have no invoice-derived
-        // side at all: everything they hold was handed over by hand and is recorded here.
-        var invoiceBoxes = await InvoiceBoxesFor(partnerId);
+        // Containers physically leave with the produce a buyer takes, so that side is read from his
+        // own invoices rather than re-typed — and netted against what came back on a مرتجع, which
+        // arrives in its crates. Each line now carries its own عدد الصناديق and عدد الكرتون, so a
+        // line priced by weight contributes its crates like any other; under the old Kg/Box unit it
+        // contributed none, and every crate that went out with weighed produce was invisible here.
+        // Sellers and drivers have no invoice-derived side at all: everything they hold was handed
+        // over by hand and is recorded below.
+        var invoiceBoxes = await InvoiceContainersFor(partnerId, ContainerType.Box);
+        var invoiceCartons = await InvoiceContainersFor(partnerId, ContainerType.Carton);
 
         // The mirror image, on the seller's side: "صناديق خشب" counted on the "إضافة بضاعة" form
         // are real wooden crates that arrived with his produce, and they were being counted only
@@ -73,11 +76,21 @@ public class ContainerService : IContainerService
         var (goodsEntryCrates, goodsEntrySacks) = await GoodsEntryContainersFor(partnerId);
 
         var balances = new List<ContainerBalanceDto>();
-        foreach (var type in new[] { ContainerType.Box, ContainerType.Sack })
+        foreach (var type in new[] { ContainerType.Box, ContainerType.Carton, ContainerType.Sack })
         {
-            // Only crates leave on an invoice; both kinds can arrive with a seller's produce.
-            var fromInvoices = type == ContainerType.Box ? invoiceBoxes : 0m;
-            var fromGoodsEntries = type == ContainerType.Box ? goodsEntryCrates : goodsEntrySacks;
+            // Crates and cartons leave on an invoice; crates and sacks arrive with a seller's produce.
+            var fromInvoices = type switch
+            {
+                ContainerType.Box => invoiceBoxes,
+                ContainerType.Carton => invoiceCartons,
+                _ => 0m
+            };
+            var fromGoodsEntries = type switch
+            {
+                ContainerType.Box => goodsEntryCrates,
+                ContainerType.Sack => goodsEntrySacks,
+                _ => 0m
+            };
             var handedOut = movements.Where(m => m.Type == type && m.Direction == ContainerDirection.Out).Sum(m => m.Quantity);
             var cameBack = movements.Where(m => m.Type == type && m.Direction == ContainerDirection.In).Sum(m => m.Quantity);
             balances.Add(new ContainerBalanceDto(
@@ -139,16 +152,16 @@ public class ContainerService : IContainerService
         // The two derived sides, same definitions as GetForPartnerAsync — crates only.
         var issued = await _db.Invoices
             .Where(i => i.Status == InvoiceStatus.Active)
-            .SelectMany(i => i.Items.Where(it => it.Unit == UnitOfMeasure.Box).Select(it => new { i.MerchantId, it.Quantity }))
+            .SelectMany(i => i.Items.Select(it => new { i.MerchantId, it.BoxQuantity, it.CartonQuantity }))
             .GroupBy(x => x.MerchantId)
-            .Select(g => new { PartnerId = g.Key, Total = g.Sum(x => x.Quantity) })
+            .Select(g => new { PartnerId = g.Key, Boxes = g.Sum(x => x.BoxQuantity), Cartons = g.Sum(x => x.CartonQuantity) })
             .ToListAsync();
 
         var backOnReturns = await _db.GoodsReturns
             .Where(r => r.Invoice.Status == InvoiceStatus.Active)
-            .SelectMany(r => r.Items.Where(ri => ri.Unit == UnitOfMeasure.Box).Select(ri => new { r.Invoice.MerchantId, ri.Quantity }))
+            .SelectMany(r => r.Items.Select(ri => new { r.Invoice.MerchantId, ri.BoxQuantity, ri.CartonQuantity }))
             .GroupBy(x => x.MerchantId)
-            .Select(g => new { PartnerId = g.Key, Total = g.Sum(x => x.Quantity) })
+            .Select(g => new { PartnerId = g.Key, Boxes = g.Sum(x => x.BoxQuantity), Cartons = g.Sum(x => x.CartonQuantity) })
             .ToListAsync();
 
         var goodsContainers = await _db.FarmerGoodsEntries
@@ -166,8 +179,16 @@ public class ContainerService : IContainerService
 
         foreach (var row in manual)
             Add(row.PartnerId, row.Type, row.Direction == ContainerDirection.Out ? row.Total : -row.Total);
-        foreach (var row in issued) Add(row.PartnerId, ContainerType.Box, row.Total);
-        foreach (var row in backOnReturns) Add(row.PartnerId, ContainerType.Box, -row.Total);
+        foreach (var row in issued)
+        {
+            Add(row.PartnerId, ContainerType.Box, row.Boxes);
+            Add(row.PartnerId, ContainerType.Carton, row.Cartons);
+        }
+        foreach (var row in backOnReturns)
+        {
+            Add(row.PartnerId, ContainerType.Box, -row.Boxes);
+            Add(row.PartnerId, ContainerType.Carton, -row.Cartons);
+        }
         foreach (var row in goodsContainers)
         {
             Add(row.PartnerId, ContainerType.Box, -row.Crates);
@@ -194,23 +215,22 @@ public class ContainerService : IContainerService
     }
 
     /// <summary>
-    /// Box-unit quantities on this partner's own active invoices AS A BUYER, net of what came back
-    /// on a مرتجع. Zero for anyone who has never been the merchant on an invoice, which is what
-    /// makes this safe to call for a seller or a driver.
+    /// Containers of one kind on this partner's own active invoices AS A BUYER, net of what came
+    /// back on a مرتجع. Zero for anyone who has never been the merchant on an invoice, which is
+    /// what makes this safe to call for a seller or a driver. Only Box and Carton are carried on an
+    /// invoice line; any other kind is zero here and comes entirely from hand-recorded movements.
     /// </summary>
-    private async Task<decimal> InvoiceBoxesFor(int partnerId)
+    private async Task<decimal> InvoiceContainersFor(int partnerId, ContainerType type)
     {
         var issued = await _db.Invoices
             .Where(i => i.MerchantId == partnerId && i.Status == InvoiceStatus.Active)
             .SelectMany(i => i.Items)
-            .Where(it => it.Unit == UnitOfMeasure.Box)
-            .SumAsync(it => (decimal?)it.Quantity) ?? 0;
+            .SumAsync(it => (decimal?)(type == ContainerType.Carton ? it.CartonQuantity : it.BoxQuantity)) ?? 0;
 
         var back = await _db.GoodsReturns
             .Where(r => r.Invoice.MerchantId == partnerId && r.Invoice.Status == InvoiceStatus.Active)
             .SelectMany(r => r.Items)
-            .Where(ri => ri.Unit == UnitOfMeasure.Box)
-            .SumAsync(ri => (decimal?)ri.Quantity) ?? 0;
+            .SumAsync(ri => (decimal?)(type == ContainerType.Carton ? ri.CartonQuantity : ri.BoxQuantity)) ?? 0;
 
         return issued - back;
     }

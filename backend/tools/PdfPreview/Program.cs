@@ -25,9 +25,11 @@ var company = new CompanyInfo(
 
 var items = new List<InvoiceItemDto>
 {
-    new(1, "بندورة", 120.5m, UnitOfMeasure.Kg, 3.5m, 1.0m, 421.75m),
-    new(2, "خيار", 40m, UnitOfMeasure.Box, 12m, 1.5m, 480m),
-    new(3, "باذنجان", 75.25m, UnitOfMeasure.Kg, 2.75m, 0m, 206.94m),
+    // (id, name, العدد, الوزن, السعر, صناديق, كرتون, سعر الخشب, الإجمالي)
+    // Line 1 is the case the old shape could not hold at all: weighed AND out in 12 crates.
+    new(1, "بندورة", 12m, 120.5m, 3.5m, 12m, 0m, 1.0m, 421.75m),
+    new(2, "خيار", 40m, null, 12m, 40m, 0m, 1.5m, 480m),
+    new(3, "باذنجان", 30m, 75.25m, 2.75m, 0m, 30m, 0m, 206.94m),
 };
 
 var invoice = new InvoiceDto(
@@ -37,7 +39,7 @@ var invoice = new InvoiceDto(
     11, "السائق خالد", "970599555666",
     InvoiceStatus.Active,
     TotalWeightKg: 195.75m, TotalValue: 1108.69m, TransportFee: 80m, WoodTotal: 180.5m,
-    TotalBoxes: 40m, BoxPriceApplied: 1.5m, BoxFeeTotal: 60m,
+    TotalBoxes: 52m, TotalCartons: 30m, BoxPriceApplied: 1.5m, BoxFeeTotal: 78m,
     DriverBoxFeeApplied: 0.5m, DriverBoxFeeTotal: 20m,
     GrandTotal: 1329.19m,
     PreviousBalance: 2450m,

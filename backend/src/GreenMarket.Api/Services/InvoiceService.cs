@@ -79,7 +79,8 @@ public class InvoiceService : IInvoiceService
 
         // Pure business math lives in GreenMarket.Domain — this service is just wiring.
         var totals = InvoiceCalculator.Calculate(
-            request.Items.Select(i => new InvoiceCalculator.LineInput(i.ItemName, i.Quantity, i.Unit, i.PricePerUnit, i.WoodPrice)));
+            request.Items.Select(i => new InvoiceCalculator.LineInput(
+                i.ItemName, i.Quantity, i.WeightKg, i.PricePerUnit, i.BoxQuantity, i.CartonQuantity, i.WoodPrice)));
 
         var commissionRate = await _settings.GetDecimalAsync(Setting.Keys.DefaultCommissionRate, 0.10m);
         var commissionResult = CommissionCalculator.Calculate(totals.TotalValue, commissionRate);
@@ -119,7 +120,9 @@ public class InvoiceService : IInvoiceService
             {
                 ItemName = l.ItemName,
                 Quantity = l.Quantity,
-                Unit = l.Unit,
+                WeightKg = l.WeightKg,
+                BoxQuantity = l.BoxQuantity,
+                CartonQuantity = l.CartonQuantity,
                 PricePerUnit = l.PricePerUnit,
                 WoodPrice = l.WoodPrice,
                 LineTotal = l.LineTotal
@@ -242,7 +245,8 @@ public class InvoiceService : IInvoiceService
             await _items.FindOrCreateAsync(name);
 
         var totals = InvoiceCalculator.Calculate(
-            request.Items.Select(i => new InvoiceCalculator.LineInput(i.ItemName, i.Quantity, i.Unit, i.PricePerUnit, i.WoodPrice)));
+            request.Items.Select(i => new InvoiceCalculator.LineInput(
+                i.ItemName, i.Quantity, i.WeightKg, i.PricePerUnit, i.BoxQuantity, i.CartonQuantity, i.WoodPrice)));
 
         var commissionRate = await _settings.GetDecimalAsync(Setting.Keys.DefaultCommissionRate, 0.10m);
         var commissionResult = CommissionCalculator.Calculate(totals.TotalValue, commissionRate);
@@ -268,15 +272,16 @@ public class InvoiceService : IInvoiceService
             .ToListAsync();
         if (existingReturns.Count > 0)
         {
-            // Same trimmed/case-insensitive (name, unit) key GoodsReturnService matches on —
-            // invoice item names are free text, not a foreign key into the catalog.
-            static string Key(string name, UnitOfMeasure unit) => $"{name.Trim().ToLowerInvariant()}|{unit}";
+            // Same trimmed/case-insensitive NAME key GoodsReturnService matches on — invoice item
+            // names are free text, not a foreign key into the catalog. The key used to carry the
+            // line's Kg/Box unit too; with a line no longer having one, the name is the whole key.
+            static string Key(string name) => name.Trim().ToLowerInvariant();
 
             var newSoldByKey = totals.Lines
-                .GroupBy(l => Key(l.ItemName, l.Unit))
+                .GroupBy(l => Key(l.ItemName))
                 .ToDictionary(g => g.Key, g => g.Sum(l => l.Quantity));
 
-            foreach (var group in existingReturns.SelectMany(r => r.Items).GroupBy(ri => Key(ri.ItemName, ri.Unit)))
+            foreach (var group in existingReturns.SelectMany(r => r.Items).GroupBy(ri => Key(ri.ItemName)))
             {
                 var returned = group.Sum(ri => ri.Quantity);
                 var stillSold = newSoldByKey.GetValueOrDefault(group.Key);
@@ -325,7 +330,9 @@ public class InvoiceService : IInvoiceService
             {
                 ItemName = l.ItemName,
                 Quantity = l.Quantity,
-                Unit = l.Unit,
+                WeightKg = l.WeightKg,
+                BoxQuantity = l.BoxQuantity,
+                CartonQuantity = l.CartonQuantity,
                 PricePerUnit = l.PricePerUnit,
                 WoodPrice = l.WoodPrice,
                 LineTotal = l.LineTotal
@@ -593,7 +600,7 @@ public class InvoiceService : IInvoiceService
                 DriverName = i.Driver != null ? i.Driver.Name : null,
                 DriverWhatsApp = i.Driver != null ? i.Driver.WhatsAppNumber : null,
                 i.Status, i.TotalWeightKg,
-                TotalBoxes = i.Items.Where(it => it.Unit == UnitOfMeasure.Box).Sum(it => (decimal?)it.Quantity) ?? 0,
+                TotalBoxes = i.Items.Sum(it => (decimal?)it.BoxQuantity) ?? 0,
                 i.TotalValue, i.TransportFee,
                 WoodTotal = i.Items.Sum(it => (decimal?)it.WoodPrice) ?? 0,
                 i.BoxPriceApplied,
@@ -797,7 +804,7 @@ public class InvoiceService : IInvoiceService
         // above is guaranteed to carry through to the flattened item rows.
         var lines = invoices
             .SelectMany(i => i.Items.Select(it => new FarmerStatementLineDto(
-                i.Date, it.ItemName, it.Quantity, it.Unit, it.PricePerUnit, it.WoodPrice, it.LineTotal, i.CommissionRateApplied)))
+                i.Date, it.ItemName, it.Quantity, it.WeightKg, it.PricePerUnit, it.WoodPrice, it.LineTotal, i.CommissionRateApplied)))
             .ToList();
 
         return new FarmerStatementDto(farmer.Id, farmer.Name, invoices.Sum(i => i.TransportFee), lines);
@@ -822,11 +829,12 @@ public class InvoiceService : IInvoiceService
         var invoices = await query.Include(i => i.Items).ToListAsync();
 
         var rows = invoices
-            .SelectMany(i => i.Items.Select(it => new { Day = i.Date.Date, it.ItemName, it.Unit, it.Quantity, it.WoodPrice }))
-            .GroupBy(x => new { x.Day, x.ItemName, x.Unit })
+            .SelectMany(i => i.Items.Select(it => new { Day = i.Date.Date, it.ItemName, it.Quantity, it.WeightKg, it.WoodPrice }))
+            .GroupBy(x => new { x.Day, x.ItemName })
             .Select(g => new FarmerGoodsRow(
-                g.Key.Day, g.Key.ItemName, g.Key.Unit,
+                g.Key.Day, g.Key.ItemName,
                 g.Sum(x => x.Quantity),
+                g.Sum(x => x.WeightKg ?? 0m),
                 g.Where(x => x.WoodPrice > 0).Sum(x => x.Quantity)))
             .OrderBy(r => r.Date).ThenBy(r => r.ItemName)
             .ToList();
@@ -946,10 +954,12 @@ public class InvoiceService : IInvoiceService
         // Sum() on an empty in-memory List<decimal> is fine (returns 0, doesn't throw) — this is
         // LINQ-to-Objects over an already-materialized navigation, not a translated SQL query.
         var woodTotal = i.Items.Sum(it => it.WoodPrice);
-        // Automatic "سعر الصندوق" fee — box-unit item count × the rate locked in on THIS invoice
-        // at creation time (i.BoxPriceApplied), computed fresh here rather than stored, same
-        // treatment as woodTotal above. Separate from/additive to woodTotal.
-        var totalBoxes = i.Items.Where(it => it.Unit == UnitOfMeasure.Box).Sum(it => it.Quantity);
+        // Automatic "سعر الصندوق" fee — every line's own عدد الصناديق × the rate locked in on THIS
+        // invoice at creation time (i.BoxPriceApplied), computed fresh here rather than stored, same
+        // treatment as woodTotal above. Separate from/additive to woodTotal. It used to count only
+        // box-UNIT lines, so crates that went out with produce priced by weight were charged nothing.
+        // Cartons are counted on the line too (TotalCartons below) and deliberately never charged.
+        var totalBoxes = i.Items.Sum(it => it.BoxQuantity);
         var boxFeeTotal = totalBoxes * i.BoxPriceApplied;
         // Driver-side counterpart — box-unit item count × the rate locked in on THIS invoice at
         // creation time (i.DriverBoxFeeApplied), same "computed fresh, never stored" treatment.
@@ -985,7 +995,7 @@ public class InvoiceService : IInvoiceService
             i.DriverId, i.Driver?.Name, i.Driver?.WhatsAppNumber,
             i.Status,
             i.TotalWeightKg, i.TotalValue, i.TransportFee, woodTotal,
-            totalBoxes, i.BoxPriceApplied, boxFeeTotal,
+            totalBoxes, i.Items.Sum(it => it.CartonQuantity), i.BoxPriceApplied, boxFeeTotal,
             i.DriverBoxFeeApplied, driverBoxFeeTotal,
             grandTotal,
             previousBalance,
@@ -998,9 +1008,13 @@ public class InvoiceService : IInvoiceService
                 i.TransportFee, woodTotal, hasDriver: i.DriverId != null)
                 - MarketEarnings.CommissionCreditOnReturn(returnsTotal, i.CommissionRateApplied),
             i.Items.Any(it => it.PricePerUnit == 0),
-            i.Items.Select(it => new InvoiceItemDto(it.Id, it.ItemName, it.Quantity, it.Unit, it.PricePerUnit, it.WoodPrice, it.LineTotal)).ToList(),
+            i.Items.Select(it => new InvoiceItemDto(
+                it.Id, it.ItemName, it.Quantity, it.WeightKg, it.PricePerUnit,
+                it.BoxQuantity, it.CartonQuantity, it.WoodPrice, it.LineTotal)).ToList(),
             i.Returns.OrderBy(r => r.Date).Select(r => new GoodsReturnDto(
                 r.Id, r.InvoiceId, i.InvoiceNumber, r.Date, r.Reason, r.TotalValue, r.CommissionRateApplied,
-                r.Items.Select(ri => new GoodsReturnItemDto(ri.ItemName, ri.Quantity, ri.Unit, ri.PricePerUnit, ri.LineTotal)).ToList())).ToList());
+                r.Items.Select(ri => new GoodsReturnItemDto(
+                    ri.ItemName, ri.Quantity, ri.WeightKg, ri.BoxQuantity, ri.CartonQuantity,
+                    ri.PricePerUnit, ri.LineTotal)).ToList())).ToList());
     }
 }

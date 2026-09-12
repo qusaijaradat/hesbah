@@ -57,11 +57,21 @@ public class GoodsService : IGoodsService
             .OrderByDescending(e => e.Date).ThenByDescending(e => e.Id)
             .ToListAsync();
 
-        // Wood is summed here too (independent of Total — a plain crate count, never bounded by or
-        // compared against Quantity/Unit — see GoodsStockRow's doc comment).
+        // Keyed on the item NAME alone. It used to include the Kg/Box unit, which was the only thing
+        // saying whether a number was a weight or a count — now every line carries both, so the two
+        // are netted side by side and an item can no longer split into two unrelated rows because it
+        // was taken in by weight and sold by the crate.
+        //
+        // Wood and sacks are summed here too (independent of both — plain container counts, never
+        // bounded by or compared against the produce — see GoodsStockRow's doc comment).
         var receivedByKey = entries
-            .GroupBy(e => (Name: e.ItemName.Trim().ToLowerInvariant(), e.Unit))
-            .ToDictionary(g => g.Key, g => (Display: g.First().ItemName.Trim(), Total: g.Sum(e => e.Quantity), Wood: g.Sum(e => e.WoodQuantity), Sack: g.Sum(e => e.SackQuantity)));
+            .GroupBy(e => e.ItemName.Trim().ToLowerInvariant())
+            .ToDictionary(g => g.Key, g => (
+                Display: g.First().ItemName.Trim(),
+                Total: g.Sum(e => e.Quantity),
+                Weight: g.Sum(e => e.WeightKg ?? 0m),
+                Wood: g.Sum(e => e.WoodQuantity),
+                Sack: g.Sum(e => e.SackQuantity)));
 
         // Same "materialize then group in memory" choice as GetFarmerGoodsAsync — only ever this
         // one farmer's Active invoices, so it's cheap and side-steps translating a correlated
@@ -69,12 +79,15 @@ public class GoodsService : IGoodsService
         var soldLines = await _db.Invoices
             .Where(i => i.FarmerId == farmerId && i.Status == InvoiceStatus.Active)
             .SelectMany(i => i.Items)
-            .Select(it => new { it.ItemName, it.Unit, it.Quantity })
+            .Select(it => new { it.ItemName, it.Quantity, it.WeightKg })
             .ToListAsync();
 
         var soldByKey = soldLines
-            .GroupBy(l => (Name: l.ItemName.Trim().ToLowerInvariant(), l.Unit))
-            .ToDictionary(g => g.Key, g => (Display: g.First().ItemName.Trim(), Total: g.Sum(l => l.Quantity)));
+            .GroupBy(l => l.ItemName.Trim().ToLowerInvariant())
+            .ToDictionary(g => g.Key, g => (
+                Display: g.First().ItemName.Trim(),
+                Total: g.Sum(l => l.Quantity),
+                Weight: g.Sum(l => l.WeightKg ?? 0m)));
 
         // Goods the buyer handed back are physically here again, so they are not sold. The money
         // side already treats them that way — a مرتجع credits the buyer and debits the seller
@@ -83,29 +96,35 @@ public class GoodsService : IGoodsService
         var returnedLines = await _db.GoodsReturns
             .Where(r => r.Invoice.FarmerId == farmerId && r.Invoice.Status == InvoiceStatus.Active)
             .SelectMany(r => r.Items)
-            .Select(ri => new { ri.ItemName, ri.Unit, ri.Quantity })
+            .Select(ri => new { ri.ItemName, ri.Quantity, ri.WeightKg })
             .ToListAsync();
 
         var returnedByKey = returnedLines
-            .GroupBy(l => (Name: l.ItemName.Trim().ToLowerInvariant(), l.Unit))
-            .ToDictionary(g => g.Key, g => g.Sum(l => l.Quantity));
+            .GroupBy(l => l.ItemName.Trim().ToLowerInvariant())
+            .ToDictionary(g => g.Key, g => (
+                Total: g.Sum(l => l.Quantity),
+                Weight: g.Sum(l => l.WeightKg ?? 0m)));
 
         var allKeys = receivedByKey.Keys.Union(soldByKey.Keys);
         var stock = allKeys.Select(key =>
         {
             var receivedAgg = receivedByKey.GetValueOrDefault(key);
-            var received = receivedAgg.Total;
-            var wood = receivedAgg.Wood;
-            var sack = receivedAgg.Sack;
-            var sold = soldByKey.GetValueOrDefault(key).Total - returnedByKey.GetValueOrDefault(key);
+            var soldAgg = soldByKey.GetValueOrDefault(key);
+            var returnedAgg = returnedByKey.GetValueOrDefault(key);
+            var sold = soldAgg.Total - returnedAgg.Total;
+            var soldWeight = soldAgg.Weight - returnedAgg.Weight;
             var display = receivedByKey.TryGetValue(key, out var r) ? r.Display : soldByKey[key].Display;
-            return new GoodsStockRow(display, key.Unit, received, sold, received - sold, wood, sack);
+            return new GoodsStockRow(
+                display,
+                receivedAgg.Total, sold, receivedAgg.Total - sold,
+                receivedAgg.Weight, soldWeight, receivedAgg.Weight - soldWeight,
+                receivedAgg.Wood, receivedAgg.Sack);
         })
         .OrderBy(r => r.ItemName)
         .ToList();
 
         var entryDtos = entries.Select(e => new GoodsEntryDto(
-            e.Id, e.FarmerId, farmer.Name, e.Date, e.ItemName, e.Unit, e.Quantity, e.WoodQuantity, e.SackQuantity, e.Notes)).ToList();
+            e.Id, e.FarmerId, farmer.Name, e.Date, e.ItemName, e.Quantity, e.WeightKg, e.WoodQuantity, e.SackQuantity, e.Notes)).ToList();
 
         return new FarmerGoodsStockDto(farmer.Id, farmer.Name, entryDtos, stock);
     }
@@ -129,48 +148,59 @@ public class GoodsService : IGoodsService
     public async Task<IReadOnlyList<GoodsStockRow>> GetGlobalStockAsync()
     {
         var entries = await _db.FarmerGoodsEntries
-            .Select(e => new { e.FarmerId, FarmerName = e.Farmer.Name, e.ItemName, e.Unit, e.Quantity, e.WoodQuantity, e.SackQuantity })
+            .Select(e => new { e.FarmerId, FarmerName = e.Farmer.Name, e.ItemName, e.Quantity, e.WeightKg, e.WoodQuantity, e.SackQuantity })
             .ToListAsync();
 
         var receivedByKey = entries
-            .GroupBy(e => (e.FarmerId, Name: e.ItemName.Trim().ToLowerInvariant(), e.Unit))
+            .GroupBy(e => (e.FarmerId, Name: e.ItemName.Trim().ToLowerInvariant()))
             .ToDictionary(g => g.Key, g => (
                 FarmerName: g.First().FarmerName,
                 Display: g.First().ItemName.Trim(),
                 Total: g.Sum(e => e.Quantity),
+                Weight: g.Sum(e => e.WeightKg ?? 0m),
                 Wood: g.Sum(e => e.WoodQuantity),
                 Sack: g.Sum(e => e.SackQuantity)));
 
         var soldLines = await _db.Invoices
             .Where(i => i.FarmerId != null && i.Status == InvoiceStatus.Active)
-            .SelectMany(i => i.Items.Select(it => new { FarmerId = i.FarmerId!.Value, FarmerName = i.Farmer!.Name, it.ItemName, it.Unit, it.Quantity }))
+            .SelectMany(i => i.Items.Select(it => new { FarmerId = i.FarmerId!.Value, FarmerName = i.Farmer!.Name, it.ItemName, it.Quantity, it.WeightKg }))
             .ToListAsync();
 
         var soldByKey = soldLines
-            .GroupBy(l => (l.FarmerId, Name: l.ItemName.Trim().ToLowerInvariant(), l.Unit))
-            .ToDictionary(g => g.Key, g => (FarmerName: g.First().FarmerName, Display: g.First().ItemName.Trim(), Total: g.Sum(l => l.Quantity)));
+            .GroupBy(l => (l.FarmerId, Name: l.ItemName.Trim().ToLowerInvariant()))
+            .ToDictionary(g => g.Key, g => (
+                FarmerName: g.First().FarmerName,
+                Display: g.First().ItemName.Trim(),
+                Total: g.Sum(l => l.Quantity),
+                Weight: g.Sum(l => l.WeightKg ?? 0m)));
 
         // Same netting as the per-seller view above — see its comment.
         var returnedLines = await _db.GoodsReturns
             .Where(r => r.Invoice.FarmerId != null && r.Invoice.Status == InvoiceStatus.Active)
-            .SelectMany(r => r.Items.Select(ri => new { FarmerId = r.Invoice.FarmerId!.Value, ri.ItemName, ri.Unit, ri.Quantity }))
+            .SelectMany(r => r.Items.Select(ri => new { FarmerId = r.Invoice.FarmerId!.Value, ri.ItemName, ri.Quantity, ri.WeightKg }))
             .ToListAsync();
 
         var returnedByKey = returnedLines
-            .GroupBy(l => (l.FarmerId, Name: l.ItemName.Trim().ToLowerInvariant(), l.Unit))
-            .ToDictionary(g => g.Key, g => g.Sum(l => l.Quantity));
+            .GroupBy(l => (l.FarmerId, Name: l.ItemName.Trim().ToLowerInvariant()))
+            .ToDictionary(g => g.Key, g => (
+                Total: g.Sum(l => l.Quantity),
+                Weight: g.Sum(l => l.WeightKg ?? 0m)));
 
         var allKeys = receivedByKey.Keys.Union(soldByKey.Keys);
         return allKeys.Select(key =>
         {
             var receivedAgg = receivedByKey.GetValueOrDefault(key);
-            var received = receivedAgg.Total;
-            var wood = receivedAgg.Wood;
-            var sack = receivedAgg.Sack;
-            var sold = soldByKey.GetValueOrDefault(key).Total - returnedByKey.GetValueOrDefault(key);
+            var soldAgg = soldByKey.GetValueOrDefault(key);
+            var returnedAgg = returnedByKey.GetValueOrDefault(key);
+            var sold = soldAgg.Total - returnedAgg.Total;
+            var soldWeight = soldAgg.Weight - returnedAgg.Weight;
             var display = receivedByKey.TryGetValue(key, out var r) ? r.Display : soldByKey[key].Display;
             var farmerName = receivedByKey.TryGetValue(key, out var r2) ? r2.FarmerName : soldByKey[key].FarmerName;
-            return new GoodsStockRow(display, key.Unit, received, sold, received - sold, wood, sack, key.FarmerId, farmerName);
+            return new GoodsStockRow(
+                display,
+                receivedAgg.Total, sold, receivedAgg.Total - sold,
+                receivedAgg.Weight, soldWeight, receivedAgg.Weight - soldWeight,
+                receivedAgg.Wood, receivedAgg.Sack, key.FarmerId, farmerName);
         })
         // "البضاعة المتوفرة حاليًا" means exactly that: an item a farmer brought in and has since
         // sold out of (Available == 0) is finished business and just pads the table — explicit
@@ -205,8 +235,8 @@ public class GoodsService : IGoodsService
             FarmerId = farmer.Id,
             Date = request.Date,
             ItemName = request.ItemName.Trim(),
-            Unit = request.Unit,
             Quantity = request.Quantity,
+            WeightKg = request.WeightKg,
             WoodQuantity = request.WoodQuantity,
             SackQuantity = request.SackQuantity,
             Notes = request.Notes,
@@ -215,7 +245,7 @@ public class GoodsService : IGoodsService
         _db.FarmerGoodsEntries.Add(entry);
         await _db.SaveChangesAsync();
 
-        return new GoodsEntryDto(entry.Id, entry.FarmerId, farmer.Name, entry.Date, entry.ItemName, entry.Unit, entry.Quantity, entry.WoodQuantity, entry.SackQuantity, entry.Notes);
+        return new GoodsEntryDto(entry.Id, entry.FarmerId, farmer.Name, entry.Date, entry.ItemName, entry.Quantity, entry.WeightKg, entry.WoodQuantity, entry.SackQuantity, entry.Notes);
     }
 
     public async Task<GoodsEntryDto> UpdateAsync(int id, UpdateGoodsEntryRequest request)
@@ -227,15 +257,15 @@ public class GoodsService : IGoodsService
 
         entry.Date = request.Date;
         entry.ItemName = request.ItemName.Trim();
-        entry.Unit = request.Unit;
         entry.Quantity = request.Quantity;
+        entry.WeightKg = request.WeightKg;
         entry.WoodQuantity = request.WoodQuantity;
         entry.SackQuantity = request.SackQuantity;
         entry.Notes = request.Notes;
         await _db.SaveChangesAsync();
 
         var farmer = await _db.Partners.FindAsync(entry.FarmerId);
-        return new GoodsEntryDto(entry.Id, entry.FarmerId, farmer?.Name ?? "", entry.Date, entry.ItemName, entry.Unit, entry.Quantity, entry.WoodQuantity, entry.SackQuantity, entry.Notes);
+        return new GoodsEntryDto(entry.Id, entry.FarmerId, farmer?.Name ?? "", entry.Date, entry.ItemName, entry.Quantity, entry.WeightKg, entry.WoodQuantity, entry.SackQuantity, entry.Notes);
     }
 
     /// <summary>Soft-delete, same convention as every other AuditableEntity — a mistaken intake

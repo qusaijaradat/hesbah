@@ -387,8 +387,8 @@ public class ExportService : IExportService
                         var item = invoice.Items[i];
                         var shaded = i % 2 == 1;
                         table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(item.ItemName);
-                        table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(BoxCountCell(item.Unit, item.Quantity));
-                        table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(thermalWidth ? WeightCellCompact(item.Unit, item.Quantity) : WeightCell(item.Unit, item.Quantity));
+                        table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(CountCell(item.Quantity));
+                        table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(thermalWidth ? WeightCellCompact(item.WeightKg) : WeightCell(item.WeightKg));
                         // PricePerUnit == 0 means "not priced yet, will be priced later" (see
                         // InvoiceNewPage/InvoiceEditPage's now-optional price field) — flagged
                         // instead of printing a misleading "₪0.00" that reads as a free item.
@@ -404,7 +404,7 @@ public class ExportService : IExportService
 
                 // Not everything on the invoice is sold by weight — a box-unit line has its own
                 // total instead of being folded into (or silently dropped from) the weight figure.
-                var totalBoxes = invoice.Items.Where(i => i.Unit == UnitOfMeasure.Box).Sum(i => i.Quantity);
+                var totalBoxes = invoice.Items.Sum(i => i.BoxQuantity);
 
                 page.Footer().ContentFromRightToLeft().Column(col =>
                 {
@@ -515,15 +515,15 @@ public class ExportService : IExportService
                         var shaded = i % 2 == 1;
                         var unpriced = item.PricePerUnit == 0;
                         table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(item.ItemName);
-                        table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(item.Unit == UnitOfMeasure.Box ? item.Quantity.ToString("0.###") : "—");
-                        table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(WeightCell(item.Unit, item.Quantity));
+                        table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(CountCell(item.Quantity));
+                        table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(WeightCell(item.WeightKg));
                         table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(unpriced ? "غير مسعّر" : item.PricePerUnit.ToString("0.##"));
                         table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(item.WoodPrice > 0 ? item.WoodPrice.ToString("0.##") : "—");
                         table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(unpriced ? "غير مسعّر" : item.LineTotal.ToString("0.##"));
                     }
                 });
 
-                var totalBoxes = invoice.Items.Where(i => i.Unit == UnitOfMeasure.Box).Sum(i => i.Quantity);
+                var totalBoxes = invoice.Items.Sum(i => i.BoxQuantity);
 
                 page.Footer().ContentFromRightToLeft().Column(col =>
                 {
@@ -708,7 +708,7 @@ public class ExportService : IExportService
         // manifest can state the load's crate value alongside its weight and box count.
         var woodTotal = orderedInvoices.Sum(i => i.WoodTotal);
         var grandTotal = orderedInvoices.Sum(i => i.TransportFee) + totalDriverBoxFee;
-        var totalBoxes = orderedInvoices.Sum(i => i.Items.Where(it => it.Unit == UnitOfMeasure.Box).Sum(it => it.Quantity));
+        var totalBoxes = orderedInvoices.Sum(i => i.Items.Sum(it => it.BoxQuantity));
         var totalWeightKg = orderedInvoices.Sum(i => i.TotalWeightKg);
 
         var document = Document.Create(container =>
@@ -759,7 +759,7 @@ public class ExportService : IExportService
                     {
                         var invoice = orderedInvoices[i];
                         var shaded = i % 2 == 1;
-                        var boxCount = invoice.Items.Where(it => it.Unit == UnitOfMeasure.Box).Sum(it => it.Quantity);
+                        var boxCount = invoice.Items.Sum(it => it.BoxQuantity);
                         table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(invoice.MerchantName);
                         table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(boxCount > 0 ? boxCount.ToString("0.###") : "—");
                         table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(WeightText(invoice.TotalWeightKg));
@@ -875,8 +875,8 @@ public class ExportService : IExportService
                             var shaded = rowIndex % 2 == 1;
                             table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(group.MerchantName);
                             table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(item.ItemName);
-                            table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(item.Unit == UnitOfMeasure.Box ? item.TotalQuantity.ToString("0.###") : "—");
-                            table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(WeightCell(item.Unit, item.TotalQuantity));
+                            table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(CountCell(item.TotalQuantity));
+                            table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(WeightCell(item.TotalWeightKg));
                             table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(item.TotalValue.ToString("0.##"));
                             rowIndex++;
                         }
@@ -969,8 +969,8 @@ public class ExportService : IExportService
                             var shaded = rowIndex % 2 == 1;
                             table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(group.FarmerName);
                             table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(item.ItemName);
-                            table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(item.Unit == UnitOfMeasure.Box ? item.TotalQuantity.ToString("0.###") : "—");
-                            table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(WeightCell(item.Unit, item.TotalQuantity));
+                            table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(CountCell(item.TotalQuantity));
+                            table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(WeightCell(item.TotalWeightKg));
                             table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(item.TotalValue.ToString("0.##"));
                             rowIndex++;
                         }
@@ -1059,8 +1059,8 @@ public class ExportService : IExportService
                             var shaded = rowIndex % 2 == 1;
                             table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(group.DriverName);
                             table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(item.ItemName);
-                            table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(item.Unit == UnitOfMeasure.Box ? item.TotalQuantity.ToString("0.###") : "—");
-                            table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(WeightCell(item.Unit, item.TotalQuantity));
+                            table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(CountCell(item.TotalQuantity));
+                            table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(WeightCell(item.TotalWeightKg));
                             rowIndex++;
                         }
                         table.Cell().ColumnSpan(3).Element(c => DataCell(c, true)).AlignRight().Text($"إجمالي أجرة نقل {group.DriverName}").Bold();
@@ -1101,7 +1101,7 @@ public class ExportService : IExportService
     public byte[] GenerateFarmerStatementPdf(FarmerStatementDto statement, DateTimeOffset? dateFrom, DateTimeOffset? dateTo, CompanyInfo company, decimal previousBalance)
     {
         var itemGroups = statement.Lines
-            .GroupBy(l => (l.ItemName, l.Unit))
+            .GroupBy(l => l.ItemName)
             .Select(g =>
             {
                 var groupLines = g.OrderBy(l => l.Date).ToList();
@@ -1110,7 +1110,7 @@ public class ExportService : IExportService
                 var commission = groupLines.Sum(l => CommissionCalculator.Calculate(l.LineTotal, l.CommissionRateApplied).Commission);
                 return new
                 {
-                    g.Key.ItemName,
+                    ItemName = g.Key,
                     Lines = groupLines,
                     Subtotal = subtotal,
                     WoodSubtotal = woodSubtotal,
@@ -1121,8 +1121,10 @@ public class ExportService : IExportService
             .OrderBy(g => g.ItemName, StringComparer.CurrentCulture)
             .ToList();
 
-        var totalWeightKg = statement.Lines.Where(l => l.Unit == UnitOfMeasure.Kg).Sum(l => l.Quantity);
-        var totalBoxes = statement.Lines.Where(l => l.Unit == UnitOfMeasure.Box).Sum(l => l.Quantity);
+        // Both are plain sums now: every line has a count, and a weight whenever it was weighed.
+        // Each used to pick out only the lines of its own unit and ignore the rest.
+        var totalWeightKg = statement.Lines.Sum(l => l.WeightKg ?? 0m);
+        var totalBoxes = statement.Lines.Sum(l => l.Quantity);
         var woodTotal = statement.Lines.Sum(l => l.WoodPrice);
         var itemsTotal = statement.Lines.Sum(l => l.LineTotal);
         var totalCommission = itemGroups.Sum(g => g.Commission);
@@ -1198,8 +1200,8 @@ public class ExportService : IExportService
                                     var shaded = i % 2 == 1;
                                     var unpriced = line.PricePerUnit == 0;
                                     table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text($"{line.Date:yyyy-MM-dd}");
-                                    table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(line.Unit == UnitOfMeasure.Box ? line.Quantity.ToString("0.###") : "—");
-                                    table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(WeightCell(line.Unit, line.Quantity));
+                                    table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(CountCell(line.Quantity));
+                                    table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(WeightCell(line.WeightKg));
                                     table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(unpriced ? "غير مسعّر" : line.PricePerUnit.ToString("0.##"));
                                     table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(line.WoodPrice > 0 ? line.WoodPrice.ToString("0.##") : "—");
                                     table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(unpriced ? "غير مسعّر" : line.LineTotal.ToString("0.##"));
@@ -1405,7 +1407,7 @@ public class ExportService : IExportService
                     // wood price too, per the explicit requirement documented there) — so a
                     // per-invoice driver copy and the driver's consolidated manifest can never
                     // disagree about what he's owed.
-                    var totalBoxes = invoice.Items.Where(it => it.Unit == UnitOfMeasure.Box).Sum(it => it.Quantity);
+                    var totalBoxes = invoice.Items.Sum(it => it.BoxQuantity);
                     if (totalBoxes > 0)
                         col.Item().AlignRight().Text($"إجمالي الصناديق: {totalBoxes:0.###}").FontSize(7);
                     if (invoice.TotalWeightKg > 0)
@@ -1483,8 +1485,8 @@ public class ExportService : IExportService
                 var shaded = i % 2 == 1;
                 var unpriced = item.PricePerUnit == 0;
                 table.Cell().Element(c => MiniDataCell(c, shaded)).AlignRight().Text(item.ItemName);
-                table.Cell().Element(c => MiniDataCell(c, shaded)).AlignRight().Text(BoxCountCell(item.Unit, item.Quantity));
-                table.Cell().Element(c => MiniDataCell(c, shaded)).AlignRight().Text(WeightCell(item.Unit, item.Quantity));
+                table.Cell().Element(c => MiniDataCell(c, shaded)).AlignRight().Text(CountCell(item.Quantity));
+                table.Cell().Element(c => MiniDataCell(c, shaded)).AlignRight().Text(WeightCell(item.WeightKg));
                 table.Cell().Element(c => MiniDataCell(c, shaded)).AlignRight().Text(item.WoodPrice > 0 ? item.WoodPrice.ToString("0.##") : "—");
                 if (isDriverCopy) continue;
                 table.Cell().Element(c => MiniDataCell(c, shaded)).AlignRight().Text(unpriced ? "غير مسعّر" : item.PricePerUnit.ToString("0.##"));
@@ -1591,12 +1593,6 @@ public class ExportService : IExportService
             .BorderBottom(0.5f).BorderColor(PrintInk.Text)
             .PaddingVertical(5).PaddingHorizontal(6);
 
-    private static string ArabicUnitLabel(UnitOfMeasure unit) => unit switch
-    {
-        UnitOfMeasure.Kg => "كغم",
-        UnitOfMeasure.Box => "صندوق",
-        _ => unit.ToString()
-    };
 
     /// <summary>
     /// A weight of zero prints as "—", never "0.000 كغم" (explicit request, applied across the
@@ -1608,20 +1604,16 @@ public class ExportService : IExportService
     /// </summary>
     private static string WeightText(decimal kg) => kg > 0 ? $"{kg:0.###} كغم" : "—";
 
-    /// <summary>An item row's quantity column, which only ever carries a weight when that line is
-    /// priced by the kilo — a box-priced line has its count in its own column instead.</summary>
-    private static string WeightCell(UnitOfMeasure unit, decimal quantity) =>
-        unit == UnitOfMeasure.Kg ? WeightText(quantity) : "—";
+    /// <summary>The "الوزن" column. Empty on a line that was not weighed — which is what decides
+    /// how it was priced (InvoiceCalculator.LineTotalFor), so the dash is information, not a gap.
+    /// It used to be filled only on a Kg-unit line and show a dash on every box-priced one, which
+    /// is why a line could never be both counted and weighed.</summary>
+    private static string WeightCell(decimal? weightKg) => WeightText(weightKg ?? 0m);
 
-    /// <summary>
-    /// The mirror of <see cref="WeightCell"/>: the "العدد" column, filled only on a box-priced
-    /// line. Every invoice shows BOTH columns on every row (explicit request) — a line is always
-    /// one or the other, so exactly one of the pair carries a number and the other a dash. Keeping
-    /// them as two fixed columns rather than one merged "الكمية" is what lets a whole invoice be
-    /// scanned down a single column for either figure.
-    /// </summary>
-    private static string BoxCountCell(UnitOfMeasure unit, decimal quantity) =>
-        unit == UnitOfMeasure.Box ? quantity.ToString("0.###") : "—";
+    /// <summary>The "العدد" column — always filled, on every line. It used to be filled only on a
+    /// box-priced line, the mirror of the old WeightCell, so exactly one of the pair ever carried a
+    /// number. Both carry one now whenever the line has both.</summary>
+    private static string CountCell(decimal quantity) => quantity.ToString("0.###");
 
     /// <summary>
     /// WeightCell without the "كغم" suffix, for the 80mm thermal roll only. Splitting الكمية into
@@ -1630,8 +1622,8 @@ public class ExportService : IExportService
     /// is, so the suffix is the part that goes. A4 and the quarter-page cards have the room and
     /// keep it.
     /// </summary>
-    private static string WeightCellCompact(UnitOfMeasure unit, decimal quantity) =>
-        unit == UnitOfMeasure.Kg && quantity > 0 ? quantity.ToString("0.###") : "—";
+    private static string WeightCellCompact(decimal? weightKg) =>
+        weightKg is > 0 ? weightKg.Value.ToString("0.###") : "—";
 
     /// <summary>
     /// A goods-stock number (وارد/مباع/متوفر), where the unit lives in its own column so the value
@@ -1975,8 +1967,8 @@ public class ExportService : IExportService
                         table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text($"{line.Date:yyyy-MM-dd}");
                         table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(line.InvoiceNumber);
                         table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(line.ItemName);
-                        table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(BoxCountCell(line.Unit, line.Quantity));
-                        table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(WeightCell(line.Unit, line.Quantity));
+                        table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(CountCell(line.Quantity));
+                        table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(WeightCell(line.WeightKg));
                         table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(unpriced ? "غير مسعّر" : line.PricePerUnit.ToString("0.##"));
                         table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(unpriced ? "غير مسعّر" : $"₪ {line.LineTotal:0.##}");
                     }
@@ -2309,10 +2301,10 @@ public class ExportService : IExportService
                     table.ColumnsDefinition(columns =>
                     {
                         columns.RelativeColumn(3); // الصنف
-                        columns.RelativeColumn(2); // الوحدة
-                        columns.RelativeColumn(2); // الوارد
-                        columns.RelativeColumn(2); // المباع
-                        columns.RelativeColumn(2); // المتوفر
+                        columns.RelativeColumn(2); // الوارد (عدد)
+                        columns.RelativeColumn(2); // المباع (عدد)
+                        columns.RelativeColumn(2); // المتوفر (عدد)
+                        columns.RelativeColumn(2); // المتوفر (وزن)
                         columns.RelativeColumn(2); // صناديق خشب
                         columns.RelativeColumn(2); // مخالات
                     });
@@ -2320,10 +2312,10 @@ public class ExportService : IExportService
                     table.Header(header =>
                     {
                         header.Cell().Element(HeaderCell).AlignRight().Text("الصنف");
-                        header.Cell().Element(HeaderCell).AlignRight().Text("الوحدة");
-                        header.Cell().Element(HeaderCell).AlignRight().Text("الوارد");
-                        header.Cell().Element(HeaderCell).AlignRight().Text("المباع");
-                        header.Cell().Element(HeaderCell).AlignRight().Text("المتوفر");
+                        header.Cell().Element(HeaderCell).AlignRight().Text("الوارد (عدد)");
+                        header.Cell().Element(HeaderCell).AlignRight().Text("المباع (عدد)");
+                        header.Cell().Element(HeaderCell).AlignRight().Text("المتوفر (عدد)");
+                        header.Cell().Element(HeaderCell).AlignRight().Text("المتوفر (وزن)");
                         header.Cell().Element(HeaderCell).AlignRight().Text("صناديق خشب");
                         header.Cell().Element(HeaderCell).AlignRight().Text("مخالات");
                     });
@@ -2333,10 +2325,10 @@ public class ExportService : IExportService
                         var r = stock[i];
                         var shaded = i % 2 == 1;
                         table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(r.ItemName);
-                        table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(ArabicUnitLabel(r.Unit));
-                        table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(StockQuantityText(r.Unit, r.TotalReceived));
-                        table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(StockQuantityText(r.Unit, r.TotalSold));
-                        table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(StockQuantityText(r.Unit, r.Available)).Bold();
+                        table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(r.TotalReceived.ToString("0.###"));
+                        table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(r.TotalSold.ToString("0.###"));
+                        table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(r.Available.ToString("0.###")).Bold();
+                        table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(WeightText(r.WeightAvailable)).Bold();
                         table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(r.WoodReceived > 0 ? $"{r.WoodReceived:0.###}" : "—");
                         table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(r.SackReceived > 0 ? $"{r.SackReceived:0.###}" : "—");
                     }

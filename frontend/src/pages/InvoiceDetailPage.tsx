@@ -6,7 +6,7 @@ import { getFarmerAccount } from "../api/partners";
 import { listSettings } from "../api/settings";
 import type { InvoiceDto, InvoicePaymentStatus } from "../types";
 import { InvoiceReturnsCard } from "../components/InvoiceReturnsCard";
-import { buildStatementMessage, buildWhatsAppLink, formatCurrency, formatDate, formatQuantity, formatWeight } from "../lib/format";
+import { buildStatementMessage, buildWhatsAppLink, formatCount, formatCurrency, formatDate, formatWeight } from "../lib/format";
 import { useAuth } from "../auth/AuthContext";
 import { apiErrorMessage } from "../api/client";
 
@@ -109,7 +109,10 @@ export function InvoiceDetailPage() {
 
   // Not everything on the invoice is sold by weight — a box-unit line has its own total
   // instead of being folded into (or silently dropped from) the weight figure.
-  const totalBoxes = invoice.items.filter((it) => it.unit === "Box").reduce((sum, it) => sum + it.quantity, 0);
+  // Every line's own عدد الصناديق, whatever it was priced by. It used to count only box-UNIT lines,
+  // so crates that went out with produce sold by weight were not in this total at all.
+  const totalBoxes = invoice.items.reduce((sum, it) => sum + it.boxQuantity, 0);
+  const totalCartons = invoice.items.reduce((sum, it) => sum + it.cartonQuantity, 0);
 
   return (
     <div className="max-w-2xl">
@@ -134,12 +137,12 @@ export function InvoiceDetailPage() {
         </div>
 
         {/* العدد/الوزن يحلّان محل عمود "الكمية" المدمج — مشتقّان مباشرة من الكمية/الوحدة (نفس
-            منطق الفاتورة المطبوعة A4، انظر ExportService.GenerateInvoicePdf): صنف بالصندوق
-            يعبّي "العدد" ويترك "الوزن" فاضي، وصنف بالكيلو العكس — بدون إدخال منفصل. */}
+            منطق الفاتورة المطبوعة A4، انظر ExportService.GenerateInvoicePdf): العدد دايمًا معبّى،
+            والوزن بس إذا انوزن الصنف — ووجود الوزن هو اللي بحدد كيف انحسب السطر. */}
         <div className="overflow-x-auto mb-4">
           <table className="table-base">
             <thead>
-              <tr><th>الصنف</th><th>العدد</th><th>الوزن</th><th>السعر</th><th>سعر الخشب</th><th>الإجمالي</th></tr>
+              <tr><th>الصنف</th><th>العدد</th><th>الوزن</th><th>السعر</th><th>صناديق</th><th>كرتون</th><th>سعر الخشب</th><th>الإجمالي</th></tr>
             </thead>
             <tbody>
               {/* pricePerUnit == 0 means "not priced yet", not "free" — the item can be added to
@@ -151,11 +154,13 @@ export function InvoiceDetailPage() {
                 return (
                   <tr key={item.id} className={unpriced ? "bg-amber-50" : undefined}>
                     <td>{item.itemName}</td>
-                    <td>{item.unit === "Box" ? formatQuantity(item.quantity, "Box") : "—"}</td>
-                    <td>{item.unit === "Kg" ? formatWeight(item.quantity) : "—"}</td>
+                    <td>{formatCount(item.quantity)}</td>
+                    <td>{formatWeight(item.weightKg ?? 0)}</td>
                     <td className={unpriced ? "text-amber-700 font-medium" : undefined}>
                       {unpriced ? "غير مسعّر" : formatCurrency(item.pricePerUnit)}
                     </td>
+                    <td>{item.boxQuantity > 0 ? formatCount(item.boxQuantity) : "—"}</td>
+                    <td>{item.cartonQuantity > 0 ? formatCount(item.cartonQuantity) : "—"}</td>
                     <td>{item.woodPrice > 0 ? formatCurrency(item.woodPrice) : "—"}</td>
                     <td className={unpriced ? "text-amber-700 font-medium" : "font-medium"}>
                       {unpriced ? "غير مسعّر" : formatCurrency(item.lineTotal)}
@@ -173,7 +178,10 @@ export function InvoiceDetailPage() {
               <div className="text-gray-500">إجمالي الوزن: <span className="font-semibold text-gray-900">{formatWeight(invoice.totalWeightKg)}</span></div>
             )}
             {totalBoxes > 0 && (
-              <div className="text-gray-500">إجمالي الصناديق: <span className="font-semibold text-gray-900">{formatQuantity(totalBoxes, "Box")}</span></div>
+              <div className="text-gray-500">إجمالي الصناديق: <span className="font-semibold text-gray-900">{formatCount(totalBoxes)}</span></div>
+            )}
+            {totalCartons > 0 && (
+              <div className="text-gray-500">إجمالي الكرتون: <span className="font-semibold text-gray-900">{formatCount(totalCartons)}</span></div>
             )}
             {invoice.woodTotal > 0 && (
               <div className="text-gray-500">إجمالي الخشب: <span className="font-semibold text-gray-900">{formatCurrency(invoice.woodTotal)}</span></div>

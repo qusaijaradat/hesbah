@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { createInvoiceReturn, deleteInvoiceReturn } from "../api/invoices";
 import { apiErrorMessage } from "../api/client";
-import { formatCurrency, formatDate, formatQuantity, todayLocalDateString } from "../lib/format";
+import { formatCount, formatCurrency, formatDate, formatWeight, todayLocalDateString } from "../lib/format";
 import type { GoodsReturnDto, InvoiceDto } from "../types";
 
 /**
@@ -31,24 +31,25 @@ export function InvoiceReturnsCard({ invoice, canManage, onChanged }: {
   const [error, setError] = useState<string | null>(null);
 
   /** Same trimmed/case-insensitive (name, unit) key the backend matches lines on. */
-  const keyOf = (itemName: string, unit: string) => `${itemName.trim().toLowerCase()}|${unit}`;
+  // Name alone: a line no longer has a unit to distinguish two rows of the same item by.
+  const keyOf = (itemName: string) => itemName.trim().toLowerCase();
 
   // Sold per line, minus everything already returned against it.
   const returnedByKey = new Map<string, number>();
   for (const ret of invoice.returns) {
     for (const line of ret.items) {
-      const k = keyOf(line.itemName, line.unit);
+      const k = keyOf(line.itemName);
       returnedByKey.set(k, (returnedByKey.get(k) ?? 0) + line.quantity);
     }
   }
   const returnableLines = invoice.items.map((item) => {
-    const k = keyOf(item.itemName, item.unit);
+    const k = keyOf(item.itemName);
     return { item, key: k, returnable: item.quantity - (returnedByKey.get(k) ?? 0) };
   });
 
   async function handleSave() {
     const items = returnableLines
-      .map(({ item, key }) => ({ itemName: item.itemName, unit: item.unit, quantity: parseFloat(quantities[key] ?? "") || 0 }))
+      .map(({ item, key }) => ({ itemName: item.itemName, quantity: parseFloat(quantities[key] ?? "") || 0 }))
       .filter((line) => line.quantity > 0);
     if (items.length === 0) { setError("أدخل كمية أكبر من صفر لصنف واحد على الأقل."); return; }
 
@@ -112,7 +113,7 @@ export function InvoiceReturnsCard({ invoice, canManage, onChanged }: {
               <div className="text-xs text-gray-600 mt-2 flex flex-wrap gap-x-4 gap-y-1">
                 {ret.items.map((line, index) => (
                   <span key={index}>
-                    {line.itemName}: {formatQuantity(line.quantity, line.unit)} × {formatCurrency(line.pricePerUnit)} = {formatCurrency(line.lineTotal)}
+                    {line.itemName}: {line.weightKg && line.weightKg > 0 ? formatWeight(line.weightKg) : formatCount(line.quantity)} × {formatCurrency(line.pricePerUnit)} = {formatCurrency(line.lineTotal)}
                   </span>
                 ))}
               </div>
@@ -144,8 +145,8 @@ export function InvoiceReturnsCard({ invoice, canManage, onChanged }: {
                   {returnableLines.map(({ item, key, returnable }) => (
                     <tr key={item.id}>
                       <td>{item.itemName}</td>
-                      <td>{formatQuantity(item.quantity, item.unit)}</td>
-                      <td className={returnable <= 0 ? "text-gray-400" : ""}>{formatQuantity(returnable, item.unit)}</td>
+                      <td>{formatCount(item.quantity)}</td>
+                      <td className={returnable <= 0 ? "text-gray-400" : ""}>{formatCount(returnable)}</td>
                       <td>
                         <input
                           className="input w-28" type="number" min="0" step="0.001" max={returnable}

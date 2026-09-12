@@ -17,3 +17,14 @@ export const InvoiceCharge = {
     return totalValue + woodTotal + boxFeeTotal;
   },
 };
+
+/**
+ * What one line is worth: الوزن × السعر when it was weighed, otherwise العدد × السعر. Mirrors the
+ * backend InvoiceCalculator.LineTotalFor for the same reason forMerchant above mirrors
+ * InvoiceCharge — the form shows a running total while someone types, before there is anything to
+ * ask the server about. A weight of 0 reads the same as no weight at all: nothing was weighed.
+ */
+export function lineTotalOf(line: { quantity: number; weightKg?: number | null; pricePerUnit: number }): number {
+  const basis = line.weightKg != null && line.weightKg > 0 ? line.weightKg : line.quantity;
+  return basis * line.pricePerUnit;
+}

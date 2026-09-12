@@ -5,7 +5,7 @@ import { TablePagination } from "../components/TablePagination";
 import { usePagination } from "../lib/usePagination";
 import { createContainerMovement, deleteContainerMovement, getContainerHolders, getPartnerContainers } from "../api/partners";
 import { apiErrorMessage } from "../api/client";
-import { formatDate, formatQuantity, todayLocalDateString } from "../lib/format";
+import { formatCount, formatDate, todayLocalDateString } from "../lib/format";
 import { useAuth } from "../auth/AuthContext";
 import type { ContainerBalanceDto, ContainerDirection, ContainerHolderDto, ContainerType, PartnerContainersDto } from "../types";
 
@@ -25,8 +25,8 @@ import type { ContainerBalanceDto, ContainerDirection, ContainerHolderDto, Conta
  * wooden crates arriving with a seller's produce on "إضافة بضاعة". Everything else — every crate
  * handed out by hand, every sack, every return — is recorded here.
  */
-const TYPE_LABEL: Record<ContainerType, string> = { Box: "صناديق", Sack: "مخالات" };
-const TYPE_UNIT: Record<ContainerType, string> = { Box: "صندوق", Sack: "مخلاة" };
+const TYPE_LABEL: Record<ContainerType, string> = { Box: "صناديق", Carton: "كرتون", Sack: "مخالات" };
+const TYPE_UNIT: Record<ContainerType, string> = { Box: "صندوق", Carton: "كرتونة", Sack: "مخلاة" };
 
 export function ContainersPage() {
   const { hasPermission } = useAuth();
@@ -199,13 +199,13 @@ function BalanceCard({ balance }: { balance: ContainerBalanceDto }) {
         {balance.fromInvoices !== 0 && (
           <div>
             <div className="text-gray-500">على الفواتير</div>
-            <div className="font-bold">{formatQuantity(balance.fromInvoices, "Box")}</div>
+            <div className="font-bold">{formatCount(balance.fromInvoices)}</div>
           </div>
         )}
         {balance.fromGoodsEntries !== 0 && (
           <div>
             <div className="text-gray-500">جابها مع البضاعة</div>
-            <div className="font-bold text-brand-700">{formatQuantity(balance.fromGoodsEntries, "Box")}</div>
+            <div className="font-bold text-brand-700">{formatCount(balance.fromGoodsEntries)}</div>
           </div>
         )}
         <div>
@@ -267,6 +267,7 @@ function MovementForm({ partnerId, onSaved }: { partnerId: number; onSaved: () =
           <label className="label">النوع</label>
           <select className="input" value={type} onChange={(e) => setType(e.target.value as ContainerType)}>
             <option value="Box">صناديق</option>
+            <option value="Carton">كرتون</option>
             <option value="Sack">مخالات</option>
           </select>
         </div>

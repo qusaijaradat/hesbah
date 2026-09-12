@@ -79,8 +79,8 @@ public record DriverReportRow(
 /// not a per-item price component).
 /// </summary>
 public record MerchantItemBreakdownRow(
-    int MerchantId, string MerchantName, string ItemName, UnitOfMeasure Unit,
-    decimal TotalQuantity, decimal TotalValue);
+    int MerchantId, string MerchantName, string ItemName,
+    decimal TotalQuantity, decimal TotalWeightKg, decimal TotalValue);
 
 /// <summary>
 /// "طباعة الفواتير" → قسم البائع's "كشف بائع حسب الفترة" — same per-item breakdown idea as
@@ -91,8 +91,8 @@ public record MerchantItemBreakdownRow(
 /// figure (see FarmerReportRow.NetDue for that number).
 /// </summary>
 public record FarmerItemBreakdownRow(
-    int FarmerId, string FarmerName, string ItemName, UnitOfMeasure Unit,
-    decimal TotalQuantity, decimal TotalValue);
+    int FarmerId, string FarmerName, string ItemName,
+    decimal TotalQuantity, decimal TotalWeightKg, decimal TotalValue);
 
 /// <summary>
 /// "طباعة الفواتير" → قسم السائق's "كشف سائق حسب الفترة" — one row per (driver, item) carried
@@ -106,8 +106,8 @@ public record FarmerItemBreakdownRow(
 /// once per item instead of once per invoice.
 /// </summary>
 public record DriverItemBreakdownRow(
-    int DriverId, string DriverName, string ItemName, UnitOfMeasure Unit,
-    decimal TotalQuantity, decimal TotalTransportFee);
+    int DriverId, string DriverName, string ItemName,
+    decimal TotalQuantity, decimal TotalWeightKg, decimal TotalTransportFee);
 
 /// <summary>
 /// Requirement doc §8: market reports — daily/monthly profits/commissions, or a specified period.

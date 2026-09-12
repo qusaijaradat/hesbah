@@ -555,7 +555,7 @@ public class PartnerService : IPartnerService
             var grandTotal = i.GrandTotal;
             return i.Items.Select(it => new PartnerInvoiceItemLineDto(
                 i.Id, i.InvoiceNumber, i.Date,
-                it.ItemName, it.Unit, it.Quantity, it.PricePerUnit, it.WoodPrice, it.LineTotal,
+                it.ItemName, it.Quantity, it.WeightKg, it.PricePerUnit, it.WoodPrice, it.LineTotal,
                 i.TransportFee, grandTotal));
         }).ToList();
 

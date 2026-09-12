@@ -1,6 +1,6 @@
 import { apiClient } from "./client";
 import { serializeQueryParams } from "./queryParams";
-import type { FarmerGoodsDto, GoodsReturnDto, InvoiceDto, InvoiceFilter, InvoiceItemInput, InvoiceListItemDto, PagedResult, UnitOfMeasure } from "../types";
+import type { FarmerGoodsDto, GoodsReturnDto, InvoiceDto, InvoiceFilter, InvoiceItemInput, InvoiceListItemDto, PagedResult } from "../types";
 
 // The filter now carries array fields (the "استثناء أسماء" exclusion lists), which axios would
 // otherwise send in a bracket form ASP.NET Core doesn't bind — see serializeQueryParams.
@@ -174,7 +174,7 @@ export async function listInvoiceReturns(invoiceId: number) {
 export async function createInvoiceReturn(invoiceId: number, payload: {
   date: string;
   reason?: string;
-  items: { itemName: string; unit: UnitOfMeasure; quantity: number }[];
+  items: { itemName: string; quantity: number; weightKg?: number | null; boxQuantity?: number; cartonQuantity?: number }[];
 }) {
   const { data } = await apiClient.post<GoodsReturnDto>(`/invoices/${invoiceId}/returns`, payload);
   return data;

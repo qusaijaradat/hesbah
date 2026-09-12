@@ -38,7 +38,9 @@ public class GoodsReturnItemConfiguration : IEntityTypeConfiguration<GoodsReturn
         builder.ToTable("goods_return_items");
         builder.Property(x => x.ItemName).HasMaxLength(200).IsRequired();
         builder.Property(x => x.Quantity).HasColumnType("numeric(14,3)");
-        builder.Property(x => x.Unit).HasConversion<int>();
+        builder.Property(x => x.WeightKg).HasColumnType("numeric(14,3)");
+        builder.Property(x => x.BoxQuantity).HasColumnType("numeric(14,3)");
+        builder.Property(x => x.CartonQuantity).HasColumnType("numeric(14,3)");
         builder.Property(x => x.PricePerUnit).HasColumnType("numeric(14,2)");
         builder.Property(x => x.LineTotal).HasColumnType("numeric(14,2)");
     }

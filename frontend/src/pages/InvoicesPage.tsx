@@ -4,7 +4,7 @@ import { deleteInvoice, downloadInvoicePdf, downloadInvoicesExcel, getInvoice, l
 import { getFarmerAccount } from "../api/partners";
 import { listSettings } from "../api/settings";
 import type { InvoiceFilter, InvoiceListItemDto, InvoicePaymentStatus } from "../types";
-import { buildStatementMessage, buildWhatsAppLink, formatCurrency, formatDate, formatQuantity, formatWeight } from "../lib/format";
+import { buildStatementMessage, buildWhatsAppLink, formatCount, formatCurrency, formatDate, formatWeight } from "../lib/format";
 import { shareFile } from "../lib/share";
 import { apiErrorMessage } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
@@ -341,7 +341,7 @@ export function InvoicesPage() {
                         === 0, which on its own looks like an empty/broken row, so show whichever
                         of the two actually apply instead of always printing "0.000 كغم". */}
                     {inv.totalWeightKg > 0 && <div>{formatWeight(inv.totalWeightKg)}</div>}
-                    {inv.totalBoxes > 0 && <div>{formatQuantity(inv.totalBoxes, "Box")}</div>}
+                    {inv.totalBoxes > 0 && <div>{formatCount(inv.totalBoxes)}</div>}
                     {inv.totalWeightKg === 0 && inv.totalBoxes === 0 && "—"}
                   </td>
                   {/* Two different figures, side by side on purpose: "القيمة" is the produce

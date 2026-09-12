@@ -4,7 +4,15 @@ namespace GreenMarket.Api.DTOs;
 
 /// <summary>WoodPrice ("سعر الخشب") is optional — a flat per-line add-on picked from a small fixed
 /// set of values (3/5/6/7/8), 0 when left unset. Not multiplied by Quantity.</summary>
-public record InvoiceItemInput(string ItemName, decimal Quantity, UnitOfMeasure Unit, decimal PricePerUnit, decimal WoodPrice = 0);
+/// <summary>
+/// One line as the form sends it. Quantity is العدد and is required; WeightKg is الوزن and is
+/// optional — whether it is there is what decides how the line is priced (InvoiceCalculator).
+/// BoxQuantity/CartonQuantity are the containers that went out with it, counted separately from
+/// both, and only the crates are ever charged for.
+/// </summary>
+public record InvoiceItemInput(
+    string ItemName, decimal Quantity, decimal PricePerUnit,
+    decimal? WeightKg = null, decimal BoxQuantity = 0, decimal CartonQuantity = 0, decimal WoodPrice = 0);
 
 /// <summary>
 /// MerchantId/FarmerId/DriverId are optional: if omitted, the matching *Name is used to look up an
@@ -30,7 +38,9 @@ public record CreateInvoiceRequest(
     IReadOnlyList<InvoiceItemInput> Items,
     decimal TransportFee = 0);
 
-public record InvoiceItemDto(int Id, string ItemName, decimal Quantity, UnitOfMeasure Unit, decimal PricePerUnit, decimal WoodPrice, decimal LineTotal);
+public record InvoiceItemDto(
+    int Id, string ItemName, decimal Quantity, decimal? WeightKg, decimal PricePerUnit,
+    decimal BoxQuantity, decimal CartonQuantity, decimal WoodPrice, decimal LineTotal);
 
 /// <summary>
 /// The merchant-facing view. GrandTotal/PreviousBalance stay exactly as before — requirement doc
@@ -81,7 +91,7 @@ public record InvoiceDto(
     int? DriverId, string? DriverName, string? DriverWhatsApp,
     InvoiceStatus Status,
     decimal TotalWeightKg, decimal TotalValue, decimal TransportFee, decimal WoodTotal,
-    decimal TotalBoxes, decimal BoxPriceApplied, decimal BoxFeeTotal,
+    decimal TotalBoxes, decimal TotalCartons, decimal BoxPriceApplied, decimal BoxFeeTotal,
     decimal DriverBoxFeeApplied, decimal DriverBoxFeeTotal,
     decimal GrandTotal,
     decimal PreviousBalance,
@@ -291,7 +301,9 @@ public record MergedInvoiceGroupDto(
 /// through) — lets ExportService.GenerateFarmerStatementPdf compute this line's own commission
 /// (CommissionCalculator.Calculate(LineTotal, CommissionRateApplied)) even though a farmer's
 /// statement spans many invoices that could in principle carry different historical rates.</summary>
-public record FarmerStatementLineDto(DateTimeOffset Date, string ItemName, decimal Quantity, UnitOfMeasure Unit, decimal PricePerUnit, decimal WoodPrice, decimal LineTotal, decimal CommissionRateApplied);
+public record FarmerStatementLineDto(
+    DateTimeOffset Date, string ItemName, decimal Quantity, decimal? WeightKg, decimal PricePerUnit,
+    decimal WoodPrice, decimal LineTotal, decimal CommissionRateApplied);
 
 /// <summary>Wraps the itemized lines above with the farmer's own name, resolved once in
 /// InvoiceService so the PDF header can show "البائع: ..." without a second round trip.
@@ -313,7 +325,7 @@ public record FarmerStatementDto(int FarmerId, string FarmerName, decimal Transp
 /// up into WoodQuantity = sum of Quantity across only the lines that had WoodPrice > 0, out of
 /// TotalQuantity = sum of Quantity across every line for that day+item+unit.
 /// </summary>
-public record FarmerGoodsRow(DateTime Date, string ItemName, UnitOfMeasure Unit, decimal TotalQuantity, decimal WoodQuantity);
+public record FarmerGoodsRow(DateTime Date, string ItemName, decimal TotalQuantity, decimal TotalWeightKg, decimal WoodQuantity);
 
 public record FarmerGoodsDto(int FarmerId, string FarmerName, IReadOnlyList<FarmerGoodsRow> Rows);
 
@@ -324,7 +336,9 @@ public record GoodsReturnDto(
     decimal TotalValue, decimal CommissionRateApplied,
     IReadOnlyList<GoodsReturnItemDto> Items);
 
-public record GoodsReturnItemDto(string ItemName, decimal Quantity, UnitOfMeasure Unit, decimal PricePerUnit, decimal LineTotal);
+public record GoodsReturnItemDto(
+    string ItemName, decimal Quantity, decimal? WeightKg, decimal BoxQuantity, decimal CartonQuantity,
+    decimal PricePerUnit, decimal LineTotal);
 
 /// <summary>
 /// Recording a return. Quantities are validated against what the invoice actually sold minus what
@@ -335,4 +349,8 @@ public record GoodsReturnItemDto(string ItemName, decimal Quantity, UnitOfMeasur
 public record CreateGoodsReturnRequest(
     DateTimeOffset Date, string? Reason, IReadOnlyList<GoodsReturnLineInput> Items);
 
-public record GoodsReturnLineInput(string ItemName, UnitOfMeasure Unit, decimal Quantity);
+/// <summary>Mirrors the invoice line it is returning against: العدد always, الوزن when the line was
+/// sold by weight, and the containers that physically came back with it.</summary>
+public record GoodsReturnLineInput(
+    string ItemName, decimal Quantity, decimal? WeightKg = null,
+    decimal BoxQuantity = 0, decimal CartonQuantity = 0);

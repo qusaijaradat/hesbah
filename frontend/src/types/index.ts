@@ -91,7 +91,9 @@ export interface StatementLineDto {
 }
 
 /** Crates ("صندوق") and sacks ("مخلاة") are counted apart — one balance each per person. */
-export type ContainerType = "Box" | "Sack";
+/** Cartons joined crates and sacks when an invoice line started counting its own عدد الكرتون —
+ *  they leave with the buyer exactly the way crates do, so they are tracked the same way. */
+export type ContainerType = "Box" | "Carton" | "Sack";
 /** Out = the market handed them over; In = they came back. */
 export type ContainerDirection = "Out" | "In";
 
@@ -179,17 +181,29 @@ export interface FarmerAccountDto {
   statement: StatementLineDto[];
 }
 
+/** One invoice line. See the backend InvoiceItem: العدد is always there, الوزن is optional, and
+ *  whether the weight is there is what decides how the line is priced — a Kg/Box unit used to
+ *  carry that, which meant a line could be counted or weighed but never both, and crates on a
+ *  weighed line had nowhere to live. */
 export interface InvoiceItemInput {
   itemName: string;
+  /** "العدد" — required on every line. Prices the line when there is no weight. */
   quantity: number;
-  unit: UnitOfMeasure;
+  /** "الوزن" بالكيلو, or null/undefined when this line was not weighed. Prices the line when set. */
+  weightKg?: number | null;
   pricePerUnit: number;
-  /** Optional per-line "سعر الخشب" (wood/crate price) — a flat add-on, not multiplied by quantity, 0 when unset. */
+  /** "عدد الصناديق" — the only count رسوم الصناديق and the driver's أجرة الصناديق are charged on. */
+  boxQuantity?: number;
+  /** "عدد الكرتون" — counted and tracked on the containers screen, never charged for. */
+  cartonQuantity?: number;
+  /** Optional per-line "سعر الخشب" (wood/crate price) — a flat add-on, not multiplied by anything, 0 when unset. */
   woodPrice?: number;
 }
 
 export interface InvoiceItemDto extends InvoiceItemInput {
   id: number;
+  boxQuantity: number;
+  cartonQuantity: number;
   woodPrice: number;
   lineTotal: number;
 }
@@ -332,7 +346,9 @@ export type InvoicePaymentStatus = "Unpaid" | "Partial" | "Paid";
 export interface GoodsReturnItemDto {
   itemName: string;
   quantity: number;
-  unit: UnitOfMeasure;
+  weightKg?: number | null;
+  boxQuantity: number;
+  cartonQuantity: number;
   pricePerUnit: number;
   lineTotal: number;
 }
@@ -484,8 +500,8 @@ export interface MerchantItemBreakdownRow {
   merchantId: number;
   merchantName: string;
   itemName: string;
-  unit: UnitOfMeasure;
   totalQuantity: number;
+  totalWeightKg: number;
   totalValue: number;
 }
 
@@ -496,8 +512,8 @@ export interface FarmerItemBreakdownRow {
   farmerId: number;
   farmerName: string;
   itemName: string;
-  unit: UnitOfMeasure;
   totalQuantity: number;
+  totalWeightKg: number;
   totalValue: number;
 }
 
@@ -509,8 +525,8 @@ export interface DriverItemBreakdownRow {
   driverId: number;
   driverName: string;
   itemName: string;
-  unit: UnitOfMeasure;
   totalQuantity: number;
+  totalWeightKg: number;
   totalTransportFee: number;
 }
 
@@ -584,8 +600,8 @@ export interface DailyClosingDto {
 export interface FarmerGoodsRow {
   date: string;
   itemName: string;
-  unit: UnitOfMeasure;
   totalQuantity: number;
+  totalWeightKg: number;
   woodQuantity: number;
 }
 
@@ -604,8 +620,10 @@ export interface GoodsEntryDto {
   farmerName: string;
   date: string;
   itemName: string;
-  unit: UnitOfMeasure;
+  /** "العدد" brought in — same pair as an invoice line, so intake and sales can be netted. */
   quantity: number;
+  /** "الوزن" brought in, or null when this delivery was not weighed. */
+  weightKg?: number | null;
   woodQuantity: number;
   /** "مخالات" — the same kind of plain container count as woodQuantity, tracked in the same
    *  ledger and kept on its own balance (see ContainerBalanceDto). */
@@ -617,8 +635,8 @@ export interface CreateGoodsEntryRequest {
   farmerId: number;
   date: string;
   itemName: string;
-  unit: UnitOfMeasure;
   quantity: number;
+  weightKg?: number | null;
   woodQuantity?: number;
   sackQuantity?: number;
   notes?: string | null;
@@ -627,21 +645,27 @@ export interface CreateGoodsEntryRequest {
 export interface UpdateGoodsEntryRequest {
   date: string;
   itemName: string;
-  unit: UnitOfMeasure;
   quantity: number;
+  weightKg?: number | null;
   woodQuantity?: number;
+  sackQuantity?: number;
   notes?: string | null;
 }
 
+/** Counted BOTH ways — العدد and الوزن, each netted against its own kind. A row used to be keyed
+ *  by item + Kg/Box unit and carry one number, so produce taken in by weight and sold by the
+ *  crate became two rows that never subtracted from each other. */
 export interface GoodsStockRow {
   itemName: string;
-  unit: UnitOfMeasure;
   totalReceived: number;
   totalSold: number;
   available: number;
+  weightReceived: number;
+  weightSold: number;
+  weightAvailable: number;
   /** Independent running total of wooden-crate counts logged against this item's intake entries
-   * (GoodsEntryDto.woodQuantity) — always a plain crate count, never in this row's own `unit`
-   * (Kg/Box), and never netted against totalSold (no "wood crates sold" concept exists). */
+   * (GoodsEntryDto.woodQuantity) — always a plain crate count, and never netted against
+   * totalSold (no "wood crates sold" concept exists). */
   woodReceived: number;
   /** Same, for "مخالات" — its own running total, never pooled with the crates. */
   sackReceived: number;
@@ -685,8 +709,8 @@ export interface PartnerInvoiceItemLineDto {
   invoiceNumber: string;
   date: string;
   itemName: string;
-  unit: UnitOfMeasure;
   quantity: number;
+  weightKg?: number | null;
   pricePerUnit: number;
   woodPrice: number;
   lineTotal: number;

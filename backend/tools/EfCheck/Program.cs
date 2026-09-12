@@ -21,21 +21,21 @@ Show("find-or-create partner by name, oldest match first (PartnerService)",
 
 Show("returns netted out of one seller's sold quantities (GoodsService per-seller stock)",
     db.GoodsReturns.Where(r => r.Invoice.FarmerId == 9 && r.Invoice.Status == InvoiceStatus.Active)
-        .SelectMany(r => r.Items).Select(ri => new { ri.ItemName, ri.Unit, ri.Quantity }));
+        .SelectMany(r => r.Items).Select(ri => new { ri.ItemName, ri.Quantity, ri.WeightKg }));
 
 Show("returns netted out across every seller (GoodsService global stock)",
     db.GoodsReturns.Where(r => r.Invoice.FarmerId != null && r.Invoice.Status == InvoiceStatus.Active)
-        .SelectMany(r => r.Items.Select(ri => new { FarmerId = r.Invoice.FarmerId!.Value, ri.ItemName, ri.Unit, ri.Quantity })));
+        .SelectMany(r => r.Items.Select(ri => new { FarmerId = r.Invoice.FarmerId!.Value, ri.ItemName, ri.Quantity, ri.WeightKg })));
 
 Show("crates coming back with a buyer's returns (PartnerService crate balance)",
     db.GoodsReturns.Where(r => r.Invoice.MerchantId == 7 && r.Invoice.Status == InvoiceStatus.Active)
-        .SelectMany(r => r.Items).Where(ri => ri.Unit == UnitOfMeasure.Box).Select(ri => ri.Quantity));
+        .SelectMany(r => r.Items).Select(ri => ri.BoxQuantity));
 
 Show("crates issued per buyer, all buyers at once (ContainerService.GetHoldersAsync)",
     db.Invoices.Where(i => i.Status == InvoiceStatus.Active)
-        .SelectMany(i => i.Items.Where(it => it.Unit == UnitOfMeasure.Box).Select(it => new { i.MerchantId, it.Quantity }))
+        .SelectMany(i => i.Items.Select(it => new { i.MerchantId, it.BoxQuantity, it.CartonQuantity }))
         .GroupBy(x => x.MerchantId)
-        .Select(g => new { PartnerId = g.Key, Total = g.Sum(x => x.Quantity) }));
+        .Select(g => new { PartnerId = g.Key, Boxes = g.Sum(x => x.BoxQuantity), Cartons = g.Sum(x => x.CartonQuantity) }));
 
 Show("hand-recorded container movements per person and kind (GetHoldersAsync)",
     db.ContainerMovements.GroupBy(m => new { m.PartnerId, m.Type, m.Direction })

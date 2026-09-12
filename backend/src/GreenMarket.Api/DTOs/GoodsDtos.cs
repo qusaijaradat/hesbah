@@ -3,25 +3,27 @@ using GreenMarket.Domain.Enums;
 namespace GreenMarket.Api.DTOs;
 
 /// <summary>One "إضافة بضاعة" intake record, as shown/edited on the "بضاعة الباعة" page.
-/// WoodQuantity is a physical count of wooden crates used to carry this delivery — a field
-/// entirely independent of Quantity/Unit (a farmer can bring 50 كغم of tomatoes using 3 wooden
-/// crates; "3" is a crate count, not "3 كغم"), so it's always a plain count regardless of whether
-/// Unit is Kg or Box, and is never validated against or displayed using Quantity/Unit — see
-/// GoodsService.ValidateLine and FarmerGoodsPage.tsx.</summary>
+/// Quantity is العدد and WeightKg is الوزن — the same pair an invoice line carries, so what was
+/// taken in can actually be netted against what was sold. It used to be one number plus a Kg/Box
+/// unit, which could say one or the other but never both.
+/// WoodQuantity/SackQuantity are physical container counts for this delivery — independent of both
+/// (a seller can bring 300 كغم of tomatoes in 3 wooden crates; "3" is a crate count, not 3 كغم), and
+/// never validated against or displayed using the produce figures — see GoodsService.ValidateLine
+/// and FarmerGoodsPage.tsx.</summary>
 public record GoodsEntryDto(
     int Id, int FarmerId, string FarmerName, DateTimeOffset Date,
-    string ItemName, UnitOfMeasure Unit, decimal Quantity, decimal WoodQuantity, decimal SackQuantity, string? Notes);
+    string ItemName, decimal Quantity, decimal? WeightKg, decimal WoodQuantity, decimal SackQuantity, string? Notes);
 
 /// <summary>FarmerId is required — unlike an invoice, a goods intake entry is always logged
 /// against an already-known farmer (the page's own farmer picker doesn't allow typing a brand
 /// new name), so there's no FarmerName find-or-create fallback here.</summary>
 public record CreateGoodsEntryRequest(
-    int FarmerId, DateTimeOffset Date, string ItemName, UnitOfMeasure Unit,
-    decimal Quantity, decimal WoodQuantity = 0, decimal SackQuantity = 0, string? Notes = null);
+    int FarmerId, DateTimeOffset Date, string ItemName,
+    decimal Quantity, decimal? WeightKg = null, decimal WoodQuantity = 0, decimal SackQuantity = 0, string? Notes = null);
 
 public record UpdateGoodsEntryRequest(
-    DateTimeOffset Date, string ItemName, UnitOfMeasure Unit,
-    decimal Quantity, decimal WoodQuantity = 0, decimal SackQuantity = 0, string? Notes = null);
+    DateTimeOffset Date, string ItemName,
+    decimal Quantity, decimal? WeightKg = null, decimal WoodQuantity = 0, decimal SackQuantity = 0, string? Notes = null);
 
 /// <summary>
 /// One row of the "المتوفر حاليًا" (currently available) stock summary — per item + unit, across
@@ -35,7 +37,7 @@ public record UpdateGoodsEntryRequest(
 ///
 /// WoodReceived is a SEPARATE, independent figure — the running total of wooden-crate counts
 /// logged against this item's intake entries (GoodsEntryDto.WoodQuantity), always a plain box/crate
-/// count regardless of this row's own Unit (Kg or Box). It is never netted against TotalSold —
+/// count, independent of the produce figures. It is never netted against TotalSold —
 /// there is no "wood crates sold" concept on the invoice side — so it simply reflects every wood
 /// crate ever logged as received for this item, updating the moment a new intake entry adds to it.
 ///
@@ -46,7 +48,18 @@ public record UpdateGoodsEntryRequest(
 /// page already shows the farmer's name once in its own header — repeating it on every row there
 /// would be redundant.
 /// </summary>
-public record GoodsStockRow(string ItemName, UnitOfMeasure Unit, decimal TotalReceived, decimal TotalSold, decimal Available, decimal WoodReceived, decimal SackReceived, int? FarmerId = null, string? FarmerName = null);
+/// <summary>
+/// One item's stock, counted BOTH ways at once: العدد and الوزن, each netted against its own kind.
+/// A row used to be keyed by item + Kg/Box unit and carried one number, which meant produce taken
+/// in by weight and sold by the crate became two unrelated rows that never subtracted from each
+/// other. Whichever way a line was priced, it now contributes its count to one pair and its weight
+/// (when it has one) to the other.
+/// </summary>
+public record GoodsStockRow(
+    string ItemName,
+    decimal TotalReceived, decimal TotalSold, decimal Available,
+    decimal WeightReceived, decimal WeightSold, decimal WeightAvailable,
+    decimal WoodReceived, decimal SackReceived, int? FarmerId = null, string? FarmerName = null);
 
 /// <summary>Wraps a farmer's own name with both halves of the "بضاعة الباعة" page: the raw intake
 /// log (Entries, newest first — editable/deletable) and the computed per-item stock summary

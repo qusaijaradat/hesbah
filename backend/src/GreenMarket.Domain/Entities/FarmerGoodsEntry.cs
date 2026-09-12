@@ -29,8 +29,15 @@ public class FarmerGoodsEntry : AuditableEntity
 
     public DateTimeOffset Date { get; set; }
     public string ItemName { get; set; } = string.Empty;
-    public UnitOfMeasure Unit { get; set; } = UnitOfMeasure.Kg;
+
+    /// <summary>"العدد" brought in. Same shape as an invoice line (InvoiceItem): a count that is
+    /// always there, with the weight beside it rather than instead of it. Intake had its own Kg/Box
+    /// unit, which meant stock could not be netted against what was sold once a sold line carried
+    /// both — "brought 300 كغم" and "sold 20 عدد / 300 كغم" had no common ground to subtract on.</summary>
     public decimal Quantity { get; set; }
+
+    /// <summary>"الوزن" brought in, or null when this delivery was not weighed.</summary>
+    public decimal? WeightKg { get; set; }
 
     /// <summary>Portion of <see cref="Quantity"/> delivered in wood crates — see the class doc comment.</summary>
     public decimal WoodQuantity { get; set; }

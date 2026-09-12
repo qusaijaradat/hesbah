@@ -6,7 +6,7 @@ import {
 } from "../api/partners";
 
 
-import { formatCurrency, formatDate, formatQuantity } from "../lib/format";
+import { formatCount, formatCurrency, formatDate, formatWeight } from "../lib/format";
 import type { PartnerInvoiceDetailDto, PartnerInvoiceItemLineDto } from "../types";
 import { InvoiceLink } from "../components/RecordLinks";
 import { PdfActions } from "../components/PdfActions";
@@ -99,8 +99,8 @@ function InvoiceDetailView({ title, fetcher, printer }: {
                         <InvoiceLink invoiceId={g.invoiceId} invoiceNumber={g.invoiceNumber} className="font-mono text-sm" />
                       </td>
                       <td>{line.itemName}</td>
-                      <td>{line.unit === "Box" ? formatQuantity(line.quantity, "Box") : "—"}</td>
-                      <td>{line.unit === "Kg" ? formatQuantity(line.quantity, "Kg") : "—"}</td>
+                      <td>{formatCount(line.quantity)}</td>
+                      <td>{formatWeight(line.weightKg ?? 0)}</td>
                       <td>{formatCurrency(line.pricePerUnit)}</td>
                       <td>{line.woodPrice > 0 ? formatCurrency(line.woodPrice) : "—"}</td>
                       <td>—</td>

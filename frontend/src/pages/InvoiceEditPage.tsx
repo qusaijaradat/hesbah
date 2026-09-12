@@ -8,16 +8,22 @@ import { getInvoice, updateInvoice } from "../api/invoices";
 import { getMerchantAccount } from "../api/partners";
 import { apiErrorMessage } from "../api/client";
 import { listSettings } from "../api/settings";
-import { InvoiceCharge } from "../lib/invoiceCharge";
-import { formatCurrency, formatQuantity, localDateInputValue } from "../lib/format";
-import type { MerchantAccountDto, UnitOfMeasure } from "../types";
+import { InvoiceCharge, lineTotalOf } from "../lib/invoiceCharge";
+import { formatCount, formatCurrency, formatWeight, localDateInputValue } from "../lib/format";
+import type { MerchantAccountDto } from "../types";
 import { useAuth } from "../auth/AuthContext";
 import { CREDIT_LIMIT_UI_ENABLED } from "../lib/featureFlags";
 
 interface Row {
   itemName: string;
+  /** "العدد" — always typed. Prices the line when no weight is given. */
   quantity: string;
-  unit: UnitOfMeasure;
+  /** "الوزن" — optional. When it is filled in, IT prices the line instead of العدد. */
+  weightKg: string;
+  /** "عدد الصناديق" — the crates going out with this line; what رسوم الصناديق is charged on. */
+  boxQuantity: string;
+  /** "عدد الكرتون" — tracked on the containers screen, never charged. */
+  cartonQuantity: string;
   pricePerUnit: string;
   /** "" = not set (0); one of WOOD_PRICE_OPTIONS; or WOOD_PRICE_OTHER, in which case the
    *  actual value lives in woodPriceCustom instead (same "أخرى" pattern as PaymentLine's
@@ -27,10 +33,6 @@ interface Row {
   woodPriceCustom: string;
 }
 
-const UNIT_OPTIONS: { value: UnitOfMeasure; label: string }[] = [
-  { value: "Kg", label: "كيلو" },
-  { value: "Box", label: "صندوق" },
-];
 
 // Fixed preset list for "سعر الخشب" (wood/crate price) — a picker, not free text — plus an
 // "أخرى" escape hatch for the occasional value outside this list (request: "مرات بكون رقم
@@ -55,16 +57,10 @@ function woodPriceFieldsFromValue(value: number): { woodPrice: string; woodPrice
   return WOOD_PRICE_OPTIONS.includes(s) ? { woodPrice: s, woodPriceCustom: "" } : { woodPrice: WOOD_PRICE_OTHER, woodPriceCustom: s };
 }
 
-function quantityLabel(unit: UnitOfMeasure) {
-  return unit === "Kg" ? "الوزن (كغم)" : "عدد الصناديق";
-}
 
 // "اختياري" — sometimes an item goes on the invoice before it's been priced (the market prices
 // it later); leaving this blank saves the line at price 0, which InvoiceDetailPage/the printed
 // PDF then show as "غير مسعّر" instead of "₪0.00" so it reads as "still needs a price", not "free".
-function priceLabel(unit: UnitOfMeasure) {
-  return unit === "Kg" ? "سعر الكيلو (₪، اختياري)" : "سعر الصندوق (₪، اختياري)";
-}
 
 /// <summary>
 /// Requirement gap fix: previously the only way to correct a mistaken invoice (wrong date, typo'd
@@ -137,7 +133,12 @@ export function InvoiceEditPage() {
       setRows(invoice.items.map((it) => ({
         itemName: it.itemName,
         quantity: String(it.quantity),
-        unit: it.unit,
+        // An invoice written before العدد existed has no count — its quantity WAS its weight, and
+        // the migration moved it there. It loads as an empty العدد, which the form then requires,
+        // so correcting such an invoice means saying how many it was. There is no number to guess.
+        weightKg: it.weightKg != null && it.weightKg > 0 ? String(it.weightKg) : "",
+        boxQuantity: it.boxQuantity > 0 ? String(it.boxQuantity) : "",
+        cartonQuantity: it.cartonQuantity > 0 ? String(it.cartonQuantity) : "",
         pricePerUnit: String(it.pricePerUnit),
         ...woodPriceFieldsFromValue(it.woodPrice),
       })));
@@ -150,15 +151,25 @@ export function InvoiceEditPage() {
   const parsedRows = rows.map((r) => ({
     itemName: r.itemName,
     quantity: parseFloat(r.quantity) || 0,
-    unit: r.unit,
+    // Blank stays null, not 0 — a line that was never weighed is priced by its العدد, and the
+    // difference between the two is the whole rule (see the backend InvoiceCalculator).
+    weightKg: r.weightKg.trim() === "" ? null : (parseFloat(r.weightKg) || 0),
+    boxQuantity: parseFloat(r.boxQuantity) || 0,
+    cartonQuantity: parseFloat(r.cartonQuantity) || 0,
     pricePerUnit: parseFloat(r.pricePerUnit) || 0,
     woodPrice: resolveWoodPrice(r),
   }));
-  const totalWeight = parsedRows.filter((r) => r.unit === "Kg").reduce((sum, r) => sum + r.quantity, 0);
-  const totalBoxes = parsedRows.filter((r) => r.unit === "Box").reduce((sum, r) => sum + r.quantity, 0);
+  // Every line has an العدد and, when it was weighed, a وزن — so both totals are plain sums now.
+  // Each used to pick out only the lines of its own unit and ignore the rest entirely.
+  const totalWeight = parsedRows.reduce((sum, r) => sum + (r.weightKg ?? 0), 0);
+  const totalBoxes = parsedRows.reduce((sum, r) => sum + r.boxQuantity, 0);
+  const totalCartons = parsedRows.reduce((sum, r) => sum + r.cartonQuantity, 0);
   // Product value alone — deliberately excludes wood/transport so this always matches what
   // the commission is computed on (see Invoice.TransportFee / InvoiceItem.WoodPrice on the backend).
-  const totalValue = parsedRows.reduce((sum, r) => sum + r.quantity * r.pricePerUnit, 0);
+  // Priced by the weight when there is one, otherwise by the count — the same rule the backend
+  // applies on save (InvoiceCalculator.LineTotalFor), mirrored here so the form's running total
+  // and the saved invoice can never disagree.
+  const totalValue = parsedRows.reduce((sum, r) => sum + lineTotalOf(r), 0);
   const woodTotal = parsedRows.reduce((sum, r) => sum + r.woodPrice, 0);
   const transportFeeValue = parseFloat(transportFee) || 0;
 
@@ -176,8 +187,7 @@ export function InvoiceEditPage() {
   // رسوم الصناديق, at the rate in settings — the buyer is charged it per crate the moment this is
   // saved, so the form has to show it. It did not, and "الإجمالي الكلي" here came out lower than the
   // invoice the same click produced: on 400 crates at ₪1, four hundred shekels lower.
-  const boxCount = parsedRows.filter((r) => r.unit === "Box").reduce((sum, r) => sum + r.quantity, 0);
-  const boxFeeTotal = boxCount * boxPrice;
+  const boxFeeTotal = totalBoxes * boxPrice;
 
   // أجرة النقل is not in the buyer's total: it comes off the SELLER and goes to the driver (see
   // the backend InvoiceCharge). Kept in the form because it is entered here and drives both the
@@ -205,7 +215,7 @@ export function InvoiceEditPage() {
   }
 
   function addRow() {
-    setRows((prev) => [...prev, { itemName: "", quantity: "", unit: "Kg", pricePerUnit: "", woodPrice: "", woodPriceCustom: "" }]);
+    setRows((prev) => [...prev, { itemName: "", quantity: "", weightKg: "", boxQuantity: "", cartonQuantity: "", pricePerUnit: "", woodPrice: "", woodPriceCustom: "" }]);
   }
 
   function removeRow(index: number) {
@@ -221,7 +231,11 @@ export function InvoiceEditPage() {
     if (!merchant && !merchantName) { setError("يرجى إدخال اسم المشتري"); return; }
     const items = parsedRows
       .filter((r) => r.itemName.trim() && r.quantity > 0)
-      .map((r) => ({ itemName: r.itemName, quantity: r.quantity, unit: r.unit, pricePerUnit: r.pricePerUnit, woodPrice: r.woodPrice }));
+      .map((r) => ({
+        itemName: r.itemName, quantity: r.quantity, weightKg: r.weightKg,
+        boxQuantity: r.boxQuantity, cartonQuantity: r.cartonQuantity,
+        pricePerUnit: r.pricePerUnit, woodPrice: r.woodPrice,
+      }));
     if (items.length === 0) { setError("يجب إضافة صنف واحد على الأقل بكمية أكبر من صفر"); return; }
 
     setBusy(true);
@@ -314,9 +328,11 @@ export function InvoiceEditPage() {
           <div className="hidden lg:flex gap-2 text-xs text-gray-500 px-1">
             <div className="grid grid-cols-12 gap-2 flex-1">
               <div className="col-span-3">الصنف</div>
-              <div className="col-span-2">الوحدة</div>
-              <div className="col-span-2">الكمية</div>
-              <div className="col-span-2">السعر (₪)</div>
+              <div className="col-span-1">العدد</div>
+              <div className="col-span-2">الوزن (كغم)</div>
+              <div className="col-span-1">السعر (₪)</div>
+              <div className="col-span-1">صناديق</div>
+              <div className="col-span-1">كرتون</div>
               <div className="col-span-2">سعر الخشب</div>
               <div className="col-span-1">الإجمالي</div>
             </div>
@@ -333,24 +349,38 @@ export function InvoiceEditPage() {
                     <ItemAutocomplete value={row.itemName} placeholder="مثال: بندورة"
                       onChange={(name) => updateRow(idx, { itemName: name })} />
                   </div>
-                  <div className="lg:col-span-2">
-                    <label className="label lg:hidden">الوحدة</label>
-                    <select className="input" value={row.unit}
-                      onChange={(e) => updateRow(idx, { unit: e.target.value as UnitOfMeasure })}>
-                      {UNIT_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-                    </select>
-                  </div>
-                  <div className="lg:col-span-2">
-                    <label className="label lg:hidden">{quantityLabel(row.unit)}</label>
+                  <div className="lg:col-span-1">
+                    <label className="label lg:hidden">العدد</label>
                     <input className="input" type="number" min="0" step="0.001" value={row.quantity}
-                      placeholder={row.unit === "Kg" ? "كغم" : "عدد"}
+                      placeholder="عدد"
                       onChange={(e) => updateRow(idx, { quantity: e.target.value })} />
                   </div>
                   <div className="lg:col-span-2">
-                    <label className="label lg:hidden">{priceLabel(row.unit)}</label>
+                    <label className="label lg:hidden">الوزن (كغم، اختياري)</label>
+                    <input className="input" type="number" step="0.001" min="0" value={row.weightKg}
+                      placeholder="اتركه فارغًا إذا مش موزون"
+                      title="إذا حطيت وزن، بينحسب السطر بالوزن × السعر. إذا تركته فاضي، بينحسب بالعدد × السعر."
+                      onChange={(e) => updateRow(idx, { weightKg: e.target.value })} />
+                  </div>
+                  <div className="lg:col-span-1">
+                    <label className="label lg:hidden">{row.weightKg.trim() === "" ? "سعر الوحدة (₪)" : "سعر الكيلو (₪)"}</label>
                     <input className="input" type="number" min="0" step="0.01" value={row.pricePerUnit}
                       placeholder="اتركه فارغًا"
                       onChange={(e) => updateRow(idx, { pricePerUnit: e.target.value })} />
+                  </div>
+                  {/* The two container counts. Only الصناديق carries رسوم الصناديق and the driver's
+                      أجرة الصناديق; الكرتون is counted and tracked, never charged. */}
+                  <div className="lg:col-span-1">
+                    <label className="label lg:hidden">عدد الصناديق</label>
+                    <input className="input" type="number" step="1" min="0" value={row.boxQuantity}
+                      placeholder="صناديق"
+                      onChange={(e) => updateRow(idx, { boxQuantity: e.target.value })} />
+                  </div>
+                  <div className="lg:col-span-1">
+                    <label className="label lg:hidden">عدد الكرتون</label>
+                    <input className="input" type="number" step="1" min="0" value={row.cartonQuantity}
+                      placeholder="كرتون"
+                      onChange={(e) => updateRow(idx, { cartonQuantity: e.target.value })} />
                   </div>
                   <div className="lg:col-span-2">
                     <label className="label lg:hidden">سعر الخشب (اختياري)</label>
@@ -404,13 +434,13 @@ export function InvoiceEditPage() {
           {totalWeight > 0 && (
             <div>
               <div className="text-gray-500">إجمالي الوزن</div>
-              <div className="font-bold text-lg">{formatQuantity(totalWeight, "Kg")}</div>
+              <div className="font-bold text-lg">{formatWeight(totalWeight)}</div>
             </div>
           )}
           {totalBoxes > 0 && (
             <div>
               <div className="text-gray-500">إجمالي عدد الصناديق</div>
-              <div className="font-bold text-lg">{formatQuantity(totalBoxes, "Box")}</div>
+              <div className="font-bold text-lg">{formatCount(totalBoxes)}</div>
             </div>
           )}
           <div>
@@ -421,6 +451,12 @@ export function InvoiceEditPage() {
             <div>
               <div className="text-gray-500">إجمالي الخشب</div>
               <div className="font-medium">{formatCurrency(woodTotal)}</div>
+            </div>
+          )}
+          {totalCartons > 0 && (
+            <div>
+              <div className="text-gray-500">عدد الكرتون</div>
+              <div className="font-medium">{formatCount(totalCartons)}</div>
             </div>
           )}
           {boxFeeTotal > 0 && (

@@ -10,8 +10,8 @@ public class FarmerGoodsEntryConfiguration : IEntityTypeConfiguration<FarmerGood
     {
         builder.ToTable("farmer_goods_entries");
         builder.Property(x => x.ItemName).HasMaxLength(200).IsRequired();
-        builder.Property(x => x.Unit).HasConversion<int>();
         builder.Property(x => x.Quantity).HasColumnType("numeric(14,3)");
+        builder.Property(x => x.WeightKg).HasColumnType("numeric(14,3)");
         builder.Property(x => x.WoodQuantity).HasColumnType("numeric(14,3)");
         builder.Property(x => x.SackQuantity).HasColumnType("numeric(14,3)");
         builder.Property(x => x.Notes).HasMaxLength(500);

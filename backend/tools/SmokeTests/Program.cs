@@ -56,9 +56,10 @@ Console.WriteLine("== InvoiceCalculator ==");
 {
     var lines = new[]
     {
-        new InvoiceCalculator.LineInput("Tomatoes", 120m, UnitOfMeasure.Kg, 3.5m),   // 420.00
-        new InvoiceCalculator.LineInput("Cucumbers", 80m, UnitOfMeasure.Kg, 2.25m),  // 180.00
-        new InvoiceCalculator.LineInput("Potatoes", 200m, UnitOfMeasure.Kg, 1.10m),  // 220.00
+        // (name, العدد, الوزن, السعر) — weighed lines, so the weight is what prices them.
+        new InvoiceCalculator.LineInput("Tomatoes", 10m, 120m, 3.5m),   // 420.00
+        new InvoiceCalculator.LineInput("Cucumbers", 8m, 80m, 2.25m),   // 180.00
+        new InvoiceCalculator.LineInput("Potatoes", 20m, 200m, 1.10m),  // 220.00
     };
 
     var totals = InvoiceCalculator.Calculate(lines);
@@ -67,15 +68,41 @@ Console.WriteLine("== InvoiceCalculator ==");
     Check("3 line results returned", totals.Lines.Count == 3);
     Check("first line total = 420.00", totals.Lines[0].LineTotal == 420.00m, $"got {totals.Lines[0].LineTotal}");
 
-    // A box-priced line doesn't have a "weight" — it must not contribute to TotalWeightKg,
-    // only to TotalValue (requested behaviour: not everything at the market is sold by kg).
-    var mixedUnits = InvoiceCalculator.Calculate(new[]
+    // The rule the whole change turns on: a weight prices the line when it is there, the count
+    // when it is not. Before this, which one applied was carried by a Kg/Box unit, so a line
+    // could be one or the other and never both.
+    var mixed = InvoiceCalculator.Calculate(new[]
     {
-        new InvoiceCalculator.LineInput("Tomatoes", 100m, UnitOfMeasure.Kg, 3m),   // 300.00, +100kg
-        new InvoiceCalculator.LineInput("Lettuce boxes", 5m, UnitOfMeasure.Box, 20m), // 100.00, +0kg
+        new InvoiceCalculator.LineInput("Tomatoes", 10m, 100m, 3m),        // weighed: 100 × 3 = 300
+        new InvoiceCalculator.LineInput("Lettuce", 5m, null, 20m),         // not weighed: 5 × 20 = 100
     });
-    Check("box line excluded from total weight", mixedUnits.TotalWeightKg == 100m, $"got {mixedUnits.TotalWeightKg}");
-    Check("box line still counted in total value", mixedUnits.TotalValue == 400.00m, $"got {mixedUnits.TotalValue}");
+    Check("a weighed line is priced by its WEIGHT", mixed.Lines[0].LineTotal == 300m, $"got {mixed.Lines[0].LineTotal}");
+    Check("an unweighed line is priced by its COUNT", mixed.Lines[1].LineTotal == 100m, $"got {mixed.Lines[1].LineTotal}");
+    Check("only the weighed line adds weight", mixed.TotalWeightKg == 100m, $"got {mixed.TotalWeightKg}");
+    Check("both count toward the value", mixed.TotalValue == 400.00m, $"got {mixed.TotalValue}");
+
+    // A weight of zero is not a weight: it reads the same as never having been weighed.
+    Check("weight 0 is priced by the count",
+          InvoiceCalculator.LineTotalFor(5m, 0m, 20m) == 100m,
+          $"got {InvoiceCalculator.LineTotalFor(5m, 0m, 20m)}");
+    Check("no weight at all is priced by the count",
+          InvoiceCalculator.LineTotalFor(5m, null, 20m) == 100m);
+
+    // Containers are counted per line and are nobody else's business: crates are what رسوم
+    // الصناديق is charged on, cartons are only ever tracked, and neither touches the value.
+    var containers = InvoiceCalculator.Calculate(new[]
+    {
+        new InvoiceCalculator.LineInput("Tomatoes", 10m, 300m, 3m, BoxQuantity: 12m, CartonQuantity: 4m),
+        new InvoiceCalculator.LineInput("Lettuce", 5m, null, 20m, BoxQuantity: 5m),
+    });
+    Check("crates are summed across lines", containers.TotalBoxes == 17m, $"got {containers.TotalBoxes}");
+    Check("cartons are summed separately", containers.TotalCartons == 4m, $"got {containers.TotalCartons}");
+    Check("containers never touch the line value", containers.TotalValue == 1000m, $"got {containers.TotalValue}");
+
+    // The crates on a WEIGHED line are the ones the old shape lost entirely: its unit was Kg, so
+    // its crates counted as zero and the buyer was charged nothing for them.
+    Check("a weighed line still contributes its crates",
+          containers.Lines[0].BoxQuantity == 12m, $"got {containers.Lines[0].BoxQuantity}");
 
     try
     {
@@ -89,12 +116,12 @@ Console.WriteLine("== InvoiceCalculator ==");
 
     try
     {
-        InvoiceCalculator.Calculate(new[] { new InvoiceCalculator.LineInput("Bad", 0m, UnitOfMeasure.Kg, 5m) });
-        Check("zero quantity line throws", false, "did not throw");
+        InvoiceCalculator.Calculate(new[] { new InvoiceCalculator.LineInput("Bad", 0m, 100m, 5m) });
+        Check("zero count throws even when a weight is given", false, "did not throw");
     }
     catch (ArgumentOutOfRangeException)
     {
-        Check("zero quantity line throws", true);
+        Check("zero count throws even when a weight is given", true);
     }
 }
 

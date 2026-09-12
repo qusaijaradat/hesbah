@@ -8,17 +8,13 @@ import { apiErrorMessage } from "../api/client";
 import { PartnerAutocomplete } from "../components/PartnerAutocomplete";
 import { ItemAutocomplete } from "../components/ItemAutocomplete";
 import { GoodsGlobalStockCard } from "../components/GoodsGlobalStockCard";
-import { formatDate, formatQuantity, todayLocalDateString } from "../lib/format";
+import { formatCount, formatDate, formatWeight, todayLocalDateString } from "../lib/format";
 import { useAuth } from "../auth/AuthContext";
-import type { FarmerGoodsRow, FarmerGoodsStockDto, GoodsEntryDto, GoodsStockRow, UnitOfMeasure } from "../types";
+import type { FarmerGoodsRow, FarmerGoodsStockDto, GoodsEntryDto, GoodsStockRow } from "../types";
 import { useSelection } from "../lib/useSelection";
 import { runBulkDelete, summarizeBulkDelete } from "../lib/bulkDelete";
 import { PdfActions } from "../components/PdfActions";
 
-const UNIT_OPTIONS: { value: UnitOfMeasure; label: string }[] = [
-  { value: "Kg", label: "كيلو" },
-  { value: "Box", label: "صندوق" },
-];
 
 /// <summary>
 /// Standalone "بضاعة الباعة" page: pick a farmer, then
@@ -75,7 +71,9 @@ export function FarmerGoodsPage() {
   // "إضافة بضاعة" form.
   const [entryDate, setEntryDate] = useState(() => todayLocalDateString());
   const [entryItem, setEntryItem] = useState("");
-  const [entryUnit, setEntryUnit] = useState<UnitOfMeasure>("Kg");
+  // العدد and الوزن, the same pair an invoice line carries — intake used to be one number plus a
+  // Kg/Box unit, which could not be netted against a sale that had both.
+  const [entryWeight, setEntryWeight] = useState("");
   const [entryQuantity, setEntryQuantity] = useState("");
   const [entryWoodQuantity, setEntryWoodQuantity] = useState("");
   const [entrySackQuantity, setEntrySackQuantity] = useState("");
@@ -138,7 +136,7 @@ export function FarmerGoodsPage() {
   function resetEntryForm() {
     setEntryDate(todayLocalDateString());
     setEntryItem("");
-    setEntryUnit("Kg");
+    setEntryWeight("");
     setEntryQuantity("");
     setEntryWoodQuantity("");
     setEntrySackQuantity("");
@@ -151,7 +149,7 @@ export function FarmerGoodsPage() {
     setEditingEntry(entry);
     setEntryDate(entry.date.slice(0, 10));
     setEntryItem(entry.itemName);
-    setEntryUnit(entry.unit);
+    setEntryWeight(entry.weightKg != null && entry.weightKg > 0 ? String(entry.weightKg) : "");
     setEntryQuantity(String(entry.quantity));
     setEntryWoodQuantity(entry.woodQuantity > 0 ? String(entry.woodQuantity) : "");
     setEntrySackQuantity(entry.sackQuantity > 0 ? String(entry.sackQuantity) : "");
@@ -174,7 +172,7 @@ export function FarmerGoodsPage() {
       const payload = {
         date: new Date(entryDate).toISOString(),
         itemName: entryItem.trim(),
-        unit: entryUnit,
+        weightKg: entryWeight.trim() === "" ? null : (parseFloat(entryWeight) || 0),
         quantity,
         woodQuantity,
         sackQuantity,
@@ -196,7 +194,7 @@ export function FarmerGoodsPage() {
 
   async function handleDeleteEntry(entry: GoodsEntryDto) {
     if (!farmerPick) return;
-    if (!window.confirm(`حذف "${entry.itemName}" (${formatQuantity(entry.quantity, entry.unit)}) بتاريخ ${formatDate(entry.date)}؟`)) return;
+    if (!window.confirm(`حذف "${entry.itemName}" (${formatCount(entry.quantity)}) بتاريخ ${formatDate(entry.date)}؟`)) return;
     setDeletingId(entry.id);
     setStockError(null);
     try {
@@ -245,9 +243,9 @@ export function FarmerGoodsPage() {
     }
   }
 
-  // Boxes and kilograms don't add up into one number — this footer is specifically "كم صندوق
-  // خشب إجمالًا؟", so it only sums the Box-unit rows' WoodQuantity, same as the request's wording.
-  const totalWoodBoxes = rows.filter((r) => r.unit === "Box").reduce((sum, r) => sum + r.woodQuantity, 0);
+  // "كم صندوق خشب إجمالًا؟" — every row now, not just the box-UNIT ones. A row priced by weight
+  // carried crates too; it just had no way to say so, so its crates were left out of this total.
+  const totalWoodBoxes = rows.reduce((sum, r) => sum + r.woodQuantity, 0);
 
   return (
     <div>
@@ -286,18 +284,18 @@ export function FarmerGoodsPage() {
                   <ItemAutocomplete value={entryItem} onChange={setEntryItem} placeholder="اسم الصنف..." />
                 </div>
                 <div>
-                  <label className="label">الوحدة</label>
-                  <select className="input" value={entryUnit} onChange={(e) => setEntryUnit(e.target.value as UnitOfMeasure)}>
-                    {UNIT_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="label">{entryUnit === "Kg" ? "الوزن (كغم)" : "عدد الصناديق"}</label>
+                  <label className="label">العدد</label>
                   <input type="number" step="0.001" min="0" className="input w-32" value={entryQuantity} onChange={(e) => setEntryQuantity(e.target.value)} />
                 </div>
                 <div>
-                  {/* فيلد مستقل عن "العدد"/"الوزن" أعلاه — عدد صناديق الخشب الفعلي المستخدم بنقل
-                      هالبضاعة، مش جزء أو نسبة من الكمية (ممكن ٥٠ كغم بس ٣ صناديق خشب). */}
+                  <label className="label">الوزن (كغم، اختياري)</label>
+                  <input type="number" step="0.001" min="0" className="input w-32" value={entryWeight}
+                    placeholder="اتركه فارغًا إذا مش موزون"
+                    onChange={(e) => setEntryWeight(e.target.value)} />
+                </div>
+                <div>
+                  {/* فيلد مستقل عن العدد/الوزن أعلاه — عدد صناديق الخشب الفعلي المستخدم بنقل
+                      هالبضاعة، مش جزء أو نسبة منهن (ممكن ٣٠٠ كغم بـ٣ صناديق خشب). */}
                   <label className="label">صناديق خشب (اختياري)</label>
                   <input type="number" step="1" min="0" className="input w-32" value={entryWoodQuantity} onChange={(e) => setEntryWoodQuantity(e.target.value)} placeholder="0" />
                 </div>
@@ -336,10 +334,9 @@ export function FarmerGoodsPage() {
             {stockError && <div className="text-sm text-red-600 bg-red-50 rounded-md p-2 mx-4">{stockError}</div>}
             <table className="table-base">
               <thead>
-                {/* صناديق خشب فيلد مستقل تمامًا عن الوارد/المباع/المتوفر (اللي هني بوحدة الصنف
-                    نفسها كيلو أو صندوق) — هاد عدد صناديق الخشب الفعلي المسجّل، دايمًا "صندوق"
-                    بغض النظر عن وحدة الصنف. */}
-                <tr><th>الصنف</th><th>الوحدة</th><th>الوارد</th><th>المباع</th><th>المتوفر</th><th>صناديق خشب</th><th>مخالات</th></tr>
+                {/* صناديق خشب ومخالات فيلدات مستقلة تمامًا عن الوارد/المباع/المتوفر — هدول عدد
+                    الأوعية الفعلي، مش جزء من العدد ولا من الوزن. */}
+                <tr><th>الصنف</th><th>الوارد (عدد)</th><th>المباع (عدد)</th><th>المتوفر (عدد)</th><th>المتوفر (وزن)</th><th>صناديق خشب</th><th>مخالات</th></tr>
               </thead>
               <tbody>
                 {stockLoading ? (
@@ -350,11 +347,11 @@ export function FarmerGoodsPage() {
                   stockPager.pageRows.map((r, idx) => (
                     <tr key={idx}>
                       <td className="font-medium">{r.itemName}</td>
-                      <td>{r.unit === "Kg" ? "كيلو" : "صندوق"}</td>
-                      <td>{formatQuantity(r.totalReceived, r.unit)}</td>
-                      <td>{formatQuantity(r.totalSold, r.unit)}</td>
-                      <td className={`font-semibold ${r.available < 0 ? "text-red-600" : ""}`}>{formatQuantity(r.available, r.unit)}</td>
-                      <td>{r.woodReceived > 0 ? formatQuantity(r.woodReceived, "Box") : "—"}</td>
+                      <td>{formatCount(r.totalReceived)}</td>
+                      <td>{formatCount(r.totalSold)}</td>
+                      <td className={`font-semibold ${r.available < 0 ? "text-red-600" : ""}`}>{formatCount(r.available)}</td>
+                      <td className={`font-semibold ${r.weightAvailable < 0 ? "text-red-600" : ""}`}>{formatWeight(r.weightAvailable)}</td>
+                      <td>{r.woodReceived > 0 ? formatCount(r.woodReceived) : "—"}</td>
                       <td>{r.sackReceived > 0 ? r.sackReceived.toLocaleString("en-US") : "—"}</td>
                     </tr>
                   ))
@@ -392,7 +389,7 @@ export function FarmerGoodsPage() {
                       />
                     </th>
                   )}
-                  <th>التاريخ</th><th>الصنف</th><th>الكمية</th><th>صناديق خشب</th><th>مخالات</th><th>ملاحظات</th>
+                  <th>التاريخ</th><th>الصنف</th><th>العدد</th><th>الوزن</th><th>صناديق خشب</th><th>مخالات</th><th>ملاحظات</th>
                   {(canEdit || canDelete) && <th></th>}
                 </tr>
               </thead>
@@ -409,8 +406,9 @@ export function FarmerGoodsPage() {
                       )}
                       <td>{formatDate(e.date)}</td>
                       <td className="font-medium">{e.itemName}</td>
-                      <td>{formatQuantity(e.quantity, e.unit)}</td>
-                      <td>{e.woodQuantity > 0 ? formatQuantity(e.woodQuantity, "Box") : "—"}</td>
+                      <td>{formatCount(e.quantity)}</td>
+                      <td>{e.weightKg != null && e.weightKg > 0 ? formatWeight(e.weightKg) : "—"}</td>
+                      <td>{e.woodQuantity > 0 ? formatCount(e.woodQuantity) : "—"}</td>
                       <td>{e.sackQuantity > 0 ? e.sackQuantity.toLocaleString("en-US") : "—"}</td>
                       <td className="text-gray-500 text-sm">{e.notes ?? "—"}</td>
                       {(canEdit || canDelete) && (
@@ -461,7 +459,8 @@ export function FarmerGoodsPage() {
                   <tr>
                     <th>التاريخ</th>
                     <th>الصنف</th>
-                    <th>الكمية</th>
+                    <th>العدد</th>
+                    <th>الوزن</th>
                     <th>منها صندوق خشب</th>
                   </tr>
                 </thead>
@@ -473,8 +472,9 @@ export function FarmerGoodsPage() {
                       <tr key={idx}>
                         <td>{formatDate(r.date)}</td>
                         <td>{r.itemName}</td>
-                        <td className="font-medium">{formatQuantity(r.totalQuantity, r.unit)}</td>
-                        <td>{r.woodQuantity > 0 ? formatQuantity(r.woodQuantity, r.unit) : "—"}</td>
+                        <td className="font-medium">{formatCount(r.totalQuantity)}</td>
+                        <td>{formatWeight(r.totalWeightKg)}</td>
+                        <td>{r.woodQuantity > 0 ? formatCount(r.woodQuantity) : "—"}</td>
                       </tr>
                     ))
                   )}
@@ -483,7 +483,7 @@ export function FarmerGoodsPage() {
                   <tfoot>
                     <tr className="font-semibold border-t">
                       <td colSpan={3} className="text-gray-500">إجمالي صناديق الخشب</td>
-                      <td>{totalWoodBoxes > 0 ? formatQuantity(totalWoodBoxes, "Box") : "—"}</td>
+                      <td>{totalWoodBoxes > 0 ? formatCount(totalWoodBoxes) : "—"}</td>
                     </tr>
                   </tfoot>
                 )}

@@ -2,7 +2,7 @@ import { Fragment, useEffect, useMemo, useState } from "react";
 import { StatCard } from "../components/StatCard";
 import { Link } from "react-router-dom";
 import { getDashboardSummary, merchantItemsBreakdown, printBuyerStatementPdf } from "../api/reports";
-import { formatCurrency, formatQuantity } from "../lib/format";
+import { formatCount, formatCurrency, formatWeight } from "../lib/format";
 import { useAuth } from "../auth/AuthContext";
 import type { DashboardSummaryDto, MerchantItemBreakdownRow, PartnerDebtRow } from "../types";
 import { PartnerLink } from "../components/RecordLinks";
@@ -194,8 +194,8 @@ export function DashboardPage() {
                         <tr key={idx}>
                           <td className="font-medium"><PartnerLink partnerId={group.merchantId} name={group.merchantName} side="merchant" /></td>
                           <td>{item.itemName}</td>
-                          <td>{item.unit === "Box" ? formatQuantity(item.totalQuantity, "Box") : "—"}</td>
-                          <td>{item.unit === "Kg" ? formatQuantity(item.totalQuantity, "Kg") : "—"}</td>
+                          <td>{formatCount(item.totalQuantity)}</td>
+                          <td>{formatWeight(item.totalWeightKg)}</td>
                           <td>{formatCurrency(item.totalValue)}</td>
                         </tr>
                       ))}

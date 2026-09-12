@@ -737,6 +737,65 @@ using (var scope = app.Services.CreateScope())
         app.Logger.LogError(ex, "Failed to correct the default commission rate from 7% to 10% — check/update it manually from الإعدادات if it's still wrong.");
     }
 
+    // العدد and الوزن became two fields on a line instead of one number plus a Kg/Box unit, and the
+    // crates and cartons that go out with a line became counts of their own. New columns, and a
+    // backfill that has to leave every historical figure exactly as it was.
+    //
+    // The old Unit column is what says how to read an old row, so it is kept as the marker rather
+    // than dropped: a Kg row's Quantity was a WEIGHT (it moves to WeightKg, and the row has no count
+    // — it never had one), a Box row's Quantity was a CRATE COUNT (it stays as العدد and also becomes
+    // BoxQuantity, because crates are exactly what it was counting). Every old total then recomputes
+    // to the same number it always had: a weighed line is priced by its weight, a counted one by its
+    // count, and رسوم الصناديق still lands on precisely the lines that used to be charged it.
+    //
+    // Setting Unit back to NULL at the end is what makes a re-run a no-op. ADD COLUMN IF NOT EXISTS
+    // first so a database created fresh from the new model (which has no Unit at all) simply finds
+    // nothing to migrate instead of erroring.
+    try
+    {
+        var moved = await db.Database.ExecuteSqlRawAsync("""
+            ALTER TABLE invoice_items      ADD COLUMN IF NOT EXISTS "Unit" integer NULL;
+            ALTER TABLE goods_return_items ADD COLUMN IF NOT EXISTS "Unit" integer NULL;
+            ALTER TABLE farmer_goods_entries ADD COLUMN IF NOT EXISTS "Unit" integer NULL;
+
+            ALTER TABLE invoice_items      ADD COLUMN IF NOT EXISTS "WeightKg" numeric(14,3) NULL;
+            ALTER TABLE invoice_items      ADD COLUMN IF NOT EXISTS "BoxQuantity" numeric(14,3) NOT NULL DEFAULT 0;
+            ALTER TABLE invoice_items      ADD COLUMN IF NOT EXISTS "CartonQuantity" numeric(14,3) NOT NULL DEFAULT 0;
+            ALTER TABLE goods_return_items ADD COLUMN IF NOT EXISTS "WeightKg" numeric(14,3) NULL;
+            ALTER TABLE goods_return_items ADD COLUMN IF NOT EXISTS "BoxQuantity" numeric(14,3) NOT NULL DEFAULT 0;
+            ALTER TABLE goods_return_items ADD COLUMN IF NOT EXISTS "CartonQuantity" numeric(14,3) NOT NULL DEFAULT 0;
+            ALTER TABLE farmer_goods_entries ADD COLUMN IF NOT EXISTS "WeightKg" numeric(14,3) NULL;
+
+            UPDATE invoice_items
+            SET "WeightKg"    = CASE WHEN "Unit" = 1 THEN "Quantity" ELSE NULL END,
+                "BoxQuantity" = CASE WHEN "Unit" = 2 THEN "Quantity" ELSE 0 END,
+                "Quantity"    = CASE WHEN "Unit" = 1 THEN 0 ELSE "Quantity" END,
+                "Unit"        = NULL
+            WHERE "Unit" IS NOT NULL;
+
+            UPDATE goods_return_items
+            SET "WeightKg"    = CASE WHEN "Unit" = 1 THEN "Quantity" ELSE NULL END,
+                "BoxQuantity" = CASE WHEN "Unit" = 2 THEN "Quantity" ELSE 0 END,
+                "Quantity"    = CASE WHEN "Unit" = 1 THEN 0 ELSE "Quantity" END,
+                "Unit"        = NULL
+            WHERE "Unit" IS NOT NULL;
+
+            UPDATE farmer_goods_entries
+            SET "WeightKg" = CASE WHEN "Unit" = 1 THEN "Quantity" ELSE NULL END,
+                "Quantity" = CASE WHEN "Unit" = 1 THEN 0 ELSE "Quantity" END,
+                "Unit"     = NULL
+            WHERE "Unit" IS NOT NULL;
+            """);
+        if (moved > 0)
+            app.Logger.LogWarning(
+                "Split {Count} row(s) from the old الكمية+الوحدة shape into العدد/الوزن/الصناديق. Totals are unchanged — a weighed line keeps being priced by its weight, and رسوم الصناديق still lands on the lines that were already charged it.",
+                moved);
+    }
+    catch (Exception ex)
+    {
+        app.Logger.LogError(ex, "Failed to split the old الكمية+الوحدة columns into العدد/الوزن/الصناديق — old invoice lines will read as count 0 with no weight until this is fixed.");
+    }
+
     // Gives people back the roles the old find-or-create took off them. Until PartnerType became a
     // set of roles, entering someone in a slot they were not already typed for set them to "Both" —
     // seller+buyer — whatever the two roles actually were. Anyone entered as a DRIVER whose name was

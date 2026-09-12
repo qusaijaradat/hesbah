@@ -65,13 +65,27 @@ public class GoodsReturnItem
     public GoodsReturn GoodsReturn { get; set; } = null!;
 
     public string ItemName { get; set; } = string.Empty;
+
+    /// <summary>"العدد" that came back. Mirrors InvoiceItem: always present.</summary>
     public decimal Quantity { get; set; }
-    public UnitOfMeasure Unit { get; set; } = UnitOfMeasure.Kg;
+
+    /// <summary>"الوزن" that came back, when the line was sold by weight. Same meaning as
+    /// InvoiceItem.WeightKg, and what the credit is computed from when it is set.</summary>
+    public decimal? WeightKg { get; set; }
+
+    /// <summary>Crates that came back WITH the produce on this line. Informational here — the
+    /// containers ledger nets them off the buyer's balance (see ContainerService); no crate fee is
+    /// refunded, matching how سعر الخشب is not pro-rated on a return either.</summary>
+    public decimal BoxQuantity { get; set; }
+
+    /// <summary>Cartons that came back with this line. Tracked, never charged.</summary>
+    public decimal CartonQuantity { get; set; }
 
     /// <summary>The price the goods were SOLD at on the invoice — a return is credited back at the
     /// price actually charged, never at today's price.</summary>
     public decimal PricePerUnit { get; set; }
 
-    /// <summary>Quantity × PricePerUnit, stored the same way InvoiceItem.LineTotal is.</summary>
+    /// <summary>Priced exactly the way the invoice line was — الوزن × السعر when a weight came
+    /// back, otherwise العدد × السعر (InvoiceCalculator.LineTotalFor). Stored, like the invoice's.</summary>
     public decimal LineTotal { get; set; }
 }

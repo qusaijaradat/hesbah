@@ -17,9 +17,6 @@ export function formatWeight(value: number): string {
   return `${value.toLocaleString("en-US", { maximumFractionDigits: 3 })} كغم`;
 }
 
-/** Container kinds, for the containers ledger. The old Kg/Box "unit" on an invoice line is gone —
- *  a line carries العدد and الوزن now, and its crates and cartons as counts of their own. */
-export const CONTAINER_LABELS: Record<"Box" | "Carton" | "Sack", string> = { Box: "صندوق", Carton: "كرتونة", Sack: "مخلاة" };
 
 /** Payment direction labels — ToFarmer/ToDriver are separate directions (see the backend
  * PaymentDirection enum's doc comment), each shown under its own label everywhere a payment's

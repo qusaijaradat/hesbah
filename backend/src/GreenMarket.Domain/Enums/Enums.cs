@@ -40,11 +40,6 @@ public enum PartnerType
 /// The unit an invoice line's quantity is measured in — not everything at the market is
 /// sold by weight (e.g. a "box"/crate of produce), so this is per line, not per invoice.
 /// </summary>
-public enum UnitOfMeasure
-{
-    Kg = 1,
-    Box = 2
-}
 
 /// <summary>
 /// A kind of empty container the market lends out and expects back — counted, never priced here.

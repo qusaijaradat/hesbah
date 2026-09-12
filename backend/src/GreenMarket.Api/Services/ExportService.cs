@@ -1622,15 +1622,6 @@ public class ExportService : IExportService
     private static string WeightCellCompact(decimal? weightKg) =>
         weightKg is > 0 ? weightKg.Value.ToString("0.###") : "—";
 
-    /// <summary>
-    /// A goods-stock number (وارد/مباع/متوفر), where the unit lives in its own column so the value
-    /// prints bare. Same zero rule as above for a Kg row — that value IS a weight — while a zero
-    /// BOX count stays a real "0": a count of crates, where zero is a genuine answer. Mirrors the
-    /// frontend's formatQuantity exactly, so the printed stock sheet and the on-screen table it
-    /// came from read identically.
-    /// </summary>
-    private static string StockQuantityText(UnitOfMeasure unit, decimal value) =>
-        value == 0 && unit == UnitOfMeasure.Kg ? "—" : $"{value:0.###}";
 
     /// <summary>One-page end-of-day summary, printable at the end of a shift. Label/value pairs rather
     /// than a table, since there's only ever one row of data (this one day).</summary>

@@ -41,3 +41,6 @@ desktop.ini
 # Secrets — real per-machine/local overrides only; the checked-in appsettings.json and
 # appsettings.Development.json stay tracked since the app needs them to run out of the box.
 **/appsettings.*.local.json
+
+# PdfPreview output (backend/tools/PdfPreview writes here)
+out/

@@ -14,8 +14,13 @@ import type { GoodsReturnDto, InvoiceDto } from "../types";
  * plainly rather than leaving someone to discover it from the ledger later. The arithmetic itself
  * lives server-side (GoodsReturnService); this only collects quantities.
  *
- * The returnable quantity per line is what was sold minus what has already come back, computed
- * here so the field can't even be typed past its limit — the backend enforces the same rule
+ * A line is collected the way it was SOLD: العدد always, and الوزن as well when the line was
+ * weighed — because the weight is what priced it. Taking only a count back off a weighed line
+ * credited العدد × السعر against a line worth الوزن × السعر, which is a different number and
+ * usually a far smaller one.
+ *
+ * The returnable figures per line are what was sold minus what has already come back, computed
+ * here so the fields can't even be typed past their limits — the backend enforces the same rules
  * regardless, since a stale page could otherwise return the same crates twice.
  */
 export function InvoiceReturnsCard({ invoice, canManage, onChanged }: {
@@ -27,6 +32,7 @@ export function InvoiceReturnsCard({ invoice, canManage, onChanged }: {
   const [date, setDate] = useState(() => todayLocalDateString());
   const [reason, setReason] = useState("");
   const [quantities, setQuantities] = useState<Record<string, string>>({});
+  const [weights, setWeights] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -35,23 +41,49 @@ export function InvoiceReturnsCard({ invoice, canManage, onChanged }: {
   const keyOf = (itemName: string) => itemName.trim().toLowerCase();
 
   // Sold per line, minus everything already returned against it.
-  const returnedByKey = new Map<string, number>();
+  const returnedByKey = new Map<string, { quantity: number; weightKg: number }>();
   for (const ret of invoice.returns) {
     for (const line of ret.items) {
       const k = keyOf(line.itemName);
-      returnedByKey.set(k, (returnedByKey.get(k) ?? 0) + line.quantity);
+      const so_far = returnedByKey.get(k) ?? { quantity: 0, weightKg: 0 };
+      returnedByKey.set(k, {
+        quantity: so_far.quantity + line.quantity,
+        weightKg: so_far.weightKg + (line.weightKg ?? 0),
+      });
     }
   }
   const returnableLines = invoice.items.map((item) => {
     const k = keyOf(item.itemName);
-    return { item, key: k, returnable: item.quantity - (returnedByKey.get(k) ?? 0) };
+    const back = returnedByKey.get(k) ?? { quantity: 0, weightKg: 0 };
+    return {
+      item,
+      key: k,
+      weighed: item.weightKg != null && item.weightKg > 0,
+      returnable: item.quantity - back.quantity,
+      returnableWeight: (item.weightKg ?? 0) - back.weightKg,
+    };
   });
 
   async function handleSave() {
     const items = returnableLines
-      .map(({ item, key }) => ({ itemName: item.itemName, quantity: parseFloat(quantities[key] ?? "") || 0 }))
-      .filter((line) => line.quantity > 0);
-    if (items.length === 0) { setError("أدخل كمية أكبر من صفر لصنف واحد على الأقل."); return; }
+      .map(({ item, key, weighed }) => ({
+        itemName: item.itemName,
+        quantity: parseFloat(quantities[key] ?? "") || 0,
+        // Only a line that was sold by weight comes back by weight; on any other line the field is
+        // not even shown, and sending a 0 there would read as "weighed, came back empty".
+        weightKg: weighed ? (parseFloat(weights[key] ?? "") || 0) : null,
+      }))
+      .filter((line) => line.quantity > 0 || (line.weightKg ?? 0) > 0);
+    if (items.length === 0) { setError("أدخل عددًا أو وزنًا أكبر من صفر لصنف واحد على الأقل."); return; }
+    // A weighed line returned by count alone would credit العدد × السعر against a line worth
+    // الوزن × السعر. The count may legitimately be 0 on an old invoice, so only flag the case where
+    // a count WAS entered and the weight was left out.
+    const missingWeight = returnableLines.find(({ key, weighed }) =>
+      weighed && (parseFloat(quantities[key] ?? "") || 0) > 0 && !((parseFloat(weights[key] ?? "") || 0) > 0));
+    if (missingWeight) {
+      setError(`"${missingWeight.item.itemName}" انباع بالوزن — أدخل الوزن المرتجع كمان، لأنه هو اللي بتنحسب عليه القيمة.`);
+      return;
+    }
 
     setBusy(true);
     setError(null);
@@ -59,6 +91,7 @@ export function InvoiceReturnsCard({ invoice, canManage, onChanged }: {
       await createInvoiceReturn(invoice.id, { date: new Date(date).toISOString(), reason: reason.trim() || undefined, items });
       setAdding(false);
       setQuantities({});
+      setWeights({});
       setReason("");
       onChanged();
     } catch (err) {
@@ -139,21 +172,38 @@ export function InvoiceReturnsCard({ invoice, canManage, onChanged }: {
             <div className="overflow-x-auto">
               <table className="table-base">
                 <thead>
-                  <tr><th>الصنف</th><th>المباع</th><th>القابل للإرجاع</th><th>الكمية المرتجعة</th><th>السعر</th></tr>
+                  <tr><th>الصنف</th><th>المباع (عدد)</th><th>القابل للإرجاع</th><th>العدد المرتجع</th><th>الوزن المرتجع</th><th>السعر</th></tr>
                 </thead>
                 <tbody>
-                  {returnableLines.map(({ item, key, returnable }) => (
+                  {returnableLines.map(({ item, key, returnable, returnableWeight, weighed }) => (
                     <tr key={item.id}>
                       <td>{item.itemName}</td>
                       <td>{formatCount(item.quantity)}</td>
-                      <td className={returnable <= 0 ? "text-gray-400" : ""}>{formatCount(returnable)}</td>
+                      <td className={returnable <= 0 && returnableWeight <= 0 ? "text-gray-400" : ""}>
+                        {formatCount(returnable)}
+                        {weighed && (
+                          <span className="block text-xs text-gray-400">{formatWeight(returnableWeight)}</span>
+                        )}
+                      </td>
                       <td>
                         <input
                           className="input w-28" type="number" min="0" step="0.001" max={returnable}
-                          disabled={returnable <= 0}
+                          disabled={returnable <= 0 && returnableWeight <= 0}
                           value={quantities[key] ?? ""}
                           onChange={(e) => setQuantities((prev) => ({ ...prev, [key]: e.target.value }))}
                         />
+                      </td>
+                      <td>
+                        {/* Shown only for a line that was sold by weight — on that line the weight is
+                            what the credit is computed from, so it is the field that matters. */}
+                        {weighed ? (
+                          <input
+                            className="input w-28" type="number" min="0" step="0.001" max={returnableWeight}
+                            disabled={returnableWeight <= 0}
+                            value={weights[key] ?? ""}
+                            onChange={(e) => setWeights((prev) => ({ ...prev, [key]: e.target.value }))}
+                          />
+                        ) : <span className="text-gray-400">—</span>}
                       </td>
                       <td>{item.pricePerUnit > 0 ? formatCurrency(item.pricePerUnit) : "غير مسعّر"}</td>
                     </tr>

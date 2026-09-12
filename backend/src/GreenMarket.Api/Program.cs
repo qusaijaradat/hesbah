@@ -758,6 +758,17 @@ using (var scope = app.Services.CreateScope())
             ALTER TABLE goods_return_items ADD COLUMN IF NOT EXISTS "Unit" integer NULL;
             ALTER TABLE farmer_goods_entries ADD COLUMN IF NOT EXISTS "Unit" integer NULL;
 
+            -- On a database that already existed, "Unit" is there and NOT NULL (EF maps a
+            -- non-nullable enum that way), so ADD COLUMN IF NOT EXISTS above does nothing and the
+            -- column keeps its constraint. Setting it to NULL below then fails, and because all of
+            -- this runs as ONE statement batch, the failure took the new columns down with it —
+            -- leaving invoice_items without WeightKg/BoxQuantity/CartonQuantity, so saving any
+            -- invoice died on a column that does not exist. Dropping the constraint is a no-op on a
+            -- column that is already nullable, so this is safe to re-run and safe on a fresh database.
+            ALTER TABLE invoice_items      ALTER COLUMN "Unit" DROP NOT NULL;
+            ALTER TABLE goods_return_items ALTER COLUMN "Unit" DROP NOT NULL;
+            ALTER TABLE farmer_goods_entries ALTER COLUMN "Unit" DROP NOT NULL;
+
             ALTER TABLE invoice_items      ADD COLUMN IF NOT EXISTS "WeightKg" numeric(14,3) NULL;
             ALTER TABLE invoice_items      ADD COLUMN IF NOT EXISTS "BoxQuantity" numeric(14,3) NOT NULL DEFAULT 0;
             ALTER TABLE invoice_items      ADD COLUMN IF NOT EXISTS "CartonQuantity" numeric(14,3) NOT NULL DEFAULT 0;

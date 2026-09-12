@@ -97,7 +97,11 @@ public class GoodsReturnService : IGoodsReturnService
         var lines = new List<GoodsReturnItem>();
         foreach (var input in request.Items)
         {
-            if (input.Quantity <= 0) continue; // a blank row on the form, not an error
+            // Blank only when nothing at all was typed. It used to require a count, which made an
+            // invoice written before العدد existed impossible to return against: the migration left
+            // those lines at count 0 (their number WAS the weight), so every return was refused for
+            // exceeding a returnable count of zero, on goods that plainly did come back.
+            if (input.Quantity <= 0 && (input.WeightKg ?? 0m) <= 0) continue;
 
             var key = Key(input.ItemName);
             if (!soldByKey.TryGetValue(key, out var sold))

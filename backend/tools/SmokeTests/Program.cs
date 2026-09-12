@@ -81,6 +81,15 @@ Console.WriteLine("== InvoiceCalculator ==");
     Check("only the weighed line adds weight", mixed.TotalWeightKg == 100m, $"got {mixed.TotalWeightKg}");
     Check("both count toward the value", mixed.TotalValue == 400.00m, $"got {mixed.TotalValue}");
 
+    // The ONE number a person watches while typing: a line's own total on its own row. It was
+    // multiplying العدد by the price whatever the weight said, so a weighed line showed one figure
+    // on its row and was counted as a different one in الإجمالي الكلي directly underneath it.
+    Check("a weighed line is worth its weight x price, not its count x price",
+          InvoiceCalculator.LineTotalFor(12m, 300m, 3m) == 900m,
+          $"got {InvoiceCalculator.LineTotalFor(12m, 300m, 3m)}");
+    Check("the count does not leak into a weighed line's total",
+          InvoiceCalculator.LineTotalFor(12m, 300m, 3m) != 12m * 3m);
+
     // A weight of zero is not a weight: it reads the same as never having been weighed.
     Check("weight 0 is priced by the count",
           InvoiceCalculator.LineTotalFor(5m, 0m, 20m) == 100m,

@@ -344,7 +344,14 @@ export function InvoiceEditPage() {
             <div className="w-7 shrink-0"></div>
           </div>
           {rows.map((row, idx) => {
-            const lineTotal = (parseFloat(row.quantity) || 0) * (parseFloat(row.pricePerUnit) || 0);
+            // Through the same function the invoice total and the backend use — this multiplied
+            // العدد by the price unconditionally, so a weighed line showed one number on its own row
+            // and was counted as another in الإجمالي الكلي directly underneath it.
+            const lineTotal = lineTotalOf({
+              quantity: parseFloat(row.quantity) || 0,
+              weightKg: row.weightKg.trim() === "" ? null : (parseFloat(row.weightKg) || 0),
+              pricePerUnit: parseFloat(row.pricePerUnit) || 0,
+            });
             return (
               <div key={idx} className="flex items-start gap-2 border-b lg:border-0 pb-3 lg:pb-0">
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-2 lg:items-center flex-1">

@@ -6,7 +6,7 @@ import { createInvoice } from "../api/invoices";
 import { apiErrorMessage } from "../api/client";
 import { formatCurrency, todayLocalDateString } from "../lib/format";
 import { lineTotalOf } from "../lib/invoiceCharge";
-import { auditRows, groupRows, isBlank, num } from "../lib/ledgerAudit";
+import { auditRows, groupRows, groupTransportFee, isBlank, num } from "../lib/ledgerAudit";
 import type { Finding, LedgerRow } from "../lib/ledgerAudit";
 
 /**
@@ -42,6 +42,7 @@ function emptyRow(): Row {
   return {
     merchant: null, merchantText: "", itemName: "", quantity: "", weightKg: "",
     pricePerUnit: "", driver: null, driverText: "", farmer: null, farmerText: "", boxQuantity: "",
+    cartonQuantity: "", woodPrice: "", transportFee: "",
   };
 }
 
@@ -57,14 +58,21 @@ export function QuickEntryPage() {
     setSaved(null);
   }
 
-  /** "زي اللي فوق" — the page is mixed, but consecutive rows repeat the same three names constantly. */
+  /**
+   * "زي اللي فوق" — the seller, the driver and the item, and nothing else.
+   *
+   * Not the buyer, deliberately. A run of consecutive rows on a notebook page is one seller's
+   * load of one item going out to a DIFFERENT buyer each line; that is what makes the page a
+   * page. Copying the buyer down would pre-fill the one column that actually changes every row,
+   * and a pre-filled wrong name is worse than an empty one — it reads as entered.
+   */
   function copyDown(index: number) {
     if (index === 0) return;
     setRows((prev) => prev.map((r, i) => (i === index ? {
       ...r,
-      merchant: prev[i - 1].merchant, merchantText: prev[i - 1].merchantText,
       farmer: prev[i - 1].farmer, farmerText: prev[i - 1].farmerText,
       driver: prev[i - 1].driver, driverText: prev[i - 1].driverText,
+      itemName: prev[i - 1].itemName,
     } : r)));
   }
 
@@ -111,12 +119,17 @@ export function QuickEntryPage() {
           farmerName: head.farmer ? undefined : (head.farmerText.trim() || undefined),
           driverId: head.driver?.id,
           driverName: head.driver ? undefined : (head.driverText.trim() || undefined),
+          // Invoice-level, so it is read once from the group rather than off `head` — the audit
+          // has already refused to save a group whose rows disagree about it.
+          transportFee: groupTransportFee(group),
           items: group.map((r) => ({
             itemName: r.itemName.trim(),
             quantity: num(r.quantity),
             weightKg: r.weightKg.trim() === "" ? null : num(r.weightKg),
             pricePerUnit: num(r.pricePerUnit),
             boxQuantity: num(r.boxQuantity),
+            cartonQuantity: num(r.cartonQuantity),
+            woodPrice: num(r.woodPrice),
           })),
         });
         created.push({ id: invoice.id, number: invoice.invoiceNumber });
@@ -143,6 +156,7 @@ export function QuickEntryPage() {
           <p className="text-sm text-gray-500 mt-1">
             نفس أعمدة الدفتر وبنفس الترتيب — اكتب الصفحة كلها وبعدين احفظ مرة وحدة.
             الأسطر اللي إلها نفس (المشتري + البائع + السائق) بتنحفظ بفاتورة وحدة.
+            زر "زي فوق" بينسخ البائع والسائق والصنف من السطر اللي قبله.
           </p>
         </div>
         <span className="text-xs bg-amber-100 text-amber-800 rounded-full px-3 py-1 font-medium">تجريبي</span>
@@ -208,6 +222,9 @@ export function QuickEntryPage() {
               <th className="min-w-36">السائق</th>
               <th className="min-w-36">البائع</th>
               <th className="w-24">الصناديق</th>
+              <th className="w-24">الكرتون</th>
+              <th className="w-24">الخشب</th>
+              <th className="w-24">أجرة النقل</th>
               <th className="w-24">الإجمالي</th>
               <th className="w-8"></th>
             </tr>
@@ -272,6 +289,23 @@ export function QuickEntryPage() {
                     <input className="input" type="number" min="0" step="1" value={row.boxQuantity}
                       onChange={(e) => updateRow(idx, { boxQuantity: e.target.value })} />
                   </td>
+                  <td>
+                    <input className="input" type="number" min="0" step="1" value={row.cartonQuantity}
+                      placeholder="—"
+                      onChange={(e) => updateRow(idx, { cartonQuantity: e.target.value })} />
+                  </td>
+                  <td>
+                    <input className="input" type="number" min="0" step="0.01" value={row.woodPrice}
+                      placeholder="—"
+                      onChange={(e) => updateRow(idx, { woodPrice: e.target.value })} />
+                  </td>
+                  {/* One أجرة النقل per invoice, not per line: fill it on any one row of the
+                      invoice. Rows of the same invoice that disagree are refused by the audit. */}
+                  <td>
+                    <input className="input" type="number" min="0" step="0.01" value={row.transportFee}
+                      placeholder="للفاتورة" title="أجرة النقل للفاتورة كلها — اكتبها بسطر واحد بس"
+                      onChange={(e) => updateRow(idx, { transportFee: e.target.value })} />
+                  </td>
                   <td className="text-sm whitespace-nowrap">
                     {num(row.pricePerUnit) > 0 ? formatCurrency(total) : <span className="text-amber-600 text-xs">غير مسعّر</span>}
                   </td>
@@ -280,7 +314,7 @@ export function QuickEntryPage() {
                       <button
                         className="text-xs text-brand-700 hover:underline whitespace-nowrap"
                         onClick={() => copyDown(idx)}
-                        title="ينسخ المشتري والبائع والسائق من السطر اللي فوق"
+                        title="ينسخ البائع والسائق والصنف من السطر اللي فوق — المشتري بتعبيه انت"
                       >
                         ↑ زي فوق
                       </button>

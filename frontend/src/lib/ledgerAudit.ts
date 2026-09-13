@@ -22,6 +22,12 @@ export interface LedgerRow {
   farmer: { id: number; name: string } | null;
   farmerText: string;
   boxQuantity: string;
+  cartonQuantity: string;
+  woodPrice: string;
+  /** أجرة النقل belongs to the INVOICE, not the line. It is typed per row because the page is
+   *  row-shaped, and read back from the group's first row — see groupTransportFee. Rows of one
+   *  group that disagree are an error rather than a silent pick. */
+  transportFee: string;
 }
 
 /** "خطأ" blocks saving; "تنبيه" is worth a look but a page can legitimately have them. */
@@ -41,7 +47,8 @@ export function num(v: string): number {
 export function isBlank(r: LedgerRow): boolean {
   return !r.merchantText.trim() && !r.itemName.trim() && !r.quantity.trim()
     && !r.weightKg.trim() && !r.pricePerUnit.trim() && !r.driverText.trim()
-    && !r.farmerText.trim() && !r.boxQuantity.trim();
+    && !r.farmerText.trim() && !r.boxQuantity.trim() && !r.cartonQuantity.trim()
+    && !r.woodPrice.trim() && !r.transportFee.trim();
 }
 
 /**
@@ -65,6 +72,18 @@ export function groupRows(rows: LedgerRow[]): LedgerRow[][] {
     map.get(k)!.push(r);
   }
   return Array.from(map.values());
+}
+
+/**
+ * The one أجرة النقل for an invoice: the first row of the group that carries one.
+ *
+ * Exported so the screen reads it from here rather than reaching into group[0] itself. An
+ * invoice-level figure picked out of a row-shaped grid in two places is the same figure derived
+ * twice, and that is how the two places drift.
+ */
+export function groupTransportFee(group: LedgerRow[]): number {
+  const typed = group.find((r) => r.transportFee.trim() !== "");
+  return typed ? num(typed.transportFee) : 0;
 }
 
 /** Fewer than this many priced rows of one item and the page cannot say what that item went for. */
@@ -112,6 +131,9 @@ export function auditRows(rows: LedgerRow[]): Finding[] {
       add("error", "الوزن مكتوب صفر — اتركه فاضي إذا الصنف مش موزون.");
     }
     if (num(r.boxQuantity) < 0) add("error", "عدد الصناديق سالب.");
+    if (num(r.cartonQuantity) < 0) add("error", "عدد الكرتون سالب.");
+    if (num(r.woodPrice) < 0) add("error", "سعر الخشب سالب.");
+    if (num(r.transportFee) < 0) add("error", "أجرة النقل سالبة.");
 
     // A name typed but not matched to anyone on file. Saving CREATES that person — which is how
     // one seller ends up with two records and two balances, so it is said before it happens.
@@ -133,6 +155,29 @@ export function auditRows(rows: LedgerRow[]): Finding[] {
     const first = seen.get(key);
     if (first !== undefined) add("warn", `نفس السطر رقم ${first + 1} بالظبط — مكرر؟`);
     else seen.set(key, i);
+  }
+
+  // أجرة النقل is charged once per invoice, so two rows of one invoice carrying different
+  // figures cannot both be right — and whichever the grouping happened to pick would be silent.
+  // Reported on the row that disagrees, which is the one someone has to look at.
+  const byGroup = new Map<string, { r: LedgerRow; i: number }[]>();
+  for (const entry of live) {
+    const k = groupKey(entry.r);
+    if (!byGroup.has(k)) byGroup.set(k, []);
+    byGroup.get(k)!.push(entry);
+  }
+  for (const entries of byGroup.values()) {
+    const typed = entries.filter(({ r }) => r.transportFee.trim() !== "");
+    if (typed.length < 2) continue;
+    const firstFee = num(typed[0].r.transportFee);
+    for (const { r, i } of typed.slice(1)) {
+      if (num(r.transportFee) !== firstFee) {
+        findings.push({
+          rowIndex: i, severity: "error",
+          message: `أجرة النقل هون ${num(r.transportFee)} وبسطر ${typed[0].i + 1} ${firstFee} — نفس الفاتورة، لازم تكون وحدة.`,
+        });
+      }
+    }
   }
 
   return findings;

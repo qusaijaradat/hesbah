@@ -6,7 +6,7 @@
  *
  *   npm run check:ledger        (from frontend/)
  */
-import { auditRows, groupRows, isBlank } from "../src/lib/ledgerAudit.js";
+import { auditRows, groupRows, groupTransportFee, isBlank } from "../src/lib/ledgerAudit.js";
 import type { Finding, LedgerRow } from "../src/lib/ledgerAudit.js";
 
 let passed = 0;
@@ -28,6 +28,7 @@ function row(o: Partial<LedgerRow>): LedgerRow {
   return {
     merchant: null, merchantText: "", itemName: "", quantity: "", weightKg: "",
     pricePerUnit: "", driver: null, driverText: "", farmer: null, farmerText: "", boxQuantity: "",
+    cartonQuantity: "", woodPrice: "", transportFee: "",
     ...o,
   };
 }
@@ -39,6 +40,11 @@ const has = (f: Finding[], i: number, sev: string, frag: string) =>
 console.log("== blank rows ==");
 check("an untouched row is blank", isBlank(row({})));
 check("one character makes it live", !isBlank(row({ quantity: "1" })));
+// A row where the ONLY thing typed is one of the newer columns still has to count as live —
+// otherwise it is skipped silently and the carton count, or the transport fee, never arrives.
+check("a carton count alone makes it live", !isBlank(row({ cartonQuantity: "4" })));
+check("a wood price alone makes it live", !isBlank(row({ woodPrice: "2" })));
+check("a transport fee alone makes it live", !isBlank(row({ transportFee: "50" })));
 check("blank rows produce no findings", auditRows([row({}), row({}), row({})]).length === 0);
 
 console.log("\n== the errors that block a save ==");
@@ -156,6 +162,44 @@ console.log("\n== grouping a mixed page into invoices ==");
   ]);
   check("the same typed name groups together despite spacing", g.length === 1, `got ${g.length}`);
 }
+
+console.log("\n== the columns that carry no price of their own ==");
+{
+  const base = { merchant: P(1, "x"), merchantText: "x", itemName: "بندورة", quantity: "5", pricePerUnit: "3" };
+  check("a negative carton count is an error", has(auditRows([row({ ...base, cartonQuantity: "-1" })]), 0, "error", "الكرتون"));
+  check("a negative wood price is an error", has(auditRows([row({ ...base, woodPrice: "-2" })]), 0, "error", "الخشب"));
+  check("a negative transport fee is an error", has(auditRows([row({ ...base, transportFee: "-5" })]), 0, "error", "النقل"));
+  const ok = auditRows([row({ ...base, cartonQuantity: "4", woodPrice: "2" })]);
+  check("cartons and wood filled in are fine", ok.length === 0, msgs(ok));
+}
+
+console.log("\n== أجرة النقل is one figure per invoice ==");
+{
+  const mk = (o: Partial<LedgerRow>) => row({
+    merchant: P(1, "أبو علي"), merchantText: "أبو علي",
+    farmer: P(2, "سالم"), farmerText: "سالم", itemName: "بندورة", quantity: "5", pricePerUnit: "3", ...o,
+  });
+  // Typed on one row only: that is the invoice's fee, and the blank rows are not a second opinion.
+  const one = [mk({ transportFee: "80" }), mk({ itemName: "خيار" })];
+  check("one row carries the fee for the whole invoice", groupTransportFee(groupRows(one)[0]) === 80);
+  check("a fee on one row only is not a disagreement", auditRows(one).length === 0, msgs(auditRows(one)));
+
+  // The same figure repeated is someone being thorough, not two different fees.
+  const same = [mk({ transportFee: "80" }), mk({ itemName: "خيار", transportFee: "80" })];
+  check("the same fee repeated is accepted", auditRows(same).length === 0, msgs(auditRows(same)));
+
+  // Two different figures for one invoice: whichever the grouping picked would be silent, so the
+  // save is refused instead.
+  const clash = [mk({ transportFee: "80" }), mk({ itemName: "خيار", transportFee: "50" })];
+  const cf = auditRows(clash);
+  check("two different fees on one invoice is an error", has(cf, 1, "error", "أجرة النقل"), msgs(cf));
+
+  // Different invoices may of course each have their own.
+  const apart = [mk({ transportFee: "80" }), mk({ merchant: P(9, "أبو خالد"), merchantText: "أبو خالد", transportFee: "50" })];
+  check("two invoices may each carry their own fee", auditRows(apart).length === 0, msgs(auditRows(apart)));
+  check("no fee typed anywhere means zero", groupTransportFee(groupRows([mk({})])[0]) === 0);
+}
+
 
 console.log(`\nRESULT: ${passed} passed, ${failed} failed`);
 // No @types/node in this project (it is a browser app), so the exit code is set through the

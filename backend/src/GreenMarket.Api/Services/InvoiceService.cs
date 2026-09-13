@@ -904,7 +904,17 @@ public class InvoiceService : IInvoiceService
                 i.Date, it.ItemName, it.Quantity, it.WeightKg, it.PricePerUnit, it.WoodPrice, it.LineTotal, i.CommissionRateApplied)))
             .ToList();
 
-        return new FarmerStatementDto(farmer.Id, farmer.Name, invoices.Sum(i => i.TransportFee), lines);
+        // The invoices in this same set that he also DROVE. Anything he did not drive contributes
+        // nothing here, so a plain seller's statement comes out exactly as it did before.
+        var drivenByHim = invoices.Where(i => i.DriverId == farmer.Id).ToList();
+        var driverSide = new FarmerStatementDriverSide(
+            drivenByHim.Sum(i => i.TransportFee),
+            // Off the invoice's OWN stored rate, never today's setting — the same rule every other
+            // reading of a past invoice follows.
+            drivenByHim.Sum(i => i.Items.Sum(it => it.BoxQuantity) * i.DriverBoxFeeApplied));
+
+        return new FarmerStatementDto(
+            farmer.Id, farmer.Name, invoices.Sum(i => i.TransportFee), driverSide, lines);
     }
 
     /// <summary>

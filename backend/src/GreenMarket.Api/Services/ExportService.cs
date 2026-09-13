@@ -1217,6 +1217,11 @@ public class ExportService : IExportService
         // Through InvoiceCharge, not spelled out again here. This exact subtraction written by
         // hand in five places is how سعر الخشب once reached the seller and the driver at once.
         var netDue = InvoiceCharge.ForSeller(itemsTotal, totalCommission, statement.TransportTotal);
+        // What he is owed for the loads he drove himself, over the same period. Zero — and
+        // therefore invisible below — for anyone who only ever sold.
+        var driverDue = InvoiceCharge.ForDriver(statement.DriverSide.TransportTotal, statement.DriverSide.BoxFeeTotal);
+        var finalDue = netDue + driverDue;
+        var driverSide = statement.DriverSide.HasAny;
 
         var document = Document.Create(container =>
         {
@@ -1396,11 +1401,27 @@ public class ExportService : IExportService
                                 Settle("إجمالي المبيعات", $"₪ {itemsTotal:0.##}");
                                 Settle("إجمالي العمولة", $"- ₪ {totalCommission:0.##}");
                                 Settle("أجرة النقل", $"- ₪ {statement.TransportTotal:0.##}");
-                                Settle("الصافي المستحق للبائع", $"₪ {netDue:0.##}", bold: true);
+                                Settle("الصافي المستحق للبائع", $"₪ {netDue:0.##}", bold: driverSide is false);
+
+                                // His driver side, on the loads he brought in himself. The أجرة النقل
+                                // deducted above comes back here on exactly those invoices — printed
+                                // rather than netted off quietly, because a reader who can see the
+                                // deduction and not the repayment will believe he was charged for
+                                // carrying his own goods.
+                                if (driverSide)
+                                {
+                                    if (statement.DriverSide.TransportTotal != 0)
+                                        Settle("أجرة النقل (له كسائق)", $"+ ₪ {statement.DriverSide.TransportTotal:0.##}");
+                                    if (statement.DriverSide.BoxFeeTotal != 0)
+                                        Settle("أجرة الصناديق (له كسائق)", $"+ ₪ {statement.DriverSide.BoxFeeTotal:0.##}");
+                                    Settle("المستحق كسائق", $"₪ {driverDue:0.##}");
+                                    Settle("الإجمالي المستحق (بائع + سائق)", $"₪ {finalDue:0.##}", bold: true);
+                                }
+
                                 if (previousBalance != 0)
                                 {
                                     Settle("الرصيد السابق (حساب البائع)", $"₪ {previousBalance:0.##}");
-                                    Settle("الإجمالي المستحق", $"₪ {(netDue + previousBalance):0.##}", bold: true);
+                                    Settle("الإجمالي النهائي", $"₪ {(finalDue + previousBalance):0.##}", bold: true);
                                 }
                             });
 

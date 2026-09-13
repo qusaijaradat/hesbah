@@ -256,7 +256,10 @@ var farmerStatementLines = new List<FarmerStatementLineDto>
     new(DateTimeOffset.Now.AddDays(-6), "خيار", 40m, null, 12m, 6m, 480m, 0.10m),
     new(DateTimeOffset.Now.AddDays(-2), "بندورة", 20m, 210m, 3.25m, 0m, 682.5m, 0.10m),
 };
-var farmerStatement = new FarmerStatementDto(9, "المزارع سامي حسن", TransportTotal: 145m, farmerStatementLines);
+// No driver side: he sold, somebody else drove.
+var farmerStatement = new FarmerStatementDto(
+    9, "المزارع سامي حسن", TransportTotal: 145m,
+    new FarmerStatementDriverSide(0m, 0m), farmerStatementLines);
 
 // The settlement the PDF prints, recomputed here the same way it builds it — per LINE, because
 // a statement can span invoices written at different commission rates — and then run through
@@ -269,6 +272,19 @@ Same("seller statement net due",
      InvoiceCharge.ForSeller(statementSales, statementCommission, farmerStatement.TransportTotal),
      statementSales - statementCommission - farmerStatement.TransportTotal);
 
+// The same period for a man who drove his own loads: the أجرة النقل deducted from his seller side
+// comes back on his driver side, and أجرة الصناديق is added. The statement has to show both, or a
+// reader who sees the deduction and not the repayment will believe the market charged him to
+// carry his own goods.
+var ownLoadStatement = farmerStatement with { DriverSide = new FarmerStatementDriverSide(145m, 38m) };
+Same("a seller-driver statement nets out to seller + driver",
+     InvoiceCharge.ForSeller(statementSales, statementCommission, ownLoadStatement.TransportTotal)
+     + InvoiceCharge.ForDriver(ownLoadStatement.DriverSide.TransportTotal, ownLoadStatement.DriverSide.BoxFeeTotal),
+     statementSales - statementCommission + ownLoadStatement.DriverSide.BoxFeeTotal);
+Write("14-seller-driver-statement.pdf",
+    export.GenerateFarmerStatementPdf(ownLoadStatement, DateTimeOffset.Now.AddDays(-7), DateTimeOffset.Now,
+        company, previousBalance: 260m));
+
 Write("09-farmer-statement.pdf",
     export.GenerateFarmerStatementPdf(farmerStatement, DateTimeOffset.Now.AddDays(-7), DateTimeOffset.Now,
         company, previousBalance: 260m));
@@ -277,7 +293,9 @@ Write("09-farmer-statement.pdf",
 // أجرة النقل line at all, leaving a reader unable to tell a zero from an omission.
 Write("10-farmer-statement-no-transport.pdf",
     export.GenerateFarmerStatementPdf(
-        new FarmerStatementDto(9, "المزارع سامي حسن", TransportTotal: 0m, farmerStatementLines),
+        new FarmerStatementDto(
+            9, "المزارع سامي حسن", TransportTotal: 0m,
+            new FarmerStatementDriverSide(0m, 0m), farmerStatementLines),
         DateTimeOffset.Now.AddDays(-7), DateTimeOffset.Now, company, previousBalance: 0m));
 
 Console.WriteLine($"\n{outDir}");

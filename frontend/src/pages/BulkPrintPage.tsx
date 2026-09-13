@@ -825,6 +825,9 @@ export function BulkPrintPage() {
   const [farmerStatementPick, setFarmerStatementPick] = useState<{ id: number; name: string } | null>(null);
   const [farmerStatementFrom, setFarmerStatementFrom] = useState("");
   const [farmerStatementTo, setFarmerStatementTo] = useState("");
+  const [sellerDriverStatementPick, setSellerDriverStatementPick] = useState<{ id: number; name: string } | null>(null);
+  const [sellerDriverStatementFrom, setSellerDriverStatementFrom] = useState("");
+  const [sellerDriverStatementTo, setSellerDriverStatementTo] = useState("");
 
 
   useEffect(() => {
@@ -1005,6 +1008,18 @@ export function BulkPrintPage() {
     return printFarmerStatementPdf(farmerStatementPick!.id, from, to);
   }
 
+  /**
+   * The same endpoint as the seller statement above, and deliberately so: the statement itself
+   * now carries a driver side and prints it whenever the person drove any of the loads in the
+   * period (see backend FarmerStatementDriverSide). One document, one set of rules — a separate
+   * "seller-driver statement" would be a second place for the same arithmetic to be got wrong.
+   */
+  function buildSellerDriverStatementPdf() {
+    const from = startOfDay(new Date(sellerDriverStatementFrom)).toISOString();
+    const to = endOfDay(new Date(sellerDriverStatementTo)).toISOString();
+    return printFarmerStatementPdf(sellerDriverStatementPick!.id, from, to);
+  }
+
   return (
     <div>
       <h1 className="text-2xl font-bold mb-6">طباعة الفواتير</h1>
@@ -1104,6 +1119,41 @@ export function BulkPrintPage() {
               shareTitle="كشف البائع"
               printLabel="🖨️ طباعة كشف البائع"
               disabled={!farmerStatementPick || !farmerStatementFrom || !farmerStatementTo}
+            />
+          </div>
+        </div>
+      )}
+
+      {activeTab === "SellerDriver" && (
+        <div className="card p-4 mb-4">
+          <h2 className="font-semibold mb-1">كشف نهائي (بائع وسائق)</h2>
+          <p className="text-xs text-gray-500 mb-3">
+            اختر الشخص وحدد الفترة — بيطلعلك كشف واحد بكل التفاصيل: كل صنف باعه بسعره، ملخص الأصناف،
+            والعمولة وأجرة النقل المخصومة منه كبائع، وأجرة النقل وأجرة الصناديق المستحقة إله كسائق،
+            والإجمالي النهائي بالآخر.
+          </p>
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="w-full max-w-xs">
+              <PartnerAutocomplete
+                label="الشخص (بائع وسائق)" value={sellerDriverStatementPick} onChange={setSellerDriverStatementPick}
+                placeholder="اكتب الاسم واختره من القائمة..."
+                types={["Farmer", "Driver"]}
+              />
+            </div>
+            <div>
+              <label className="label">من تاريخ</label>
+              <input type="date" className="input" value={sellerDriverStatementFrom} onChange={(e) => setSellerDriverStatementFrom(e.target.value)} />
+            </div>
+            <div>
+              <label className="label">إلى تاريخ</label>
+              <input type="date" className="input" value={sellerDriverStatementTo} onChange={(e) => setSellerDriverStatementTo(e.target.value)} />
+            </div>
+            <PdfActions
+              fetchPdf={buildSellerDriverStatementPdf}
+              fileName={`seller-driver-statement-${sellerDriverStatementPick?.name ?? ""}.pdf`}
+              shareTitle="الكشف النهائي"
+              printLabel="🖨️ طباعة الكشف النهائي"
+              disabled={!sellerDriverStatementPick || !sellerDriverStatementFrom || !sellerDriverStatementTo}
             />
           </div>
         </div>

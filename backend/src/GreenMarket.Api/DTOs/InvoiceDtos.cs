@@ -339,7 +339,24 @@ public record FarmerStatementLineDto(
 /// line: transport is charged per INVOICE, not per item, so it cannot be attributed to one item's
 /// row — but it comes off the seller (InvoiceCharge.ForSeller), so a statement that never
 /// subtracted it was overstating what he is owed.</summary>
-public record FarmerStatementDto(int FarmerId, string FarmerName, decimal TransportTotal, IReadOnlyList<FarmerStatementLineDto> Lines);
+/// <summary>
+/// His DRIVER side over the same period, and only on the invoices where he drove his own load —
+/// invoices whose DriverId is this same person.
+///
+/// DriverTransportTotal deliberately overlaps TransportTotal above: the same أجرة النقل is taken
+/// off him as the seller and paid to him as the driver, so on those invoices it cancels. Both are
+/// carried, and both are printed, because a figure that cancels invisibly is a figure nobody can
+/// check — and because on invoices someone ELSE drove, the deduction stands alone.
+/// </summary>
+public record FarmerStatementDriverSide(decimal TransportTotal, decimal BoxFeeTotal)
+{
+    public bool HasAny => TransportTotal != 0 || BoxFeeTotal != 0;
+}
+
+public record FarmerStatementDto(
+    int FarmerId, string FarmerName, decimal TransportTotal,
+    FarmerStatementDriverSide DriverSide,
+    IReadOnlyList<FarmerStatementLineDto> Lines);
 
 /// <summary>
 /// One row of the standalone "بضاعة الباعة" page — aggregated by day + item + unit across all of

@@ -194,7 +194,8 @@ function BalanceCard({ balance }: { balance: ContainerBalanceDto }) {
   return (
     <div className="card p-4">
       <div className="font-semibold text-gray-700 mb-3">{TYPE_LABEL[balance.type]}</div>
-      <div className="grid grid-cols-3 gap-3 text-sm">
+      {/* One per line on a phone: three columns of numbers at 375px wrap mid-figure. */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
         {/* The two derived sides are hidden at zero rather than printed as "0": a seller has no
             invoice side at all and a buyer has no goods-intake side, and a row of zeros reads as
             "nothing moved" instead of "this does not apply here". */}

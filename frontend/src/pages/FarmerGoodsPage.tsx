@@ -323,7 +323,7 @@ export function FarmerGoodsPage() {
           <div className="card overflow-x-auto mb-4">
             <div className="flex items-center justify-between flex-wrap gap-2 px-4 pt-4 pb-1">
               <div className="text-sm font-semibold text-gray-700">المخزون المتوفر حاليًا — {stockData?.farmerName ?? farmerPick.name}</div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <PdfActions
                   fetchPdf={() => printFarmerGoodsStockPdf(farmerPick.id)}
                   fileName={`farmer-stock-${farmerPick.id}.pdf`}
@@ -368,7 +368,7 @@ export function FarmerGoodsPage() {
             <div className="flex items-center justify-between flex-wrap gap-2 px-4 pt-4 pb-1">
               <div className="text-sm font-semibold text-gray-700">سجل الإضافات</div>
               {canDelete && entriesSelection.selected.size > 0 && (
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3 flex-wrap">
                   <span className="text-sm text-gray-600">محدد: <span className="font-semibold">{entriesSelection.selected.size}</span></span>
                   <button className="btn-danger text-sm" disabled={bulkDeletingEntries} onClick={handleBulkDeleteEntries}>
                     {bulkDeletingEntries ? "جاري الحذف..." : `حذف المحدد (${entriesSelection.selected.size})`}

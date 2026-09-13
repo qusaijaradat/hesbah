@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { shareFile } from "../lib/share";
+import { hasTouch } from "../lib/platform";
 
 interface Props {
   /**
@@ -67,7 +68,9 @@ export function CaptureBar({ onSentence, placeholder, hint }: Props) {
     <div className="card p-3 mb-4">
       <div className="flex items-center gap-2 flex-wrap">
         <input
-          className="input flex-1 min-w-[16rem]"
+          // 16rem plus two buttons overflows a 320px phone. Full width on its own line there,
+          // sharing the line from the first breakpoint up.
+          className="input w-full sm:w-auto sm:flex-1 sm:min-w-[14rem]"
           placeholder={placeholder}
           value={said}
           onChange={(e) => setSaid(e.target.value)}
@@ -80,7 +83,12 @@ export function CaptureBar({ onSentence, placeholder, hint }: Props) {
           ref={camera} type="file" accept="image/*" capture="environment" className="hidden"
           onChange={(e) => { capture(e.target.files?.[0]); e.target.value = ""; }}
         />
-        <button className="btn-secondary" onClick={() => camera.current?.click()}>📷 صوّر</button>
+        {/* Same control, honestly labelled: on a phone it opens the camera, on a desktop it opens
+            a file browser — which is still the right button there, since that is where a scanner
+            puts its output. Hiding it on desktop would take away the scanner path. */}
+        <button className="btn-secondary whitespace-nowrap" onClick={() => camera.current?.click()}>
+          {hasTouch() ? "📷 صوّر" : "🖼️ صورة الصفحة"}
+        </button>
       </div>
 
       <p className="text-xs text-gray-500 mt-2">{hint}</p>

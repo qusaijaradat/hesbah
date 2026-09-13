@@ -131,7 +131,7 @@ export function ChecksPage() {
     <div>
       <div className="flex items-start justify-between flex-wrap gap-3 mb-1">
         <h1 className="text-2xl font-bold">الشيكات</h1>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-wrap">
           <PdfActions
             fetchPdf={buildChecksPdf}
             fileName={`checks-${showAllMonths ? "all" : monthFilter}.pdf`}

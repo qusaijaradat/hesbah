@@ -242,7 +242,7 @@ export function InvoicesPage() {
       {notice && <div className="text-sm text-blue-700 bg-blue-50 rounded-md p-3 mb-4">{notice}</div>}
       <div className="flex items-center justify-between flex-wrap gap-3 mb-6">
         <h1 className="text-2xl font-bold">الفواتير</h1>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
           {hasPermission("reports.export") && (
             <button className="btn-secondary" onClick={handleExport}>تصدير Excel</button>
           )}

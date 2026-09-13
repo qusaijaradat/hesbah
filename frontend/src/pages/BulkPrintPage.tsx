@@ -1024,11 +1024,14 @@ export function BulkPrintPage() {
     <div>
       <h1 className="text-2xl font-bold mb-6">طباعة الفواتير</h1>
 
-      <div className="flex gap-2 mb-4 border-b border-gray-200">
+      {/* Four tabs now, and on a phone they do not fit. Scrolling sideways keeps them all
+          reachable; wrapping would put a lone tab on its own line under the others and make the
+          row read as two groups of something. */}
+      <div className="flex gap-2 mb-4 border-b border-gray-200 overflow-x-auto">
         {(["Merchant", "Farmer", "Driver", "SellerDriver"] as Role[]).map((role) => (
           <button
             key={role}
-            className={`px-4 py-2 font-semibold rounded-t-md ${activeTab === role ? "bg-brand-50 text-brand-700 border-b-2 border-brand-600" : "text-gray-500 hover:text-gray-700"}`}
+            className={`px-4 py-2 font-semibold rounded-t-md whitespace-nowrap shrink-0 ${activeTab === role ? "bg-brand-50 text-brand-700 border-b-2 border-brand-600" : "text-gray-500 hover:text-gray-700"}`}
             onClick={() => setActiveTab(role)}
           >
             قسم {ROLE_LABEL[role]}

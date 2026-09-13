@@ -13,6 +13,7 @@ import type { KnownNames } from "../lib/ledgerCapture";
 import { listPartners } from "../api/partners";
 import { listItems } from "../api/items";
 import { CaptureBar } from "../components/CaptureBar";
+import { hasSpeechRecognition } from "../lib/platform";
 
 /**
  * The browser's own speech recognition — free, no key, no account. Typed by hand because it is
@@ -459,9 +460,11 @@ export function QuickEntryPage() {
                   </td>
                   <td>
                     <div className="flex flex-col gap-1 items-start">
-                      {/* One sentence into one row. Only what a cue word vouches for is filled —
-                          see lib/ledgerCapture — so a misheard number is left blank rather than
-                          written into a price. */}
+                      {/* Chrome only, and hidden rather than disabled anywhere else. Safari has no
+                          speech API: a mic button on an iPhone that does nothing when pressed reads
+                          as a broken feature, while its absence reads as the dictation box above
+                          being the way — which it is, and which works on both. */}
+                      {hasSpeechRecognition() && (
                       <button
                         className={`text-xs whitespace-nowrap ${listening === idx ? "text-red-600 font-semibold" : "text-brand-700 hover:underline"}`}
                         onClick={() => listen(idx)}
@@ -469,6 +472,7 @@ export function QuickEntryPage() {
                       >
                         {listening === idx ? "● عم يسمع..." : "🎤 صوت"}
                       </button>
+                      )}
                       {idx > 0 && (
                         <button
                           className="text-xs text-brand-700 hover:underline whitespace-nowrap"

@@ -48,7 +48,7 @@ export function DailyClosingPage() {
     <div className="max-w-3xl">
       <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
         <h1 className="text-2xl font-bold">الإغلاق اليومي</h1>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <input type="date" className="input" value={date} onChange={(e) => setDate(e.target.value)} />
           <PdfActions
             fetchPdf={() => exportDailyClosingPdf(new Date(date).toISOString())}

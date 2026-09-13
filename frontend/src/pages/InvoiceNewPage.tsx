@@ -341,7 +341,7 @@ export function InvoiceNewPage() {
                  IS on top, what it is measured and charged by underneath, six across at full width
                  and folding to three then two as it narrows. */
               <div key={idx} className="rounded-lg border border-gray-200 bg-gray-50/60 p-3 space-y-3">
-                <div className="flex items-end gap-3">
+                <div className="flex items-end gap-3 flex-wrap">
                   <div className="flex-1 min-w-0">
                     <label className="label">الصنف</label>
                     <ItemAutocomplete value={row.itemName} placeholder="مثال: بندورة"

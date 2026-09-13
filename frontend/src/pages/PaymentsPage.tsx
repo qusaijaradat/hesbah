@@ -19,6 +19,34 @@ import { CHECK_METHOD, PAYMENT_METHOD_OPTIONS, PaymentLineFields, emptyLine, lin
 import type { PaymentLine } from "../components/PaymentLineFields";
 import { InvoiceLink, PartnerLink } from "../components/RecordLinks";
 import { PdfActions } from "../components/PdfActions";
+import { useColumnFilters } from "../lib/useColumnFilters";
+import type { ColumnFilterSpec } from "../lib/columnFilters";
+import { ColumnFilterRow, ColumnFilterSummary } from "../components/ColumnFilterRow";
+import { BulkEditDialog } from "../components/BulkEditDialog";
+import type { BulkEditField } from "../components/BulkEditDialog";
+
+// Module-level: useColumnFilters memoizes on the array identity, and these never vary.
+//
+// Both tables filter the date as yyyy-mm-dd text rather than a Date — a payment written at
+// 20:00 local must not answer a "on the 9th" filter with the 8th because something re-read its
+// timestamp as UTC. Same reasoning as the dateRange kind itself.
+const PAYMENT_FILTERS: ColumnFilterSpec<PaymentDto>[] = [
+  { key: "date", kind: "dateRange", value: (p) => p.date },
+  { key: "partner", kind: "text", value: (p) => p.partnerName },
+  { key: "direction", kind: "select", value: (p) => PAYMENT_DIRECTION_LABELS[p.direction] },
+  { key: "amount", kind: "numberRange", value: (p) => p.amount },
+  { key: "invoice", kind: "text", value: (p) => p.invoiceNumber ?? "" },
+  { key: "method", kind: "select", value: (p) => p.method ?? "" },
+  { key: "notes", kind: "text", value: (p) => p.notes ?? "" },
+];
+
+const EXPENSE_FILTERS: ColumnFilterSpec<ExpenseDto>[] = [
+  { key: "date", kind: "dateRange", value: (e) => e.date },
+  { key: "description", kind: "text", value: (e) => e.description },
+  { key: "category", kind: "select", value: (e) => e.category ?? "" },
+  { key: "employee", kind: "select", value: (e) => e.employeeName ?? "" },
+  { key: "amount", kind: "numberRange", value: (e) => e.amount },
+];
 
 export function PaymentsPage() {
   const { hasPermission } = useAuth();
@@ -56,10 +84,14 @@ function PaymentsTab({ canCreate, canEdit, canDelete }: { canCreate: boolean; ca
   const [bulkError, setBulkError] = useState<string | null>(null);
   const selection = useSelection();
   const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [bulkEditing, setBulkEditing] = useState(false);
+  const filters = useColumnFilters(payments, PAYMENT_FILTERS);
 
   // Paged in the browser: the fetch pulls a generous slice and the table shows one page of it, so
   // a busy day's payments stay readable instead of scrolling forever (see lib/usePagination).
-  const pager = usePagination(payments);
+  // Filter first, paginate the result — the other order narrows one page and reports it as the
+  // answer for the whole list.
+  const pager = usePagination(filters.rows);
 
   async function refresh() {
     const result = await listPayments({ pageSize: 500 });
@@ -92,6 +124,26 @@ function PaymentsTab({ canCreate, canEdit, canDelete }: { canCreate: boolean; ca
   }
 
 
+  // Only the date.
+  //
+  // طريقة الدفع is deliberately absent even though it looks like an innocent attribute: a شيك
+  // carries a due date, a number and a clearance status, and PaymentRules decides from those when
+  // it counts against a balance. Switching a batch INTO شيك would invent checks with no number and
+  // no due date; switching a batch OUT of it would strand the ones already recorded. Either way
+  // money moves, which is the one thing bulk edit here does not do.
+  const paymentBulkFields: BulkEditField<PaymentDto>[] = [
+    {
+      key: "date", label: "التاريخ", kind: "date",
+      current: (p) => p.date.slice(0, 10),
+      apply: (p, v) => updatePayment(p.id, {
+        amount: p.amount, date: new Date(v).toISOString(), method: p.method ?? undefined,
+        notes: p.notes ?? undefined, invoiceId: p.invoiceId ?? null,
+        checkDueDate: p.checkDueDate ?? null, checkNumber: p.checkNumber ?? null,
+        checkStatus: p.checkStatus ?? null, checkClearedDate: p.checkClearedDate ?? null,
+      }).then(() => undefined),
+    },
+  ];
+
   return (
     <div>
       <div className="flex items-center gap-2 mb-4 flex-wrap">
@@ -108,14 +160,33 @@ function PaymentsTab({ canCreate, canEdit, canDelete }: { canCreate: boolean; ca
 
       {bulkError && <div className="text-sm text-red-600 bg-red-50 rounded-md p-3 mb-4 whitespace-pre-line">{bulkError}</div>}
 
-      {canDelete && selection.selected.size > 0 && (
+      {selection.selected.size > 0 && (canDelete || canEdit) && (
         <div className="flex items-center gap-3 mb-4">
           <span className="text-sm text-gray-600">محدد: <span className="font-semibold">{selection.selected.size}</span></span>
-          <button className="btn-danger text-sm" disabled={bulkDeleting} onClick={handleBulkDelete}>
-            {bulkDeleting ? "جاري الحذف..." : `حذف المحدد (${selection.selected.size})`}
-          </button>
+          {canEdit && (
+            <button className="btn-secondary text-sm" onClick={() => setBulkEditing(true)}>
+              تعديل المحدد ({selection.selected.size})
+            </button>
+          )}
+          {canDelete && (
+            <button className="btn-danger text-sm" disabled={bulkDeleting} onClick={handleBulkDelete}>
+              {bulkDeleting ? "جاري الحذف..." : `حذف المحدد (${selection.selected.size})`}
+            </button>
+          )}
         </div>
       )}
+
+      {bulkEditing && (
+        <BulkEditDialog
+          rows={payments.filter((p) => selection.selected.has(p.id))}
+          fields={paymentBulkFields}
+          label={(p) => `${p.partnerName} — ${formatCurrency(p.amount)}`}
+          onClose={() => setBulkEditing(false)}
+          onDone={async (message) => { setBulkError(message); selection.clear(); await refresh(); }}
+        />
+      )}
+
+      <ColumnFilterSummary filters={filters} />
 
       <div className="card overflow-x-auto">
         <table className="table-base">
@@ -132,9 +203,19 @@ function PaymentsTab({ canCreate, canEdit, canDelete }: { canCreate: boolean; ca
               )}
               <th>التاريخ</th><th>الشخص</th><th>الاتجاه</th><th>المبلغ</th><th>الفاتورة</th><th>طريقة الدفع</th><th>ملاحظات</th>{showActionsColumn && <th></th>}
             </tr>
+            <ColumnFilterRow
+              columns={[
+                ...(canDelete ? [null] : []),
+                "date", "partner", "direction", "amount", "invoice", "method", "notes",
+                ...(showActionsColumn ? [null] : []),
+              ]}
+              specs={PAYMENT_FILTERS}
+              filters={filters}
+              rows={payments}
+            />
           </thead>
           <tbody>
-            {payments.length === 0 ? (
+            {filters.rows.length === 0 ? (
               <tr><td colSpan={(showActionsColumn ? 8 : 7) + (canDelete ? 1 : 0)} className="text-center text-gray-400 py-6">لا توجد دفعات</td></tr>
             ) : pager.pageRows.map((p) => (
               <tr key={p.id}>
@@ -583,9 +664,11 @@ function ExpensesTab({ canCreate, canEdit, canDelete }: { canCreate: boolean; ca
   const [bulkError, setBulkError] = useState<string | null>(null);
   const selection = useSelection();
   const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [bulkEditing, setBulkEditing] = useState(false);
+  const filters = useColumnFilters(expenses, EXPENSE_FILTERS);
 
-  // Same browser-side paging as the payments tab above.
-  const pager = usePagination(expenses);
+  // Same browser-side paging as the payments tab above, over the FILTERED rows.
+  const pager = usePagination(filters.rows);
 
   async function refresh() {
     const result = await listExpenses({ pageSize: 500 });
@@ -617,6 +700,26 @@ function ExpensesTab({ canCreate, canEdit, canDelete }: { canCreate: boolean; ca
     if (outcome.failedCount > 0) setBulkError(summarizeBulkDelete(outcome));
   }
 
+  // Attributes only. The amount is not here and will not be: setting thirty expenses to the
+  // same figure is not a correction, it is a fabrication, and it would move the day's closing.
+  const expenseBulkFields: BulkEditField<ExpenseDto>[] = [
+    {
+      key: "date", label: "التاريخ", kind: "date",
+      current: (e) => e.date.slice(0, 10),
+      apply: (e, v) => updateExpense(e.id, {
+        date: new Date(v).toISOString(), description: e.description, amount: e.amount,
+        category: e.category ?? undefined, employeeId: e.employeeId ?? null,
+      }).then(() => undefined),
+    },
+    {
+      key: "category", label: "الفئة", kind: "text",
+      current: (e) => e.category ?? "",
+      apply: (e, v) => updateExpense(e.id, {
+        date: e.date, description: e.description, amount: e.amount,
+        category: v, employeeId: e.employeeId ?? null,
+      }).then(() => undefined),
+    },
+  ];
 
   return (
     <div>
@@ -631,14 +734,33 @@ function ExpensesTab({ canCreate, canEdit, canDelete }: { canCreate: boolean; ca
 
       {bulkError && <div className="text-sm text-red-600 bg-red-50 rounded-md p-3 mb-4 whitespace-pre-line">{bulkError}</div>}
 
-      {canDelete && selection.selected.size > 0 && (
+      {selection.selected.size > 0 && (canDelete || canEdit) && (
         <div className="flex items-center gap-3 mb-4">
           <span className="text-sm text-gray-600">محدد: <span className="font-semibold">{selection.selected.size}</span></span>
-          <button className="btn-danger text-sm" disabled={bulkDeleting} onClick={handleBulkDelete}>
-            {bulkDeleting ? "جاري الحذف..." : `حذف المحدد (${selection.selected.size})`}
-          </button>
+          {canEdit && (
+            <button className="btn-secondary text-sm" onClick={() => setBulkEditing(true)}>
+              تعديل المحدد ({selection.selected.size})
+            </button>
+          )}
+          {canDelete && (
+            <button className="btn-danger text-sm" disabled={bulkDeleting} onClick={handleBulkDelete}>
+              {bulkDeleting ? "جاري الحذف..." : `حذف المحدد (${selection.selected.size})`}
+            </button>
+          )}
         </div>
       )}
+
+      {bulkEditing && (
+        <BulkEditDialog
+          rows={expenses.filter((e) => selection.selected.has(e.id))}
+          fields={expenseBulkFields}
+          label={(e) => `${e.description} — ${formatCurrency(e.amount)}`}
+          onClose={() => setBulkEditing(false)}
+          onDone={async (message) => { setBulkError(message); selection.clear(); await refresh(); }}
+        />
+      )}
+
+      <ColumnFilterSummary filters={filters} />
 
       <div className="card overflow-x-auto">
         <table className="table-base">
@@ -655,9 +777,19 @@ function ExpensesTab({ canCreate, canEdit, canDelete }: { canCreate: boolean; ca
               )}
               <th>التاريخ</th><th>الوصف</th><th>الفئة</th><th>الموظف</th><th>المبلغ</th>{showActionsColumn && <th></th>}
             </tr>
+            <ColumnFilterRow
+              columns={[
+                ...(canDelete ? [null] : []),
+                "date", "description", "category", "employee", "amount",
+                ...(showActionsColumn ? [null] : []),
+              ]}
+              specs={EXPENSE_FILTERS}
+              filters={filters}
+              rows={expenses}
+            />
           </thead>
           <tbody>
-            {expenses.length === 0 ? (
+            {filters.rows.length === 0 ? (
               <tr><td colSpan={(showActionsColumn ? 6 : 5) + (canDelete ? 1 : 0)} className="text-center text-gray-400 py-6">لا توجد مصاريف</td></tr>
             ) : pager.pageRows.map((e) => (
               <tr key={e.id}>

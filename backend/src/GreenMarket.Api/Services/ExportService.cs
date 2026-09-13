@@ -426,23 +426,23 @@ public class ExportService : IExportService
                         col.Item().AlignRight().Text($"رسوم الصناديق: ₪ {invoice.BoxFeeTotal:0.##}").FontSize(thermalWidth ? 8 : 10);
                     if (invoice.ReturnsTotal > 0)
                         col.Item().AlignRight().Text($"مرتجع بضاعة: - ₪ {invoice.ReturnsTotal:0.##}").FontSize(thermalWidth ? 8 : 10).FontColor(PrintInk.Deduction);
-                    col.Item().PaddingTop(4).AlignRight().Text($"الإجمالي: ₪ {invoice.GrandTotal:0.##}").FontSize(thermalWidth ? 10 : 12);
+                    // The last line is the one being looked for, so it is the one set largest. No
+                    // separate boxed summary: it would only repeat a figure already on the page, and
+                    // a number printed twice is a number that can be read twice and understood once.
+                    col.Item().PaddingTop(4).AlignRight()
+                        .Text($"الإجمالي: ₪ {invoice.GrandTotal:0.##}").Bold().FontSize(thermalWidth ? 13 : 18);
                     // What this merchant still owed BEFORE this invoice (computed in
                     // InvoiceService — every OTHER Active invoice's total minus every payment
                     // they've made, all-time), added on top so the printed total is what's
                     // actually due right now, not just this invoice's own amount.
                     if (invoice.PreviousBalance > 0)
-                        col.Item().AlignRight().Text($"الرصيد السابق: ₪ {invoice.PreviousBalance:0.##}").FontSize(thermalWidth ? 9 : 11);
-
-                    // The lines above are the working; this is the answer. Where a previous balance
-                    // exists the answer is the two of them together — handing someone a bold box
-                    // saying "الإجمالي" that is not in fact what they owe today would be worse than
-                    // not boxing anything.
-                    PartyTotalBlock(
-                        col, "المطلوب من", invoice.MerchantName,
-                        invoice.PreviousBalance > 0 ? "الإجمالي المستحق" : "الإجمالي",
-                        invoice.GrandTotal + (invoice.PreviousBalance > 0 ? invoice.PreviousBalance : 0m),
-                        thermalWidth ? 0.62f : 1f);
+                    {
+                        col.Item().AlignRight().Text($"الرصيد السابق: ₪ {invoice.PreviousBalance:0.##}").FontSize(thermalWidth ? 9 : 12);
+                        // And when there IS one, THIS is the figure being looked for instead — so the
+                        // emphasis moves to it and الإجمالي above steps back down.
+                        col.Item().PaddingTop(2).AlignRight()
+                            .Text($"الإجمالي المستحق: ₪ {(invoice.GrandTotal + invoice.PreviousBalance):0.##}").Bold().FontSize(thermalWidth ? 14 : 20);
+                    }
                 });
             });
         });
@@ -566,16 +566,16 @@ public class ExportService : IExportService
                     // TotalValue − Commission − TransportFee.
                     if (invoice.TransportFee > 0)
                         col.Item().AlignRight().Text($"أجرة النقل: - ₪ {invoice.TransportFee:0.##}").FontColor(PrintInk.Deduction);
-                    col.Item().PaddingTop(2).AlignRight().Text($"الصافي المستحق لهذه الفاتورة: ₪ {invoice.NetDueToFarmer:0.##}").FontSize(12);
+                    col.Item().PaddingTop(4).AlignRight()
+                        .Text($"الصافي المستحق لهذه الفاتورة: ₪ {invoice.NetDueToFarmer:0.##}").Bold().FontSize(18);
                     if (previousBalance != 0)
-                        col.Item().AlignRight().Text($"الرصيد السابق (رصيد حساب البائع الحالي): ₪ {previousBalance:0.##}").FontSize(11);
-
-                    // Same block, same corner, same size as the buyer's copy — the direction of the
-                    // money is the only thing that differs, and the label carries that.
-                    PartyTotalBlock(
-                        col, "المطلوب إلى", invoice.FarmerName ?? "",
-                        previousBalance != 0 ? "الإجمالي المستحق" : "الصافي المستحق",
-                        invoice.NetDueToFarmer + previousBalance);
+                    {
+                        col.Item().AlignRight().Text($"الرصيد السابق (رصيد حساب البائع الحالي): ₪ {previousBalance:0.##}").FontSize(12);
+                        // Same reasoning as the buyer's copy: with a previous balance in play, the
+                        // figure being looked for is the combined one, so the emphasis moves there.
+                        col.Item().PaddingTop(2).AlignRight()
+                            .Text($"الإجمالي المستحق: ₪ {(invoice.NetDueToFarmer + previousBalance):0.##}").Bold().FontSize(20);
+                    }
                 });
             });
         });
@@ -1485,7 +1485,7 @@ public class ExportService : IExportService
                         col.Item().AlignRight().Text($"العمولة ({invoice.CommissionRateApplied:0.##%}): - ₪ {invoice.Commission:0.##}").FontSize(8).FontColor(PrintInk.Deduction);
                         if (invoice.TransportFee > 0)
                             col.Item().AlignRight().Text($"أجرة النقل: - ₪ {invoice.TransportFee:0.##}").FontSize(8).FontColor(PrintInk.Deduction);
-                        col.Item().PaddingTop(2).AlignRight().Text($"الصافي المستحق: ₪ {invoice.NetDueToFarmer:0.##}").Bold().FontSize(10);
+                        col.Item().PaddingTop(3).AlignRight().Text($"الصافي المستحق: ₪ {invoice.NetDueToFarmer:0.##}").Bold().FontSize(14);
                         break;
 
                     case InvoicePrintRole.Driver:
@@ -1506,7 +1506,7 @@ public class ExportService : IExportService
                         if (invoice.WoodTotal > 0)
                             col.Item().AlignRight().Text($"سعر الخشب (لا يُضاف للمستحق): ₪ {invoice.WoodTotal:0.##}").FontSize(8).FontColor(PrintInk.Secondary);
                         var driverDue = InvoiceCharge.ForDriver(invoice.TransportFee, invoice.DriverBoxFeeTotal);
-                        col.Item().PaddingTop(2).AlignRight().Text($"الإجمالي المستحق للسائق: ₪ {driverDue:0.##}").Bold().FontSize(10);
+                        col.Item().PaddingTop(3).AlignRight().Text($"الإجمالي المستحق للسائق: ₪ {driverDue:0.##}").Bold().FontSize(14);
                         break;
                     }
 
@@ -1516,22 +1516,6 @@ public class ExportService : IExportService
                         CardMerchantTotals(col, invoice.WoodTotal, invoice.BoxFeeTotal, invoice.GrandTotal, invoice.PreviousBalance);
                         break;
                 }
-
-                // The same boxed addressee-and-total that closes the full-page invoices, scaled to a
-                // quarter page. A card is the copy most likely to be handed straight to someone, and it
-                // is the one where the working and the answer were hardest to tell apart.
-                //
-                // Each role's own total, matching the line its branch just printed — the buyer's
-                // including his previous balance the way his full-page copy does, the seller's and the
-                // driver's being this invoice alone, since neither card carries a running balance.
-                var (blockLabel, blockAmount) = role switch
-                {
-                    InvoicePrintRole.Farmer => ("الصافي المستحق", invoice.NetDueToFarmer),
-                    InvoicePrintRole.Driver => ("الإجمالي المستحق", InvoiceCharge.ForDriver(invoice.TransportFee, invoice.DriverBoxFeeTotal)),
-                    _ => (invoice.PreviousBalance > 0 ? "الإجمالي المستحق" : "الإجمالي",
-                          invoice.GrandTotal + (invoice.PreviousBalance > 0 ? invoice.PreviousBalance : 0m)),
-                };
-                PartyTotalBlock(col, partyLabel, partyName ?? "", blockLabel, blockAmount, 0.52f);
             });
         });
     }
@@ -1615,11 +1599,15 @@ public class ExportService : IExportService
             column.Item().AlignRight().Text($"منها سعر الخشب: ₪ {woodTotal:0.##}").FontSize(8);
         if (boxFeeTotal > 0)
             column.Item().AlignRight().Text($"منها رسوم الصناديق: ₪ {boxFeeTotal:0.##}").FontSize(8);
-        column.Item().PaddingTop(2).AlignRight().Text($"الإجمالي: ₪ {grandTotal:0.##}").Bold().FontSize(10);
+        // The bottom line of the card, and the reason the whole block is pinned to the bottom of
+        // the quarter: it is the figure someone goes looking for, so it is set well above
+        // everything around it rather than merely bolded among equals.
+        column.Item().PaddingTop(3).AlignRight().Text($"الإجمالي: ₪ {grandTotal:0.##}").Bold().FontSize(14);
         if (previousBalance > 0)
         {
             column.Item().AlignRight().Text($"الرصيد السابق: ₪ {previousBalance:0.##}").FontSize(8);
-            column.Item().PaddingTop(1).AlignRight().Text($"الإجمالي المستحق: ₪ {(grandTotal + previousBalance):0.##}").Bold().FontSize(10);
+            // With a previous balance the combined figure is the one being looked for instead.
+            column.Item().PaddingTop(1).AlignRight().Text($"الإجمالي المستحق: ₪ {(grandTotal + previousBalance):0.##}").Bold().FontSize(15);
         }
     }
 
@@ -1655,14 +1643,6 @@ public class ExportService : IExportService
 
             col.Item().PaddingTop(4).LineHorizontal(0.5f).LineColor(PrintInk.Text);
             CardMerchantTotals(col, group.WoodTotal, group.BoxFeeTotal, group.GrandTotal, group.PreviousBalance);
-
-            // Same closing block as every other invoice this app prints — a merged day is still a
-            // bill handed to one buyer, and it is read the same way.
-            PartyTotalBlock(
-                col, "المطلوب من", group.MerchantName,
-                group.PreviousBalance > 0 ? "الإجمالي المستحق" : "الإجمالي",
-                group.GrandTotal + (group.PreviousBalance > 0 ? group.PreviousBalance : 0m),
-                0.52f);
         });
     }
     /// <summary>
@@ -1701,36 +1681,6 @@ public class ExportService : IExportService
         container.Background(shaded ? PrintInk.ZebraFill : PrintInk.NoFill).PaddingVertical(3).PaddingHorizontal(4).DefaultTextStyle(x => x.FontSize(9));
 
     /// <summary>Shaded header cell for a "مرتب" (organized) look — grey background, bold text.</summary>
-    /// <summary>
-    /// The two facts a person picks the paper up to read: who it is addressed to, and the single
-    /// number that settles it. Boxed, bold, oversized, and always the LAST thing on the page,
-    /// bottom-right — the same place on every invoice the market prints, so finding it never
-    /// depends on which kind of copy is in your hand.
-    ///
-    /// It repeats what the lines above already said, on purpose. Those lines are the working: the
-    /// wood, the crate fee, the commission, the transport, the previous balance. Someone handed an
-    /// invoice across a counter is not reading the working, and the figure they were reading
-    /// instead was set in the same size as the rest of the page, four lines up from the bottom,
-    /// next to three other numbers that were not it.
-    /// </summary>
-    /// <param name="scale">1 for A4. Smaller for the 80mm roll and the quarter-page cards, which
-    /// have the same need and a fraction of the room.</param>
-    private static void PartyTotalBlock(
-        ColumnDescriptor column, string partyLabel, string partyName, string totalLabel, decimal total,
-        float scale = 1f)
-    {
-        var name = string.IsNullOrWhiteSpace(partyName) ? "—" : partyName;
-        column.Item().PaddingTop(8 * scale).AlignRight()
-            .Border(1.5f).BorderColor(PrintInk.Text)
-            .PaddingVertical(6 * scale).PaddingHorizontal(10 * scale)
-            .Column(box =>
-        {
-            box.Item().AlignRight().Text($"{partyLabel}: {name}").Bold().FontSize(15 * scale);
-            box.Item().PaddingTop(3 * scale).AlignRight()
-                .Text($"{totalLabel}: ₪ {total:0.##}").Bold().FontSize(19 * scale);
-        });
-    }
-
     private static IContainer HeaderCell(IContainer container) =>
         container.Background(PrintInk.HeaderFill).PaddingVertical(6).PaddingHorizontal(6).DefaultTextStyle(x => x.Bold());
 

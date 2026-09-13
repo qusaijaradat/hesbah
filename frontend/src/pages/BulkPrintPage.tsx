@@ -805,7 +805,11 @@ export function BulkPrintPage() {
   // message (explicit requirement). The printed PDF itself is unaffected — it still prints each
   // selected invoice separately, four per page (ExportService.GenerateInvoicesBulkPdf).
   const traderGroups = useMemo(() => {
-    const selectedRows = merchantSection.result.filter((i) => merchantSection.selected.has(i.id));
+    // Only people who can actually be sent to. These three tables exist for one button; a row
+    // whose button can never be pressed is a name taking up space and a reader wondering what
+    // they are meant to do about it. Whoever has no number is reached some other way, and this
+    // screen is not where that gets decided.
+    const selectedRows = merchantSection.result.filter((i) => merchantSection.selected.has(i.id) && i.merchantWhatsApp);
     const byTrader = new Map<string, { key: string; merchantId: number; merchantName: string; merchantWhatsApp?: string | null; day: string; invoiceIds: number[]; total: number }>();
     for (const inv of selectedRows) {
       const day = formatDate(inv.date);
@@ -853,7 +857,8 @@ export function BulkPrintPage() {
   // a farmer/driver's previous balance is just their own live account balance, so it doesn't
   // change no matter how the invoices are grouped).
   const farmerGroups = useMemo(() => {
-    const selectedRows = farmerSection.result.filter((i) => farmerSection.selected.has(i.id) && i.farmerId);
+    // Same as the merchant grouping above: no number, no row.
+    const selectedRows = farmerSection.result.filter((i) => farmerSection.selected.has(i.id) && i.farmerId && i.farmerWhatsApp);
     const byFarmer = new Map<number, { farmerId: number; farmerName: string; farmerWhatsApp?: string | null; invoiceIds: number[]; total: number }>();
     for (const inv of selectedRows) {
       const existing = byFarmer.get(inv.farmerId!);
@@ -896,7 +901,8 @@ export function BulkPrintPage() {
   // (falling back to name only for invoices that predate that field). driverWhatsApp/driverId are
   // carried through too so the same group can also drive a WhatsApp send button.
   const driverGroups = useMemo(() => {
-    const selectedRows = driverSection.result.filter((i) => driverSection.selected.has(i.id) && i.driverName);
+    // Same again — and driverId too, since sending needs the account, not just the name.
+    const selectedRows = driverSection.result.filter((i) => driverSection.selected.has(i.id) && i.driverName && i.driverId && i.driverWhatsApp);
     const byDriver = new Map<string | number, { key: string | number; driverId?: number | null; driverName: string; driverWhatsApp?: string | null; invoiceIds: number[]; totalDriverDue: number }>();
     for (const inv of selectedRows) {
       const key = inv.driverId ?? inv.driverName!;
@@ -1075,17 +1081,13 @@ export function BulkPrintPage() {
                   <td>{g.invoiceIds.length}</td>
                   <td className="font-semibold">{formatCurrency(g.total)}</td>
                   <td>
-                    {g.merchantWhatsApp ? (
-                      <button
-                        className="btn-secondary"
-                        disabled={sendingTraderKey === g.key}
-                        onClick={() => handleSendTraderWhatsApp(g.key, g.merchantId, g.merchantWhatsApp!, g.merchantName, g.invoiceIds)}
-                      >
-                        {sendingTraderKey === g.key ? "جاري التجهيز..." : "📤 إرسال واتساب"}
-                      </button>
-                    ) : (
-                      <span className="text-xs text-gray-400">لا يوجد رقم واتساب</span>
-                    )}
+                    <button
+                      className="btn-secondary"
+                      disabled={sendingTraderKey === g.key}
+                      onClick={() => handleSendTraderWhatsApp(g.key, g.merchantId, g.merchantWhatsApp!, g.merchantName, g.invoiceIds)}
+                    >
+                      {sendingTraderKey === g.key ? "جاري التجهيز..." : "📤 إرسال واتساب"}
+                    </button>
                   </td>
                 </tr>
               ))}
@@ -1113,17 +1115,13 @@ export function BulkPrintPage() {
                   <td>{g.invoiceIds.length}</td>
                   <td className="font-semibold">{formatCurrency(g.total)}</td>
                   <td>
-                    {g.farmerWhatsApp ? (
-                      <button
-                        className="btn-secondary"
-                        disabled={sendingFarmerId === g.farmerId}
-                        onClick={() => handleSendFarmerWhatsApp(g.farmerId, g.farmerWhatsApp!, g.farmerName, g.invoiceIds)}
-                      >
-                        {sendingFarmerId === g.farmerId ? "جاري التجهيز..." : "📤 إرسال واتساب"}
-                      </button>
-                    ) : (
-                      <span className="text-xs text-gray-400">لا يوجد رقم واتساب</span>
-                    )}
+                    <button
+                      className="btn-secondary"
+                      disabled={sendingFarmerId === g.farmerId}
+                      onClick={() => handleSendFarmerWhatsApp(g.farmerId, g.farmerWhatsApp!, g.farmerName, g.invoiceIds)}
+                    >
+                      {sendingFarmerId === g.farmerId ? "جاري التجهيز..." : "📤 إرسال واتساب"}
+                    </button>
                   </td>
                 </tr>
               ))}
@@ -1160,17 +1158,13 @@ export function BulkPrintPage() {
                         shareTitle={`كشف السائق ${g.driverName}`}
                         printLabel="🖨️ طباعة كشف السائق"
                       />
-                      {g.driverId && g.driverWhatsApp ? (
-                        <button
-                          className="btn-secondary"
-                          disabled={sendingDriverKey === g.key}
-                          onClick={() => handleSendDriverWhatsApp(g.key, g.driverId!, g.driverWhatsApp!, g.driverName, g.invoiceIds)}
-                        >
-                          {sendingDriverKey === g.key ? "جاري التجهيز..." : "📤 إرسال واتساب"}
-                        </button>
-                      ) : (
-                        <span className="text-xs text-gray-400 self-center">لا يوجد رقم واتساب</span>
-                      )}
+                      <button
+                        className="btn-secondary"
+                        disabled={sendingDriverKey === g.key}
+                        onClick={() => handleSendDriverWhatsApp(g.key, g.driverId!, g.driverWhatsApp!, g.driverName, g.invoiceIds)}
+                      >
+                        {sendingDriverKey === g.key ? "جاري التجهيز..." : "📤 إرسال واتساب"}
+                      </button>
                     </div>
                   </td>
                 </tr>

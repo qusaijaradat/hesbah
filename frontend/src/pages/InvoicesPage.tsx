@@ -12,6 +12,7 @@ import { useSelection } from "../lib/useSelection";
 import { TablePagination } from "../components/TablePagination";
 import { runBulkDelete, summarizeBulkDelete } from "../lib/bulkDelete";
 import { InvoiceLink, PartnerLink } from "../components/RecordLinks";
+import { PartnerAutocomplete } from "../components/PartnerAutocomplete";
 
 const STATUS_LABELS: Record<string, string> = { Active: "فعّالة", Cancelled: "ملغاة" };
 
@@ -45,6 +46,13 @@ export function InvoicesPage() {
   // Defaults to today (explicit request: "الفواتير لازم تنعرض بتاريخ اليوم افتراضيًا") — changing
   // either date input below then drives the same filter/refresh as any other change here.
   const [searchParams] = useSearchParams();
+  // The filter carries ids; the pickers need the whole person to show a name back. Kept beside
+  // the filter rather than derived from it — resolving three ids to three names on every render
+  // would be three lookups to redisplay something the user just typed.
+  type Pick = { id: number; name: string } | null;
+  const [merchantPick, setMerchantPick] = useState<Pick>(null);
+  const [farmerPick, setFarmerPick] = useState<Pick>(null);
+  const [driverPick, setDriverPick] = useState<Pick>(null);
   const [filter, setFilter] = useState<InvoiceFilter>(() => {
     // Arriving from a dashboard card ("فواتير غير مسدّدة") means asking about the CURRENT
     // position, not about today — so a linked filter drops the default date window entirely,
@@ -232,6 +240,52 @@ export function InvoicesPage() {
         <div>
           <label className="label">اسم الصنف</label>
           <input className="input" onChange={(e) => setFilter((f) => ({ ...f, itemName: e.target.value || undefined, page: 1 }))} />
+        </div>
+        {/* The three parties, and the amount. Every one of these was already understood by the
+            list endpoint (InvoiceFilter.merchantId/farmerId/driverId, minAmount/maxAmount) and
+            simply had nothing on screen to set it.
+
+            They go in this panel rather than in a filter row under the table header, unlike every
+            other table in the app: this list is paged by the SERVER, 25 rows at a time, so a
+            filter that narrowed the rows already on screen would answer "كم فاتورة لأبو علي" with
+            however many of his happen to be on the page you are looking at. */}
+        <div>
+          <label className="label">المشتري</label>
+          <PartnerAutocomplete
+            label="المشتري" labelHidden value={merchantPick}
+            onChange={(p) => { setMerchantPick(p); setFilter((f) => ({ ...f, merchantId: p?.id, page: 1 })); }}
+            types={["Merchant"]}
+          />
+        </div>
+        <div>
+          <label className="label">البائع</label>
+          <PartnerAutocomplete
+            label="البائع" labelHidden value={farmerPick}
+            onChange={(p) => { setFarmerPick(p); setFilter((f) => ({ ...f, farmerId: p?.id, page: 1 })); }}
+            types={["Farmer"]}
+          />
+        </div>
+        <div>
+          <label className="label">السائق</label>
+          <PartnerAutocomplete
+            label="السائق" labelHidden value={driverPick}
+            onChange={(p) => { setDriverPick(p); setFilter((f) => ({ ...f, driverId: p?.id, page: 1 })); }}
+            types={["Driver", "Farmer"]}
+          />
+        </div>
+        <div>
+          <label className="label">المبلغ من</label>
+          <input
+            type="number" className="input" step="0.01"
+            onChange={(e) => setFilter((f) => ({ ...f, minAmount: e.target.value ? Number(e.target.value) : undefined, page: 1 }))}
+          />
+        </div>
+        <div>
+          <label className="label">المبلغ إلى</label>
+          <input
+            type="number" className="input" step="0.01"
+            onChange={(e) => setFilter((f) => ({ ...f, maxAmount: e.target.value ? Number(e.target.value) : undefined, page: 1 }))}
+          />
         </div>
         <div>
           <label className="label">حالة الدفع</label>

@@ -12,6 +12,7 @@ const KEY_LABELS: Record<string, string> = {
   "market.name": "اسم السوق/الحسبة",
   "market.registration_number": "الرقم/السجل التجاري (يظهر بترويسة الفاتورة المطبوعة)",
   "market.phone": "رقم هاتف الشركة (يظهر بترويسة الفاتورة المطبوعة)",
+  "market.whatsapp": "رقم واتساب الحسبة — بيظهر داخل رسائل الكشوف. إذا تركته فاضي، خيارات الإرسال عبر واتساب ما بتظهر أبداً",
   "market.address": "عنوان الشركة (يظهر بترويسة الفاتورة المطبوعة)",
   // Both in shekels, not agorot — 30 agorot is "0.3", not "30". The difference between the two
   // is what the market keeps per crate, so the labels say so rather than leaving it to be

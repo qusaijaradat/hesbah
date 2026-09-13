@@ -28,6 +28,19 @@ public class Setting
         /// <summary>Shown on the invoice/statement print header alongside the market name.</summary>
         public const string RegistrationNumber = "market.registration_number";
         public const string Phone = "market.phone";
+
+        /// <summary>
+        /// The number the market wants to be reached on over WhatsApp. Written into every
+        /// statement message so whoever receives one about their money can reply to it, and — left
+        /// empty — it turns the WhatsApp send options off everywhere rather than sending a
+        /// statement from a market that gave no way to answer back.
+        ///
+        /// A separate fact from <see cref="Phone"/>, which is the landline on the printed header:
+        /// the two are often different numbers, and only one of them can receive a reply. This is
+        /// NOT the retired whatsapp.business_number described above — that one claimed to be a
+        /// sending identity and was not; this one makes no such claim.
+        /// </summary>
+        public const string WhatsAppNumber = "market.whatsapp";
         public const string Address = "market.address";
 
         /// <summary>"سعر الصندوق" — a per-box shekel fee, configurable so it can be raised later

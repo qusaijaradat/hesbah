@@ -779,10 +779,13 @@ export function BulkPrintPage() {
   useEffect(() => {
     listSettings().then((settings) => {
       const name = settings.find((s) => s.key === "market.name")?.value;
-      // The company phone shown inside the message — the same one the printed invoice header
-      // carries. It used to read a separate "whatsapp.business_number" setting that held the same
-      // fact under a name promising the app sent from it, which it never did.
-      const phone = settings.find((s) => s.key === "market.phone")?.value;
+      // The number written inside the message, so whoever gets a statement about their money can
+      // reply to it. market.whatsapp, NOT market.phone: the phone is the landline on the printed
+      // header, and the two are usually different numbers — only one of them can receive a reply.
+      //
+      // Left empty it also turns WhatsApp off entirely on this page. A market that has not said
+      // where it wants to be reached should not be sending people statements from nowhere.
+      const phone = settings.find((s) => s.key === "market.whatsapp")?.value;
       if (name) setCompanyName(name);
       setCompanyPhone(phone || null);
     });

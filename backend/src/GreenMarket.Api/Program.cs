@@ -305,6 +305,29 @@ using (var scope = app.Services.CreateScope())
         app.Logger.LogError(ex, "Failed to add the partners.OpeningBalance column — recording an opening balance for a farmer/driver/merchant will not work until this is fixed.");
     }
 
+    // Delete the retired "whatsapp.business_number" row.
+    //
+    // The KEY was removed from the code (see Setting.Keys) because it promised a sending identity
+    // the app never had, but the ROW stayed in every existing database — and the settings screen
+    // renders whatever the API returns. So it kept showing, under its raw key name because no
+    // label exists for it any more, empty, beside the real settings: a field that looks like the
+    // WhatsApp number, reads as unset, and controls nothing. Somebody was always going to fill it
+    // in and wonder why nothing changed.
+    //
+    // Only while it is blank. A number typed into it is still data somebody entered, and throwing
+    // that away unasked is not this migration's business.
+    try
+    {
+        await db.Database.ExecuteSqlRawAsync("""
+            DELETE FROM settings
+            WHERE "Key" = 'whatsapp.business_number' AND COALESCE(TRIM("Value"), '') = '';
+            """);
+    }
+    catch (Exception ex)
+    {
+        app.Logger.LogError(ex, "Failed to remove the retired whatsapp.business_number setting — it will keep appearing on the settings screen as an unlabelled empty field.");
+    }
+
     // FarmerTransaction.Invoice went from a one-to-one relationship to one-to-many (an invoice can
     // now carry BOTH a farmer's Sale row and a driver's TransportFee row — see
     // FarmerTransactionType.TransportFee / Invoice.FarmerTransactions). EnsureCreatedAsync only

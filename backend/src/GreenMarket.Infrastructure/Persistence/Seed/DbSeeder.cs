@@ -167,6 +167,9 @@ public static class DbSeeder
             new Setting { Key = Setting.Keys.RegistrationNumber, Value = "", Description = "Company/commercial registration number shown on the printed invoice header." },
             new Setting { Key = Setting.Keys.Phone, Value = "", Description = "Company phone number shown on the printed invoice header." },
             new Setting { Key = Setting.Keys.Address, Value = "", Description = "Company address shown on the printed invoice header." },
+            // Empty on purpose: no number means no WhatsApp offered anywhere, which is the right
+            // default for a market that has not said where it wants to be reached.
+            new Setting { Key = Setting.Keys.WhatsAppNumber, Value = "", Description = "رقم واتساب الحسبة — يظهر داخل رسائل الكشوف، وبدونه ما بتطلع خيارات الإرسال عبر واتساب." },
             // In SHEKELS. The market takes 1.00 a crate from the buyer and passes 0.30 to the
             // driver, keeping 0.70 — "٧ أغورات" in the way the market counts, where an أغورة is a
             // tenth of a shekel.

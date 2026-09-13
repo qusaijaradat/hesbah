@@ -312,7 +312,9 @@ public class ExportService : IExportService
                     page.Size(PageSizes.A4);
 
                 page.Margin(thermalWidth ? 8 : 30);
-                page.DefaultTextStyle(x => x.FontSize(thermalWidth ? 9 : 11).FontFamily(PdfFontFamily));
+                // Bigger than it was (9/11). This is read across a counter in a market, often by
+                // someone who is not going to hold it up to their face to do it.
+                page.DefaultTextStyle(x => x.FontSize(thermalWidth ? 10 : 13).FontFamily(PdfFontFamily));
 
                 // RTL so every line in this Column (and the item table below) reads right-aligned
                 // and right-to-left, matching how an Arabic reader scans the page — the item
@@ -334,9 +336,12 @@ public class ExportService : IExportService
                             textCol.Item().AlignCenter().Text($"هاتف: {company.Phone}").FontSize(thermalWidth ? 8 : 9);
                     });
                     col.Item().PaddingTop(6).LineHorizontal(1).LineColor(PrintInk.Text);
-                    col.Item().PaddingTop(6).Text("فاتورة مشتري").Bold().FontSize(thermalWidth ? 10 : 13);
-                    col.Item().PaddingTop(2).Text($"التاريخ: {invoice.Date:yyyy-MM-dd}").FontSize(thermalWidth ? 9 : 11);
-                    col.Item().Text($"المطلوب من: {invoice.MerchantName}").FontSize(thermalWidth ? 9 : 11);
+                    col.Item().PaddingTop(6).Text("فاتورة مشتري").Bold().FontSize(thermalWidth ? 11 : 15);
+                    col.Item().PaddingTop(2).Text($"التاريخ: {invoice.Date:yyyy-MM-dd}").FontSize(thermalWidth ? 10 : 12);
+                    // Named here AND in the boxed block at the foot of the page. The header names
+                    // the addressee while the eye is at the top; the block is what is still on
+                    // screen when the reader has finished the lines.
+                    col.Item().Text($"المطلوب من: {invoice.MerchantName}").Bold().FontSize(thermalWidth ? 11 : 14);
                     // البائع/السائق deliberately NOT shown here — this document goes to the buyer,
                     // who isn't shown who supplied/delivered the goods (explicit request).
                 });
@@ -420,17 +425,23 @@ public class ExportService : IExportService
                         col.Item().AlignRight().Text($"رسوم الصناديق: ₪ {invoice.BoxFeeTotal:0.##}").FontSize(thermalWidth ? 8 : 10);
                     if (invoice.ReturnsTotal > 0)
                         col.Item().AlignRight().Text($"مرتجع بضاعة: - ₪ {invoice.ReturnsTotal:0.##}").FontSize(thermalWidth ? 8 : 10).FontColor(PrintInk.Deduction);
-                    col.Item().PaddingTop(4).AlignRight().Text($"الإجمالي: ₪ {invoice.GrandTotal:0.##}").Bold().FontSize(13);
+                    col.Item().PaddingTop(4).AlignRight().Text($"الإجمالي: ₪ {invoice.GrandTotal:0.##}").FontSize(thermalWidth ? 10 : 12);
                     // What this merchant still owed BEFORE this invoice (computed in
                     // InvoiceService — every OTHER Active invoice's total minus every payment
                     // they've made, all-time), added on top so the printed total is what's
                     // actually due right now, not just this invoice's own amount.
                     if (invoice.PreviousBalance > 0)
-                    {
                         col.Item().AlignRight().Text($"الرصيد السابق: ₪ {invoice.PreviousBalance:0.##}").FontSize(thermalWidth ? 9 : 11);
-                        col.Item().PaddingTop(2).AlignRight()
-                            .Text($"الإجمالي المستحق: ₪ {(invoice.GrandTotal + invoice.PreviousBalance):0.##}").Bold().FontSize(thermalWidth ? 11 : 14);
-                    }
+
+                    // The lines above are the working; this is the answer. Where a previous balance
+                    // exists the answer is the two of them together — handing someone a bold box
+                    // saying "الإجمالي" that is not in fact what they owe today would be worse than
+                    // not boxing anything.
+                    PartyTotalBlock(
+                        col, "المطلوب من", invoice.MerchantName,
+                        invoice.PreviousBalance > 0 ? "الإجمالي المستحق" : "الإجمالي",
+                        invoice.GrandTotal + (invoice.PreviousBalance > 0 ? invoice.PreviousBalance : 0m),
+                        thermalWidth ? 0.62f : 1f);
                 });
             });
         });
@@ -457,7 +468,8 @@ public class ExportService : IExportService
             {
                 page.Size(PageSizes.A4);
                 page.Margin(30);
-                page.DefaultTextStyle(x => x.FontSize(11).FontFamily(PdfFontFamily));
+                // Same bump as the buyer's copy — see its own note.
+                page.DefaultTextStyle(x => x.FontSize(13).FontFamily(PdfFontFamily));
 
                 page.Header().ContentFromRightToLeft().Column(col =>
                 {
@@ -480,7 +492,7 @@ public class ExportService : IExportService
                     // the driver's are "المطلوب إلى" (the market owes them). The driver line below
                     // keeps its own label: that is a different person (who hauled the load), not who
                     // this copy is for.
-                    col.Item().Text($"المطلوب إلى: {invoice.FarmerName}").FontSize(11);
+                    col.Item().Text($"المطلوب إلى: {invoice.FarmerName}").Bold().FontSize(14);
                     // Shown on the farmer's own copy — unlike the merchant copy above, which
                     // deliberately hides who supplied/delivered the goods. Omitted entirely when
                     // the invoice has no driver attached, rather than printing an empty line.
@@ -553,12 +565,16 @@ public class ExportService : IExportService
                     // TotalValue − Commission − TransportFee.
                     if (invoice.TransportFee > 0)
                         col.Item().AlignRight().Text($"أجرة النقل: - ₪ {invoice.TransportFee:0.##}").FontColor(PrintInk.Deduction);
-                    col.Item().PaddingTop(2).AlignRight().Text($"الصافي المستحق لهذه الفاتورة: ₪ {invoice.NetDueToFarmer:0.##}").Bold().FontSize(13);
+                    col.Item().PaddingTop(2).AlignRight().Text($"الصافي المستحق لهذه الفاتورة: ₪ {invoice.NetDueToFarmer:0.##}").FontSize(12);
                     if (previousBalance != 0)
-                    {
-                        col.Item().PaddingTop(2).AlignRight().Text($"الرصيد السابق (رصيد حساب البائع الحالي): ₪ {previousBalance:0.##}").FontSize(10);
-                        col.Item().PaddingTop(2).AlignRight().Text($"الإجمالي المستحق: ₪ {(invoice.NetDueToFarmer + previousBalance):0.##}").Bold().FontSize(13);
-                    }
+                        col.Item().AlignRight().Text($"الرصيد السابق (رصيد حساب البائع الحالي): ₪ {previousBalance:0.##}").FontSize(11);
+
+                    // Same block, same corner, same size as the buyer's copy — the direction of the
+                    // money is the only thing that differs, and the label carries that.
+                    PartyTotalBlock(
+                        col, "المطلوب إلى", invoice.FarmerName ?? "",
+                        previousBalance != 0 ? "الإجمالي المستحق" : "الصافي المستحق",
+                        invoice.NetDueToFarmer + previousBalance);
                 });
             });
         });
@@ -1418,9 +1434,9 @@ public class ExportService : IExportService
                 InvoicePrintRole.Driver => ("فاتورة سائق", "المطلوب إلى", invoice.DriverName),
                 _ => ("فاتورة مشتري", "المطلوب من", invoice.MerchantName),
             };
-            col.Item().PaddingTop(3).Text(title).Bold().FontSize(9);
-            col.Item().Text($"التاريخ: {invoice.Date:yyyy-MM-dd}").FontSize(8);
-            col.Item().Text($"{partyLabel}: {(string.IsNullOrWhiteSpace(partyName) ? "—" : partyName)}").FontSize(8);
+            col.Item().PaddingTop(3).Text(title).Bold().FontSize(10);
+            col.Item().Text($"التاريخ: {invoice.Date:yyyy-MM-dd}").FontSize(9);
+            col.Item().Text($"{partyLabel}: {(string.IsNullOrWhiteSpace(partyName) ? "—" : partyName)}").Bold().FontSize(10);
             // The seller's copy — and ONLY the seller's — also names the driver who hauled the
             // load (explicit request: "بس فاتورة البائع تطلع فيها اسم السائق، الباقي" as is),
             // matching what the full-page "نسخة البائع" already shows. The buyer's copy still
@@ -1479,6 +1495,22 @@ public class ExportService : IExportService
                     CardMerchantTotals(col, invoice.WoodTotal, invoice.BoxFeeTotal, invoice.GrandTotal, invoice.PreviousBalance);
                     break;
             }
+
+            // The same boxed addressee-and-total that closes the full-page invoices, scaled to a
+            // quarter page. A card is the copy most likely to be handed straight to someone, and it
+            // is the one where the working and the answer were hardest to tell apart.
+            //
+            // Each role's own total, matching the line its branch just printed — the buyer's
+            // including his previous balance the way his full-page copy does, the seller's and the
+            // driver's being this invoice alone, since neither card carries a running balance.
+            var (blockLabel, blockAmount) = role switch
+            {
+                InvoicePrintRole.Farmer => ("الصافي المستحق", invoice.NetDueToFarmer),
+                InvoicePrintRole.Driver => ("الإجمالي المستحق", InvoiceCharge.ForDriver(invoice.TransportFee, invoice.DriverBoxFeeTotal)),
+                _ => (invoice.PreviousBalance > 0 ? "الإجمالي المستحق" : "الإجمالي",
+                      invoice.GrandTotal + (invoice.PreviousBalance > 0 ? invoice.PreviousBalance : 0m)),
+            };
+            PartyTotalBlock(col, partyLabel, partyName ?? "", blockLabel, blockAmount, 0.52f);
         });
     }
 
@@ -1590,15 +1622,23 @@ public class ExportService : IExportService
                     textCol.Item().AlignCenter().Text($"هاتف: {company.Phone}").FontSize(7);
             });
             col.Item().PaddingTop(3).LineHorizontal(0.5f).LineColor(PrintInk.Text);
-            col.Item().PaddingTop(3).Text("فاتورة مشتري").Bold().FontSize(9);
-            col.Item().Text($"التاريخ: {group.Date:yyyy-MM-dd}").FontSize(8);
-            col.Item().Text($"المطلوب من: {group.MerchantName}").FontSize(8);
+            col.Item().PaddingTop(3).Text("فاتورة مشتري").Bold().FontSize(10);
+            col.Item().Text($"التاريخ: {group.Date:yyyy-MM-dd}").FontSize(9);
+            col.Item().Text($"المطلوب من: {group.MerchantName}").Bold().FontSize(10);
             col.Item().PaddingTop(4).LineHorizontal(0.5f).LineColor(PrintInk.Text);
 
             CardItemsTable(col, group.Items, isDriverCopy: false);
 
             col.Item().PaddingTop(4).LineHorizontal(0.5f).LineColor(PrintInk.Text);
             CardMerchantTotals(col, group.WoodTotal, group.BoxFeeTotal, group.GrandTotal, group.PreviousBalance);
+
+            // Same closing block as every other invoice this app prints — a merged day is still a
+            // bill handed to one buyer, and it is read the same way.
+            PartyTotalBlock(
+                col, "المطلوب من", group.MerchantName,
+                group.PreviousBalance > 0 ? "الإجمالي المستحق" : "الإجمالي",
+                group.GrandTotal + (group.PreviousBalance > 0 ? group.PreviousBalance : 0m),
+                0.52f);
         });
     }
     /// <summary>
@@ -1634,6 +1674,36 @@ public class ExportService : IExportService
         container.Background(shaded ? PrintInk.ZebraFill : PrintInk.NoFill).PaddingVertical(2).PaddingHorizontal(3).DefaultTextStyle(x => x.FontSize(7));
 
     /// <summary>Shaded header cell for a "مرتب" (organized) look — grey background, bold text.</summary>
+    /// <summary>
+    /// The two facts a person picks the paper up to read: who it is addressed to, and the single
+    /// number that settles it. Boxed, bold, oversized, and always the LAST thing on the page,
+    /// bottom-right — the same place on every invoice the market prints, so finding it never
+    /// depends on which kind of copy is in your hand.
+    ///
+    /// It repeats what the lines above already said, on purpose. Those lines are the working: the
+    /// wood, the crate fee, the commission, the transport, the previous balance. Someone handed an
+    /// invoice across a counter is not reading the working, and the figure they were reading
+    /// instead was set in the same size as the rest of the page, four lines up from the bottom,
+    /// next to three other numbers that were not it.
+    /// </summary>
+    /// <param name="scale">1 for A4. Smaller for the 80mm roll and the quarter-page cards, which
+    /// have the same need and a fraction of the room.</param>
+    private static void PartyTotalBlock(
+        ColumnDescriptor column, string partyLabel, string partyName, string totalLabel, decimal total,
+        float scale = 1f)
+    {
+        var name = string.IsNullOrWhiteSpace(partyName) ? "—" : partyName;
+        column.Item().PaddingTop(8 * scale).AlignRight()
+            .Border(1.5f).BorderColor(PrintInk.Text)
+            .PaddingVertical(6 * scale).PaddingHorizontal(10 * scale)
+            .Column(box =>
+        {
+            box.Item().AlignRight().Text($"{partyLabel}: {name}").Bold().FontSize(15 * scale);
+            box.Item().PaddingTop(3 * scale).AlignRight()
+                .Text($"{totalLabel}: ₪ {total:0.##}").Bold().FontSize(19 * scale);
+        });
+    }
+
     private static IContainer HeaderCell(IContainer container) =>
         container.Background(PrintInk.HeaderFill).PaddingVertical(6).PaddingHorizontal(6).DefaultTextStyle(x => x.Bold());
 

@@ -8,7 +8,21 @@
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
     <link rel="icon" type="image/png" sizes="192x192" href="/favicon-192.png" />
     <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- viewport-fit=cover so the app can paint under an iPhone's notch and home bar; the layout
+         keeps its distance from them through the safe-area padding in index.css. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+
+    <!-- Installable on a phone without an app store, an Apple developer account, or a review
+         queue: same code, same API, same database, just added to the home screen. -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="theme-color" content="#15803d" />
+
+    <!-- iOS reads none of the manifest's display settings. Without these three, "Add to Home
+         Screen" on an iPhone produces a bookmark that opens in Safari with its chrome intact,
+         which is not what anyone means by installing an app. -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="الحسبة" />
     <title>الحسبة</title>
   </head>
   <body>

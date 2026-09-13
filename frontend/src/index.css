@@ -9,6 +9,33 @@ html, body, #root {
 body {
   @apply bg-gray-50 text-gray-900;
   font-family: "Tahoma", "Segoe UI", Arial, sans-serif;
+
+  /* Installed on a phone, the app paints edge to edge (viewport-fit=cover in index.html), which
+     puts the top of the page under the notch and the bottom under the home bar. These keep the
+     content clear of both and are zero on every device that has neither. */
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+
+  /* A double-tap on iOS zooms the page. On a screen of small buttons that is almost never what
+     someone meant, and pinch-to-zoom still works. */
+  touch-action: manipulation;
+}
+
+/* Tables here are wide by nature — an invoice line has ten columns. On a phone they scroll inside
+   their own card (every one of them sits in an overflow-x-auto container), and this keeps that
+   scroll from feeling broken on iOS. */
+@media (max-width: 640px) {
+  .overflow-x-auto {
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* iOS zooms the whole page in when a focused input is smaller than 16px. The app then stays
+     zoomed after the keyboard closes, and every screen is suddenly too wide. */
+  input, select, textarea {
+    font-size: 16px;
+  }
 }
 
 /* RTL-aware focus ring so keyboard users can see where they are on every input/button */

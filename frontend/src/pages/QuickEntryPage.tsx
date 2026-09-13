@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { PartnerAutocomplete } from "../components/PartnerAutocomplete";
 import { ItemAutocomplete } from "../components/ItemAutocomplete";
@@ -8,6 +8,33 @@ import { formatCurrency, todayLocalDateString } from "../lib/format";
 import { lineTotalOf } from "../lib/invoiceCharge";
 import { auditRows, groupRows, groupTransportFee, isBlank, num } from "../lib/ledgerAudit";
 import type { Finding, LedgerRow } from "../lib/ledgerAudit";
+import { parseScannedRows, parseSpokenRow } from "../lib/ledgerCapture";
+import type { KnownNames } from "../lib/ledgerCapture";
+import { listPartners } from "../api/partners";
+import { listItems } from "../api/items";
+
+/**
+ * The browser's own speech recognition — free, no key, no account. Typed by hand because it is
+ * not in the DOM lib: it is a vendor-prefixed API in Chrome and simply absent elsewhere, which
+ * is why every use of it below is guarded rather than assumed.
+ *
+ * Worth knowing before relying on it: Chrome does the recognition on Google's servers, so the
+ * audio leaves the device. Free, but not local.
+ */
+interface SpeechResultEvent { results: { 0: { transcript: string } }[] }
+interface SpeechRecognitionLike {
+  lang: string; continuous: boolean; interimResults: boolean;
+  start(): void; stop(): void;
+  onresult: ((e: SpeechResultEvent) => void) | null;
+  onerror: ((e: { error?: string }) => void) | null;
+  onend: (() => void) | null;
+}
+type SpeechCtor = new () => SpeechRecognitionLike;
+
+function speechRecognitionCtor(): SpeechCtor | null {
+  const w = window as unknown as { SpeechRecognition?: SpeechCtor; webkitSpeechRecognition?: SpeechCtor };
+  return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null;
+}
 
 /**
  * "إدخال الدفتر" — EXPERIMENTAL. Types a page of the paper ledger in one pass.
@@ -51,6 +78,21 @@ export function QuickEntryPage() {
   const [rows, setRows] = useState<Row[]>(() => Array.from({ length: 8 }, emptyRow));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [pasting, setPasting] = useState(false);
+  const [pasteText, setPasteText] = useState("");
+  const [listening, setListening] = useState<number | null>(null);
+  // Everyone and everything already on file. Fetched once: both capture paths match a rough
+  // reading against this list rather than reading a name cold, which is the whole reason either
+  // of them stands a chance on handwriting or on a noisy stall.
+  const [known, setKnown] = useState<KnownNames>({ items: [], partners: [] });
+  const recognition = useRef<SpeechRecognitionLike | null>(null);
+
+  useEffect(() => {
+    listPartners({ pageSize: 1000 }).then((r) =>
+      setKnown((k) => ({ ...k, partners: r.items.map((p) => ({ id: p.id, name: p.name })) })));
+    listItems({ pageSize: 1000 }).then((r) =>
+      setKnown((k) => ({ ...k, items: r.items.map((i) => i.name) })));
+  }, []);
   const [saved, setSaved] = useState<{ count: number; invoices: { id: number; number: string }[] } | null>(null);
 
   function updateRow(index: number, patch: Partial<Row>) {
@@ -74,6 +116,47 @@ export function QuickEntryPage() {
       driver: prev[i - 1].driver, driverText: prev[i - 1].driverText,
       itemName: prev[i - 1].itemName,
     } : r)));
+  }
+
+  /**
+   * Rows read off a scanned page land in the grid — they are never saved from here. Existing
+   * typed rows are kept and the new ones are added after them, because someone who has typed half
+   * a page and then pastes the rest should not lose the half.
+   */
+  function applyPaste() {
+    const parsed = parseScannedRows(pasteText, known);
+    if (parsed.length === 0) { setError("ما قدرت أقرأ ولا سطر من النص."); return; }
+    setRows((prev) => [...prev.filter((r) => !isBlank(r)), ...parsed, ...Array.from({ length: 3 }, emptyRow)]);
+    setPasteText("");
+    setPasting(false);
+    setError(null);
+    setSaved(null);
+  }
+
+  /**
+   * Fills ONE row from one spoken sentence. Whatever the sentence did not make clear is left
+   * alone rather than overwritten — speaking a price should not blank a count already typed.
+   */
+  function listen(index: number) {
+    const Ctor = speechRecognitionCtor();
+    if (!Ctor) { setError("المتصفح هذا ما بدعم الإدخال الصوتي — جرّب Chrome."); return; }
+    if (listening !== null) { recognition.current?.stop(); return; }
+
+    const r = new Ctor();
+    r.lang = "ar-PS";
+    r.continuous = false;
+    r.interimResults = false;
+    r.onresult = (e) => {
+      const said = e.results[0]?.[0]?.transcript ?? "";
+      const patch = parseSpokenRow(said, known);
+      if (Object.keys(patch).length === 0) setError(`سمعت: "${said}" — بس ما قدرت أطلع منها إشي أكيد.`);
+      else { updateRow(index, patch); setError(null); }
+    };
+    r.onerror = (e) => setError(`تعذّر التسجيل${e.error ? `: ${e.error}` : ""}.`);
+    r.onend = () => { setListening(null); recognition.current = null; };
+    recognition.current = r;
+    setListening(index);
+    r.start();
   }
 
   const live = rows.filter((r) => !isBlank(r));
@@ -209,6 +292,30 @@ export function QuickEntryPage() {
         </div>
       )}
 
+      {pasting && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50" onClick={() => setPasting(false)}>
+          <div className="card p-5 w-full max-w-2xl" onClick={(e) => e.stopPropagation()}>
+            <h2 className="text-lg font-bold mb-1">لصق صفحة من سكان</h2>
+            <p className="text-xs text-gray-500 mb-3">
+              سطر لكل بيع، والخانات مفصولة بـ Tab أو فاصلة. الترتيب: المشتري، الصنف، العدد، الوزن، السعر،
+              السائق، البائع، الصناديق، الكرتون، الخشب، النقل — أو حطّ سطر عناوين بأي ترتيب وهو بيمشي عليه.
+              الأسماء بتنطابق مع الموجودين بالنظام، والي مش منهم بيضلّ نص والتدقيق بينبّهك عليه.
+            </p>
+            <textarea
+              className="input h-56 font-mono text-sm" dir="rtl"
+              placeholder={"أبو علي\tبندورة\t10\t\t3.5\tخالد\tسالم\t10"}
+              value={pasteText} onChange={(e) => setPasteText(e.target.value)}
+            />
+            <div className="flex gap-2 justify-end mt-3">
+              <button className="btn-secondary" onClick={() => setPasting(false)}>إلغاء</button>
+              <button className="btn-primary" onClick={applyPaste} disabled={pasteText.trim() === ""}>
+                اقرأ وعبّي الشبكة
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="card overflow-x-auto mb-4">
         <table className="table-base">
           <thead>
@@ -310,15 +417,27 @@ export function QuickEntryPage() {
                     {num(row.pricePerUnit) > 0 ? formatCurrency(total) : <span className="text-amber-600 text-xs">غير مسعّر</span>}
                   </td>
                   <td>
-                    {idx > 0 && (
+                    <div className="flex flex-col gap-1 items-start">
+                      {/* One sentence into one row. Only what a cue word vouches for is filled —
+                          see lib/ledgerCapture — so a misheard number is left blank rather than
+                          written into a price. */}
                       <button
-                        className="text-xs text-brand-700 hover:underline whitespace-nowrap"
-                        onClick={() => copyDown(idx)}
-                        title="ينسخ البائع والسائق والصنف من السطر اللي فوق — المشتري بتعبيه انت"
+                        className={`text-xs whitespace-nowrap ${listening === idx ? "text-red-600 font-semibold" : "text-brand-700 hover:underline"}`}
+                        onClick={() => listen(idx)}
+                        title="قول السطر: اسم المشتري، الصنف، عدد ٢٠، بسعر ٣٫٥، صناديق ١٠"
                       >
-                        ↑ زي فوق
+                        {listening === idx ? "● عم يسمع..." : "🎤 صوت"}
                       </button>
-                    )}
+                      {idx > 0 && (
+                        <button
+                          className="text-xs text-brand-700 hover:underline whitespace-nowrap"
+                          onClick={() => copyDown(idx)}
+                          title="ينسخ البائع والسائق والصنف من السطر اللي فوق — المشتري بتعبيه انت"
+                        >
+                          ↑ زي فوق
+                        </button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               );
@@ -331,6 +450,7 @@ export function QuickEntryPage() {
         <button className="btn-secondary" onClick={() => setRows((prev) => [...prev, ...Array.from({ length: 5 }, emptyRow)])}>
           + ٥ أسطر
         </button>
+        <button className="btn-secondary" onClick={() => setPasting(true)}>📋 لصق من سكان</button>
         <button
           className="btn-primary"
           onClick={handleSaveAll}

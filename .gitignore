@@ -52,3 +52,4 @@ out/
 # frontend/tools/ledgerAuditCheck.ts compiles here (npm run check:ledger)
 frontend/.ledgercheck/
 frontend/.filtercheck/
+frontend/.capturecheck/

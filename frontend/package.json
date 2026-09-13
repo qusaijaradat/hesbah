@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "check:capture": "tsc tools/ledgerCaptureCheck.ts src/lib/ledgerCapture.ts src/lib/columnFilters.ts --ignoreConfig --outDir .capturecheck --target es2020 --module es2020 --moduleResolution bundler --skipLibCheck && node .capturecheck/tools/ledgerCaptureCheck.js",
     "check:filters": "tsc tools/columnFilterCheck.ts src/lib/columnFilters.ts --ignoreConfig --outDir .filtercheck --target es2020 --module es2020 --moduleResolution bundler --skipLibCheck && node .filtercheck/tools/columnFilterCheck.js",
     "check:ledger": "tsc tools/ledgerAuditCheck.ts src/lib/ledgerAudit.ts --ignoreConfig --outDir .ledgercheck --target es2020 --module es2020 --moduleResolution bundler --skipLibCheck && node .ledgercheck/tools/ledgerAuditCheck.js",
     "build": "tsc -b && vite build",

@@ -489,6 +489,18 @@ Console.WriteLine("== The money identity: buyer - seller - driver == market ==")
     Check("transport comes off the seller's due",
           InvoiceCharge.ForSeller(1_000m, commission: 100m, transportFee: 200m) == 700m);
 
+    // One person who is both the seller and the driver. أجرة النقل is taken off his seller side and
+    // paid to his driver side, so it cancels — the market neither charges him to carry his own goods
+    // nor pays him twice for it. What is left is his produce, less commission, plus أجرة الصناديق.
+    Check("a seller who drove his own load is paid produce - commission + crate fee",
+          InvoiceCharge.ForSellerDriver(1_000m, commission: 100m, transportFee: 200m, driverBoxFeeTotal: 30m) == 930m);
+    Check("and the transport figure itself makes no difference to that total",
+          InvoiceCharge.ForSellerDriver(1_000m, 100m, transportFee: 200m, driverBoxFeeTotal: 30m)
+          == InvoiceCharge.ForSellerDriver(1_000m, 100m, transportFee: 900m, driverBoxFeeTotal: 30m));
+    Check("it is exactly the two sides added, never a separate rule",
+          InvoiceCharge.ForSellerDriver(1_000m, 100m, 200m, 30m)
+          == InvoiceCharge.ForSeller(1_000m, 100m, 200m) + InvoiceCharge.ForDriver(200m, 30m));
+
     // A return hands back only the commission that had been earned on goods that did not sell.
     Check("a 1,000 return at 10% credits 100 of commission",
           MarketEarnings.CommissionCreditOnReturn(1_000m, 0.10m) == 100m);

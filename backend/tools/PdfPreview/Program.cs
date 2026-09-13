@@ -215,6 +215,16 @@ Same("buyer - seller - driver == market (long)",
 var floodItems = Enumerable.Range(1, 20)
     .Select(i => new InvoiceItemDto(200 + i, $"صنف رقم {i}", 10m, null, 4m, 10m, 0m, 0m, 40m))
     .ToList();
+// The seller who drove his own load — one person in both slots. His driver card has to show both
+// sides itemised and one combined total, not just the haulage; the other half of what he is owed
+// used to be on a different section's sheet entirely.
+var ownLoad = invoice with { DriverId = invoice.FarmerId, DriverName = invoice.FarmerName };
+Same("seller-driver total is the two sides added",
+     InvoiceCharge.ForSellerDriver(ownLoad.TotalValue, ownLoad.Commission, ownLoad.TransportFee, ownLoad.DriverBoxFeeTotal),
+     ownLoad.NetDueToFarmer + ownLoad.DriverDue);
+Write("13-bulk-driver-who-is-the-seller.pdf",
+    export.GenerateInvoicesBulkPdf(new[] { ownLoad, ownLoad }, company, InvoicePrintRole.Driver));
+
 Write("12-bulk-spilled-invoice.pdf",
     export.GenerateInvoicesBulkPdf(new[] { longInvoice with { Items = floodItems } }, company, InvoicePrintRole.Merchant));
 

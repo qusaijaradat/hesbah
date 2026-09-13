@@ -1582,22 +1582,56 @@ public class ExportService : IExportService
 
                     case InvoicePrintRole.Driver:
                     {
+                        var driverDue = InvoiceCharge.ForDriver(invoice.TransportFee, invoice.DriverBoxFeeTotal);
+                        var alsoTheSeller = invoice.FarmerId is not null && invoice.FarmerId == invoice.DriverId;
+
+                        // Cargo, not money — and only when there is room for it. A card where the
+                        // same person is also the seller has two sides of money to itemise below,
+                        // and the quarter page cannot hold both that and the cargo counts.
+                        if (!alsoTheSeller)
+                        {
+                            var totalBoxes = invoice.Items.Sum(it => it.BoxQuantity);
+                            if (totalBoxes > 0)
+                                col.Item().AlignRight().Text($"إجمالي الصناديق: {totalBoxes:0.###}").FontSize(8);
+                            if (invoice.TotalWeightKg > 0)
+                                col.Item().AlignRight().Text($"إجمالي الوزن: {invoice.TotalWeightKg:0.###} كغم").FontSize(8);
+                        }
+
                         // Same three components, in the same order, as GenerateDriverManifestPdf's
                         // footer — أجرة النقل + أجرة الصناديق + سعر الخشب (the driver is paid the full
                         // wood price too, per the explicit requirement documented there) — so a
                         // per-invoice driver copy and the driver's consolidated manifest can never
                         // disagree about what he's owed.
-                        var totalBoxes = invoice.Items.Sum(it => it.BoxQuantity);
-                        if (totalBoxes > 0)
-                            col.Item().AlignRight().Text($"إجمالي الصناديق: {totalBoxes:0.###}").FontSize(8);
-                        if (invoice.TotalWeightKg > 0)
-                            col.Item().AlignRight().Text($"إجمالي الوزن: {invoice.TotalWeightKg:0.###} كغم").FontSize(8);
                         col.Item().AlignRight().Text($"أجرة النقل: ₪ {invoice.TransportFee:0.##}").FontSize(9);
                         if (invoice.DriverBoxFeeTotal > 0)
                             col.Item().AlignRight().Text($"أجرة الصناديق: ₪ {invoice.DriverBoxFeeTotal:0.##}").FontSize(8);
-                        if (invoice.WoodTotal > 0)
+                        if (invoice.WoodTotal > 0 && !alsoTheSeller)
                             col.Item().AlignRight().Text($"سعر الخشب (لا يُضاف للمستحق): ₪ {invoice.WoodTotal:0.##}").FontSize(8).FontColor(PrintInk.Secondary);
-                        var driverDue = InvoiceCharge.ForDriver(invoice.TransportFee, invoice.DriverBoxFeeTotal);
+
+                        // The same person brought the goods in AND drove them. His driver copy used to
+                        // show him only the haulage, so the sheet handed him a figure that was a
+                        // fraction of what the invoice actually owes him — and the other fraction was
+                        // on a different section's sheet entirely.
+                        //
+                        // Both sides go on this one card, itemised. أجرة النقل is printed twice on
+                        // purpose: paid to him above as the driver, taken off him below as the seller.
+                        // It cancels, which is correct — the market neither charges him to carry his
+                        // own goods nor pays him twice for it — and a figure that cancels invisibly is
+                        // a figure nobody can check.
+                        if (alsoTheSeller)
+                        {
+                            col.Item().AlignRight().Text($"المستحق كسائق: ₪ {driverDue:0.##}").FontSize(9);
+                            col.Item().PaddingTop(2).LineHorizontal(0.5f).LineColor(PrintInk.Text);
+                            col.Item().AlignRight().Text($"المبيعات (كبائع): ₪ {invoice.TotalValue:0.##}").FontSize(9);
+                            col.Item().AlignRight().Text($"العمولة ({invoice.CommissionRateApplied:0.##%}): - ₪ {invoice.Commission:0.##}").FontSize(8).FontColor(PrintInk.Deduction);
+                            col.Item().AlignRight().Text($"أجرة النقل (تُخصم من البائع): - ₪ {invoice.TransportFee:0.##}").FontSize(8).FontColor(PrintInk.Deduction);
+                            col.Item().AlignRight().Text($"الصافي كبائع: ₪ {invoice.NetDueToFarmer:0.##}").FontSize(9);
+                            col.Item().PaddingTop(2).AlignRight()
+                                .Text($"الإجمالي المستحق: ₪ {InvoiceCharge.ForSellerDriver(invoice.TotalValue, invoice.Commission, invoice.TransportFee, invoice.DriverBoxFeeTotal):0.##}")
+                                .Bold().FontSize(14);
+                            break;
+                        }
+
                         col.Item().PaddingTop(3).AlignRight().Text($"الإجمالي المستحق للسائق: ₪ {driverDue:0.##}").Bold().FontSize(14);
                         break;
                     }

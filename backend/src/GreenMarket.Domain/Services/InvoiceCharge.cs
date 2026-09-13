@@ -63,4 +63,23 @@ public static class InvoiceCharge
     /// </summary>
     public static decimal ForDriver(decimal transportFee, decimal driverBoxFeeTotal) =>
         transportFee + driverBoxFeeTotal;
+
+    /// <summary>
+    /// What this invoice owes ONE PERSON who is both its seller and its driver — his own produce,
+    /// which he also hauled in.
+    ///
+    /// Not a new rule: it is <see cref="ForSeller"/> plus <see cref="ForDriver"/>, and it lives
+    /// here so the sum has one home instead of being written out wherever both sides happen to be
+    /// on screen together.
+    ///
+    /// Worth following through, because the printed breakdown looks wrong until you do: أجرة النقل
+    /// is SUBTRACTED on the seller side and PAID on the driver side, so for one person holding both
+    /// roles it cancels itself out and the result is his produce, less the commission, plus his
+    /// أجرة الصناديق. That is correct — the market is not charging him to carry his own goods, and
+    /// it is not paying him twice for it either. The two lines still get printed, because a figure
+    /// that cancels invisibly is a figure nobody can check.
+    /// </summary>
+    public static decimal ForSellerDriver(
+        decimal totalValue, decimal commission, decimal transportFee, decimal driverBoxFeeTotal) =>
+        ForSeller(totalValue, commission, transportFee) + ForDriver(transportFee, driverBoxFeeTotal);
 }

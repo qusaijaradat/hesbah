@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { getInvoicesBatch, getMerchantGroupPreviousBalance, listInvoices, printDriverManifestPdf, printFarmerStatementPdf, printInvoicesBulkPdf, printMerchantMergedInvoicesPdf } from "../api/invoices";
 import { getFarmerAccount } from "../api/partners";
 import { driverItemsBreakdown, farmerItemsBreakdown, merchantItemsBreakdown, printBuyerStatementPdf, printDriverItemsStatementPdf, printFarmerItemsStatementPdf } from "../api/reports";
@@ -788,6 +789,18 @@ export function BulkPrintPage() {
     });
   }, []);
 
+  /**
+   * Whether to offer WhatsApp at all.
+   *
+   * Every message this page sends is built by buildStatementMessage, which writes the market's
+   * own phone into the text so the person receiving a statement can call back about it. With
+   * market.phone unset, the button still opened WhatsApp and still sent — a statement about
+   * someone's money, from a market that gave no way to reach it. So the whole section goes,
+   * rather than the buttons being disabled one by one: the tables underneath them exist to drive
+   * those buttons, and a grouping nobody can act on is just more rows to read.
+   */
+  const whatsAppReady = Boolean(companyPhone);
+
   // Merchant tab: grouped by (trader + calendar day) to drive the per-trader WhatsApp statement
   // button — one message per day, never merging invoices from different days into the same
   // message (explicit requirement). The printed PDF itself is unaffected — it still prints each
@@ -1041,7 +1054,17 @@ export function BulkPrintPage() {
 
       {active.error && <div className="text-sm text-red-600 bg-red-50 rounded-md p-3 mb-4">{active.error}</div>}
 
-      {activeTab === "Merchant" && traderGroups.length > 0 && (
+      {/* A section that disappears without explanation reads as a bug. Said once, with the way to
+          bring it back. */}
+      {!whatsAppReady && (
+        <div className="text-sm text-gray-600 bg-gray-50 border border-gray-200 rounded-md p-3 mb-4">
+          إرسال الواتساب مخفي لأن رقم هاتف الشركة مش متعبّى بالإعدادات — الرقم بيظهر داخل الرسالة
+          حتى يقدر الشخص يرجع يسأل عنها.{" "}
+          <Link to="/settings" className="text-brand-700 hover:underline">عبّيه من الإعدادات</Link>
+        </div>
+      )}
+
+      {activeTab === "Merchant" && traderGroups.length > 0 && whatsAppReady && (
         <div className="card overflow-x-auto mb-4">
           <div className="px-4 pt-4 pb-1 text-sm font-semibold text-gray-700">تجميع حسب المشتري واليوم — كل يوم برسالة واتساب منفصلة</div>
           <table className="table-base">
@@ -1081,7 +1104,7 @@ export function BulkPrintPage() {
         </div>
       )}
 
-      {activeTab === "Farmer" && farmerGroups.length > 0 && (
+      {activeTab === "Farmer" && farmerGroups.length > 0 && whatsAppReady && (
         <div className="card overflow-x-auto mb-4">
           <div className="px-4 pt-4 pb-1 text-sm font-semibold text-gray-700">تجميع حسب البائع — إرسال كشف واتساب مفصّل (يشمل الرصيد السابق وسعر الخشب)</div>
           <table className="table-base">
@@ -1121,7 +1144,7 @@ export function BulkPrintPage() {
 
       <SectionPrintBar section={active} />
 
-      {activeTab === "Driver" && driverGroups.length > 0 && (
+      {activeTab === "Driver" && driverGroups.length > 0 && whatsAppReady && (
         <div className="card overflow-x-auto">
           <div className="px-4 pt-4 pb-1 text-sm font-semibold text-gray-700">تجميع حسب السائق — كشف أجرة نقل مجمّع لكل سائق</div>
           <table className="table-base">

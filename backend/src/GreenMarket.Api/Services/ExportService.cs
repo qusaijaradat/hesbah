@@ -601,10 +601,51 @@ public class ExportService : IExportService
     /// own side's counterparty and money (see InvoiceCard). Before this, every section printed the
     /// merchant's copy, so a seller was handed a "فاتورة مشتري" addressed to the buyer.
     /// </summary>
+    /// <summary>
+    /// How many item rows one quarter-page card holds. A constant rather than something measured:
+    /// QuestPDF lays out after this code has already decided what to draw, so the split has to be
+    /// made up front. Set below what actually fits, because a card that overflows its quadrant
+    /// fails the whole print run — and one blank line at the bottom of a card costs nothing.
+    /// </summary>
+    private const int MaxCardItemRows = 9;
+
+    /// <summary>
+    /// One quarter-page card's worth of work: an invoice, the slice of its items this card shows,
+    /// and where the card sits in the run for that invoice.
+    ///
+    /// An invoice with more lines than a card holds spills onto the next card instead of being
+    /// shrunk to fit (explicit request: "كان الجدول فل عادي انتقل الباقي على فاتورة ثانية وكمل").
+    /// Only the LAST card of a run carries the totals — a running total on each part would be four
+    /// different numbers for one invoice, and somebody would pay one of them.
+    /// </summary>
+    private sealed record CardPart(InvoiceDto Invoice, IReadOnlyList<InvoiceItemDto> Items, int Part, int PartCount);
+
+    private static List<CardPart> SplitIntoCards(IReadOnlyList<InvoiceDto> invoices)
+    {
+        var parts = new List<CardPart>();
+        foreach (var invoice in invoices)
+        {
+            // An invoice with no lines at all still prints one card — it is still an invoice, and
+            // a zero-length run would silently drop it from the sheet.
+            var chunks = invoice.Items.Count == 0
+                ? new List<IReadOnlyList<InvoiceItemDto>> { Array.Empty<InvoiceItemDto>() }
+                : invoice.Items
+                    .Select((item, i) => (item, i))
+                    .GroupBy(x => x.i / MaxCardItemRows)
+                    .Select(g => (IReadOnlyList<InvoiceItemDto>)g.Select(x => x.item).ToList())
+                    .ToList();
+
+            for (var i = 0; i < chunks.Count; i++)
+                parts.Add(new CardPart(invoice, chunks[i], i + 1, chunks.Count));
+        }
+        return parts;
+    }
+
     public byte[] GenerateInvoicesBulkPdf(IReadOnlyList<InvoiceDto> invoices, CompanyInfo company, InvoicePrintRole role)
     {
-        return QuadrantGridPdf(invoices.Count, (container, index) =>
-            InvoiceCard(container, invoices[index], company, role));
+        var parts = SplitIntoCards(invoices);
+        return QuadrantGridPdf(parts.Count, (container, index) =>
+            InvoiceCard(container, parts[index], company, role));
     }
 
     /// <summary>
@@ -703,10 +744,30 @@ public class ExportService : IExportService
     /// with only one invoice that day is simply a group of one, and prints as one card like
     /// any other.
     /// </summary>
+    /// <summary>One quarter-page card of a merged day — same splitting rule as CardPart.</summary>
+    private sealed record MergedCardPart(MergedInvoiceGroupDto Group, IReadOnlyList<InvoiceItemDto> Items, int Part, int PartCount);
+
     public byte[] GenerateMergedInvoicesPdf(IReadOnlyList<MergedInvoiceGroupDto> groups, CompanyInfo company)
     {
-        return QuadrantGridPdf(groups.Count, (container, index) =>
-            MergedInvoiceCard(container, groups[index], company));
+        // A merged day is the longest item list this app prints — it is every invoice one buyer
+        // took that day — so it is the one that most needs to spill onto a second card rather than
+        // be squeezed onto one.
+        var parts = new List<MergedCardPart>();
+        foreach (var group in groups)
+        {
+            var chunks = group.Items.Count == 0
+                ? new List<IReadOnlyList<InvoiceItemDto>> { Array.Empty<InvoiceItemDto>() }
+                : group.Items
+                    .Select((item, i) => (item, i))
+                    .GroupBy(x => x.i / MaxCardItemRows)
+                    .Select(g => (IReadOnlyList<InvoiceItemDto>)g.Select(x => x.item).ToList())
+                    .ToList();
+            for (var i = 0; i < chunks.Count; i++)
+                parts.Add(new MergedCardPart(group, chunks[i], i + 1, chunks.Count));
+        }
+
+        return QuadrantGridPdf(parts.Count, (container, index) =>
+            MergedInvoiceCard(container, parts[index], company));
     }
 
     /// <summary>
@@ -1404,8 +1465,10 @@ public class ExportService : IExportService
     /// parameter, and why the totals block below is a per-role branch rather than a shared block
     /// with a few things hidden.
     /// </summary>
-    private void InvoiceCard(IContainer container, InvoiceDto invoice, CompanyInfo company, InvoicePrintRole role)
+    private void InvoiceCard(IContainer container, CardPart part, CompanyInfo company, InvoicePrintRole role)
     {
+        var invoice = part.Invoice;
+        var isLastPart = part.Part == part.PartCount;
         // Read before the layout below, because the pinned bottom half names the same person the
         // header does and the two must not be able to disagree.
         var (title, partyLabel, partyName) = role switch
@@ -1456,7 +1519,9 @@ public class ExportService : IExportService
                 // place on all three, but the wording follows the direction of the money: the buyer owes
                 // the market ("المطلوب من"), while the market owes the seller and the driver
                 // ("المطلوب إلى").
-                col.Item().PaddingTop(3).Text(title).Bold().FontSize(10);
+                // A split invoice says so on every part, so nobody reads part 1 of 3 as the
+                // whole bill and wonders where the total went.
+                col.Item().PaddingTop(3).Text(part.PartCount > 1 ? $"{title} — صفحة {part.Part} من {part.PartCount}" : title).Bold().FontSize(10);
                 col.Item().Text($"التاريخ: {invoice.Date:yyyy-MM-dd}").FontSize(9);
                 col.Item().Text($"{partyLabel}: {(string.IsNullOrWhiteSpace(partyName) ? "—" : partyName)}").Bold().FontSize(10);
                 // The seller's copy — and ONLY the seller's — also names the driver who hauled the
@@ -1477,11 +1542,27 @@ public class ExportService : IExportService
             // a quarter page can hold would otherwise abort the whole print run with a layout
             // conflict. Shrunk-to-fit is a worse-looking card; a thrown exception is no cards at all,
             // and dropping the extra rows silently would be a bill missing goods.
-            card.Content().ExtendVertical().ScaleToFit().Column(col => CardItemsTable(col, invoice.Items, role == InvoicePrintRole.Driver));
+            // ExtendVertical is what pushes the totals onto the bottom edge: Decoration stacks its
+            // three parts at their natural heights, so without being told to fill, the middle leaves
+            // the slack underneath the card instead of above the totals.
+            //
+            // No ScaleToFit any more — the items are pre-split by SplitIntoCards, so what arrives
+            // here always fits, and shrinking was the wrong answer to a long invoice anyway.
+            card.Content().ExtendVertical().Column(col => CardItemsTable(col, part.Items, role == InvoicePrintRole.Driver));
 
             card.After().Column(col =>
             {
                 col.Item().PaddingTop(4).LineHorizontal(0.5f).LineColor(PrintInk.Text);
+
+                // Every part but the last says where the rest went, and carries no figures at all.
+                // Four parts with four totals on them is one invoice quoting four different amounts,
+                // and somebody would eventually pay one of them.
+                if (!isLastPart)
+                {
+                    col.Item().PaddingTop(3).AlignRight()
+                        .Text($"يتبع — باقي الأصناف على الصفحة {part.Part + 1}").Bold().FontSize(10);
+                    return;
+                }
 
                 switch (role)
                 {
@@ -1629,8 +1710,10 @@ public class ExportService : IExportService
     /// else on a buyer's copy, and doubly so on a merged group, which can legitimately span
     /// several different sellers and drivers at once.
     /// </summary>
-    private void MergedInvoiceCard(IContainer container, MergedInvoiceGroupDto group, CompanyInfo company)
+    private void MergedInvoiceCard(IContainer container, MergedCardPart part, CompanyInfo company)
     {
+        var group = part.Group;
+        var isLastPart = part.Part == part.PartCount;
         container.ContentFromRightToLeft()
             .Border(1).BorderColor(PrintInk.Text).Padding(8)
             // Same three-part card as InvoiceCard, and for the same reason: the totals belong on the
@@ -1651,17 +1734,25 @@ public class ExportService : IExportService
                         textCol.Item().AlignCenter().Text($"هاتف: {company.Phone}").FontSize(8);
                 });
                 col.Item().PaddingTop(3).LineHorizontal(0.5f).LineColor(PrintInk.Text);
-                col.Item().PaddingTop(3).Text("فاتورة مشتري").Bold().FontSize(10);
+                col.Item().PaddingTop(3)
+                    .Text(part.PartCount > 1 ? $"فاتورة مشتري — صفحة {part.Part} من {part.PartCount}" : "فاتورة مشتري")
+                    .Bold().FontSize(10);
                 col.Item().Text($"التاريخ: {group.Date:yyyy-MM-dd}").FontSize(9);
                 col.Item().Text($"المطلوب من: {group.MerchantName}").Bold().FontSize(10);
                 col.Item().PaddingTop(4).LineHorizontal(0.5f).LineColor(PrintInk.Text);
             });
 
-            card.Content().ExtendVertical().ScaleToFit().Column(col => CardItemsTable(col, group.Items, isDriverCopy: false));
+            card.Content().ExtendVertical().Column(col => CardItemsTable(col, part.Items, isDriverCopy: false));
 
             card.After().Column(col =>
             {
                 col.Item().PaddingTop(4).LineHorizontal(0.5f).LineColor(PrintInk.Text);
+                if (!isLastPart)
+                {
+                    col.Item().PaddingTop(3).AlignRight()
+                        .Text($"يتبع — باقي الأصناف على الصفحة {part.Part + 1}").Bold().FontSize(10);
+                    return;
+                }
                 CardMerchantTotals(col, group.WoodTotal, group.BoxFeeTotal, group.GrandTotal, group.PreviousBalance);
             });
         });

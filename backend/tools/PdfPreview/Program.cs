@@ -209,6 +209,15 @@ Same("long DriverDue", longInvoice.DriverDue,
 Same("buyer - seller - driver == market (long)",
      longInvoice.GrandTotal - longInvoice.NetDueToFarmer - longInvoice.DriverDue, longInvoice.MarketProfit);
 
+// An invoice with more lines than one card holds. It must come out as SEVERAL cards that continue
+// each other — header repeated, "صفحة ١ من ٣" on each, and the totals on the last one only — not
+// as one squeezed card and not as a layout crash.
+var floodItems = Enumerable.Range(1, 20)
+    .Select(i => new InvoiceItemDto(200 + i, $"صنف رقم {i}", 10m, null, 4m, 10m, 0m, 0m, 40m))
+    .ToList();
+Write("12-bulk-spilled-invoice.pdf",
+    export.GenerateInvoicesBulkPdf(new[] { longInvoice with { Items = floodItems } }, company, InvoicePrintRole.Merchant));
+
 Write("11-bulk-mixed-lengths.pdf",
     export.GenerateInvoicesBulkPdf(
         new[] { invoice, shortInvoice, longInvoice, shortInvoice }, company, InvoicePrintRole.Merchant));

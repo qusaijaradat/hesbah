@@ -506,6 +506,10 @@ public class InvoiceService : IInvoiceService
         if (filter.DriverId is not null) query = query.Where(i => i.DriverId == filter.DriverId);
         if (filter.HasFarmer == true) query = query.Where(i => i.FarmerId != null);
         if (filter.HasDriver == true) query = query.Where(i => i.DriverId != null);
+        // Null-checked as well as compared: in SQL two NULLs are not equal, but leaning on that
+        // would make this read as though an invoice with neither a seller nor a driver might match.
+        if (filter.SellerIsDriver == true)
+            query = query.Where(i => i.FarmerId != null && i.DriverId != null && i.FarmerId == i.DriverId);
         // "استثناء أسماء" (see InvoiceFilterRequest.ExcludeMerchantIds' doc comment). Held in
         // locals so the lambdas capture the list itself rather than the filter object, and so the
         // nullable-column cases can spell out "no farmer attached at all still passes" explicitly

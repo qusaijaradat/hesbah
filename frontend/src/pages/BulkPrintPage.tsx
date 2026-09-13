@@ -56,17 +56,28 @@ function rangeFor(range: QuickRange): { dateFrom?: string; dateTo?: string } {
   }
 }
 
-type Role = "Merchant" | "Farmer" | "Driver";
+/**
+ * "SellerDriver" is not a fourth kind of person — it is the subset of invoices whose بائع and
+ * سائق are the same man, given its own section because what the market owes him is both sides
+ * added and neither of the other two sheets shows that on its own.
+ *
+ * His invoices deliberately stay in the بائع and السائق sections as well. The new section is a
+ * view, not a reassignment: nothing disappears from where someone is used to finding it.
+ */
+type Role = "Merchant" | "Farmer" | "Driver" | "SellerDriver";
 
-const ROLE_LABEL: Record<Role, string> = { Merchant: "مشتري", Farmer: "بائع", Driver: "سائق" };
+const ROLE_LABEL: Record<Role, string> = { Merchant: "مشتري", Farmer: "بائع", Driver: "سائق", SellerDriver: "بائع وسائق" };
 /** Plural form, for the "استثناء ..." picker's own label/placeholder. */
-const ROLE_PLURAL_LABEL: Record<Role, string> = { Merchant: "المشترين", Farmer: "الباعة", Driver: "السواق" };
+const ROLE_PLURAL_LABEL: Record<Role, string> = { Merchant: "المشترين", Farmer: "الباعة", Driver: "السواق", SellerDriver: "الباعة السواق" };
 const ROLE_PARTNER_TYPES: Record<Role, PartnerType[]> = {
   Merchant: ["Merchant"],
   Farmer: ["Farmer"],
   Driver: ["Driver"],
+  // Searched among sellers and drivers both: the person being looked for holds both roles, and
+  // which of the two his record happens to be labelled with is not something to make anyone guess.
+  SellerDriver: ["Farmer", "Driver"],
 };
-const ROLE_FILE_SLUG: Record<Role, string> = { Merchant: "buyer", Farmer: "farmer", Driver: "driver" };
+const ROLE_FILE_SLUG: Record<Role, string> = { Merchant: "buyer", Farmer: "farmer", Driver: "driver", SellerDriver: "seller-driver" };
 
 /**
  * Each of the 3 "طباعة الفواتير" sections (مشتري/بائع/سائق) is fully independent — its own period,
@@ -108,6 +119,11 @@ function useRoleSection(role: Role) {
         ? { excludeMerchantIds: excludedIds }
         : role === "Farmer"
         ? { excludeFarmerIds: excludedIds }
+        // The seller-driver section excludes by the same id on both sides, because on these
+        // invoices the two sides are the same person and excluding one of them alone would leave
+        // his invoices in through the other.
+        : role === "SellerDriver"
+        ? { excludeFarmerIds: excludedIds, excludeDriverIds: excludedIds }
         : { excludeDriverIds: excludedIds };
 
     const roleFilter: Partial<InvoiceFilter> =
@@ -115,6 +131,10 @@ function useRoleSection(role: Role) {
         ? { merchantId: partnerPick?.id }
         : role === "Farmer"
         ? (partnerPick ? { farmerId: partnerPick.id } : { hasFarmer: true })
+        : role === "SellerDriver"
+        // sellerIsDriver stays on even when one person is picked: picking him narrows the section,
+        // it does not turn it into the سائق section for him.
+        ? (partnerPick ? { sellerIsDriver: true, driverId: partnerPick.id } : { sellerIsDriver: true })
         : (partnerPick ? { driverId: partnerPick.id } : { hasDriver: true });
 
     return {
@@ -180,7 +200,10 @@ function useRoleSection(role: Role) {
       // copy (which is what every tab used to hand out).
     return role === "Merchant"
       ? printMerchantMergedInvoicesPdf(Array.from(selected))
-      : printInvoicesBulkPdf(Array.from(selected), role);
+      // SellerDriver prints the DRIVER document: the card already recognises an invoice whose
+      // seller and driver are one person and itemises both sides on it (see InvoiceCard). A
+      // fourth print role on the API would be a second name for a document that already exists.
+      : printInvoicesBulkPdf(Array.from(selected), role === "SellerDriver" ? "Driver" : role);
   }
 
   const selectedRows = result.filter((i) => selected.has(i.id));
@@ -402,12 +425,17 @@ function SectionTable({ section }: { section: RoleSection }) {
   function partyOf(inv: InvoiceListItemDto) {
     if (role === "Merchant") return <PartnerLink partnerId={inv.merchantId} name={inv.merchantName} side="merchant" />;
     if (role === "Farmer") return <PartnerLink partnerId={inv.farmerId} name={inv.farmerName} side="seller" />;
+    // SellerDriver falls through here on purpose: on these invoices the two ids are the same
+    // person, so the driver side names him just as well as the seller side would.
     return <PartnerLink partnerId={inv.driverId} name={inv.driverName} side="seller" />;
   }
 
   function remainingOf(inv: InvoiceListItemDto): number | null | undefined {
     if (role === "Merchant") return inv.merchantRemaining;
     if (role === "Farmer") return inv.farmerRemaining;
+    // One account, one balance: a person who is both holds a single seller-side account that his
+    // Sale rows and his TransportFee rows both post to (see FarmerTransaction), so there is no
+    // second balance to add here — driverRemaining IS that account.
     return inv.driverRemaining;
   }
 
@@ -428,6 +456,17 @@ function SectionTable({ section }: { section: RoleSection }) {
           { label: "سعر الخشب (للمصلحة)", value: (i) => i.woodTotal },
           { label: "العمولة", value: (i) => i.commission, red: true },
           { label: "الصافي المستحق", value: (i) => i.netDueToFarmer, bold: true },
+        ]
+      : role === "SellerDriver"
+      ? [
+          // Both sides, ending in the one figure his printed card ends in. أجرة النقل is not a
+          // column of its own: it is already inside الصافي كبائع as a deduction and inside
+          // المستحق كسائق as income, and a third column showing it would read as a third amount.
+          { label: "قيمة المبيعات", value: (i) => i.totalValue },
+          { label: "العمولة", value: (i) => i.commission, red: true },
+          { label: "الصافي كبائع", value: (i) => i.netDueToFarmer },
+          { label: "المستحق كسائق", value: (i) => i.driverDue },
+          { label: "الإجمالي المستحق", value: (i) => i.netDueToFarmer + i.driverDue, bold: true },
         ]
       : [
           { label: "أجرة النقل", value: (i) => i.transportFee, bold: true },
@@ -530,6 +569,15 @@ function SectionPrintBar({ section }: { section: RoleSection }) {
             <span> — إجمالي سعر الخشب: <span className="font-semibold">{formatCurrency(section.totals.wood)}</span></span>
             <span> — إجمالي العمولة: <span className="font-semibold text-red-600">{formatCurrency(section.totals.commission)}</span></span>
             <span> — الصافي المستحق للباعة: <span className="font-semibold">{formatCurrency(section.totals.netDueToFarmer)}</span></span>
+          </>
+        ) : section.role === "SellerDriver" ? (
+          <>
+            <span> — إجمالي المبيعات: <span className="font-semibold">{formatCurrency(section.totals.value)}</span></span>
+            <span> — إجمالي العمولة: <span className="font-semibold text-red-600">{formatCurrency(section.totals.commission)}</span></span>
+            <span> — الصافي كبائع: <span className="font-semibold">{formatCurrency(section.totals.netDueToFarmer)}</span></span>
+            <span> — المستحق كسائق: <span className="font-semibold">{formatCurrency(section.totals.driverDue)}</span></span>
+            {/* The one figure that matters on this tab, and the one his card ends in. */}
+            <span> — الإجمالي المستحق: <span className="font-semibold">{formatCurrency(section.totals.netDueToFarmer + section.totals.driverDue)}</span></span>
           </>
         ) : (
           <>
@@ -705,7 +753,10 @@ export function BulkPrintPage() {
   const merchantSection = useRoleSection("Merchant");
   const farmerSection = useRoleSection("Farmer");
   const driverSection = useRoleSection("Driver");
-  const sections: Record<Role, RoleSection> = { Merchant: merchantSection, Farmer: farmerSection, Driver: driverSection };
+  const sellerDriverSection = useRoleSection("SellerDriver");
+  const sections: Record<Role, RoleSection> = {
+    Merchant: merchantSection, Farmer: farmerSection, Driver: driverSection, SellerDriver: sellerDriverSection,
+  };
   const active = sections[activeTab];
 
   // "كشف [مشتري/بائع/سائق] حسب الفترة" — one per tab, scoped to that tab's OWN period/person filter
@@ -959,7 +1010,7 @@ export function BulkPrintPage() {
       <h1 className="text-2xl font-bold mb-6">طباعة الفواتير</h1>
 
       <div className="flex gap-2 mb-4 border-b border-gray-200">
-        {(["Merchant", "Farmer", "Driver"] as Role[]).map((role) => (
+        {(["Merchant", "Farmer", "Driver", "SellerDriver"] as Role[]).map((role) => (
           <button
             key={role}
             className={`px-4 py-2 font-semibold rounded-t-md ${activeTab === role ? "bg-brand-50 text-brand-700 border-b-2 border-brand-600" : "text-gray-500 hover:text-gray-700"}`}

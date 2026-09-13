@@ -203,6 +203,17 @@ public class InvoiceFilterRequest
     public bool? HasDriver { get; set; }
 
     /// <summary>
+    /// Invoices where the seller and the driver are THE SAME PERSON — someone who brought his own
+    /// produce in and drove it himself. Its own section on the print screen, because what the
+    /// market owes him is both sides added and neither the بائع sheet nor the سائق sheet shows
+    /// that on its own.
+    ///
+    /// A filter, not an exclusion: those invoices still belong to the بائع and السائق sections
+    /// too, and still appear there.
+    /// </summary>
+    public bool? SellerIsDriver { get; set; }
+
+    /// <summary>
     /// Bulk-print page's per-section "استثناء أسماء" filter: drop every invoice whose
     /// merchant/farmer/driver is one of these people, so a print run can cover "everyone this
     /// week EXCEPT these two" without picking the rest one by one. Each section only ever fills

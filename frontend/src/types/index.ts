@@ -379,6 +379,8 @@ export interface InvoiceFilter {
    * at all — used when that section's own picker is left blank. See backend InvoiceFilterRequest. */
   hasFarmer?: boolean;
   hasDriver?: boolean;
+  /** Only invoices whose seller and driver are the same person — the "بائع وسائق" print section. */
+  sellerIsDriver?: boolean;
   /** "طباعة الفواتير" per-section "استثناء أسماء": drop invoices belonging to these people. One
    * list per role — each section only ever fills its own, so excluding a name as a مشتري can't
    * also drop invoices where that person is the بائع. See backend InvoiceFilterRequest. */

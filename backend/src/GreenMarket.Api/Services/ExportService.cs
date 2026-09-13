@@ -1477,7 +1477,7 @@ public class ExportService : IExportService
             // a quarter page can hold would otherwise abort the whole print run with a layout
             // conflict. Shrunk-to-fit is a worse-looking card; a thrown exception is no cards at all,
             // and dropping the extra rows silently would be a bill missing goods.
-            card.Content().ScaleToFit().Column(col => CardItemsTable(col, invoice.Items, role == InvoicePrintRole.Driver));
+            card.Content().ExtendVertical().ScaleToFit().Column(col => CardItemsTable(col, invoice.Items, role == InvoicePrintRole.Driver));
 
             card.After().Column(col =>
             {
@@ -1657,7 +1657,7 @@ public class ExportService : IExportService
                 col.Item().PaddingTop(4).LineHorizontal(0.5f).LineColor(PrintInk.Text);
             });
 
-            card.Content().ScaleToFit().Column(col => CardItemsTable(col, group.Items, isDriverCopy: false));
+            card.Content().ExtendVertical().ScaleToFit().Column(col => CardItemsTable(col, group.Items, isDriverCopy: false));
 
             card.After().Column(col =>
             {

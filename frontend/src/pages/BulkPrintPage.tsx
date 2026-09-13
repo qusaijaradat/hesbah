@@ -1,5 +1,4 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
 import { getInvoicesBatch, getMerchantGroupPreviousBalance, listInvoices, printDriverManifestPdf, printFarmerStatementPdf, printInvoicesBulkPdf, printMerchantMergedInvoicesPdf } from "../api/invoices";
 import { getFarmerAccount } from "../api/partners";
 import { driverItemsBreakdown, farmerItemsBreakdown, merchantItemsBreakdown, printBuyerStatementPdf, printDriverItemsStatementPdf, printFarmerItemsStatementPdf } from "../api/reports";
@@ -1054,15 +1053,6 @@ export function BulkPrintPage() {
 
       {active.error && <div className="text-sm text-red-600 bg-red-50 rounded-md p-3 mb-4">{active.error}</div>}
 
-      {/* A section that disappears without explanation reads as a bug. Said once, with the way to
-          bring it back. */}
-      {!whatsAppReady && (
-        <div className="text-sm text-gray-600 bg-gray-50 border border-gray-200 rounded-md p-3 mb-4">
-          إرسال الواتساب مخفي لأن رقم هاتف الشركة مش متعبّى بالإعدادات — الرقم بيظهر داخل الرسالة
-          حتى يقدر الشخص يرجع يسأل عنها.{" "}
-          <Link to="/settings" className="text-brand-700 hover:underline">عبّيه من الإعدادات</Link>
-        </div>
-      )}
 
       {activeTab === "Merchant" && traderGroups.length > 0 && whatsAppReady && (
         <div className="card overflow-x-auto mb-4">

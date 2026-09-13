@@ -1125,11 +1125,13 @@ public class ExportService : IExportService
         // Both are plain sums now: every line has a count, and a weight whenever it was weighed.
         // Each used to pick out only the lines of its own unit and ignore the rest.
         var totalWeightKg = statement.Lines.Sum(l => l.WeightKg ?? 0m);
-        var totalBoxes = statement.Lines.Sum(l => l.Quantity);
+        var totalCount = statement.Lines.Sum(l => l.Quantity);
         var woodTotal = statement.Lines.Sum(l => l.WoodPrice);
         var itemsTotal = statement.Lines.Sum(l => l.LineTotal);
         var totalCommission = itemGroups.Sum(g => g.Commission);
-        var netDue = itemsTotal - totalCommission - statement.TransportTotal;
+        // Through InvoiceCharge, not spelled out again here. This exact subtraction written by
+        // hand in five places is how سعر الخشب once reached the seller and the driver at once.
+        var netDue = InvoiceCharge.ForSeller(itemsTotal, totalCommission, statement.TransportTotal);
 
         var document = Document.Create(container =>
         {
@@ -1209,13 +1211,17 @@ public class ExportService : IExportService
                                 }
                             });
 
+                            // What this item sold for, and nothing else. The commission and the
+                            // net used to be here too, which put a الصافي under every single item
+                            // — none of which is what the seller is owed, because أجرة النقل is
+                            // charged per invoice and cannot be attributed to any one item. A
+                            // reader adding those up got a number that was never due to anyone.
+                            // The deductions now happen once, in ملخص الأصناف and التسوية below.
                             itemCol.Item().PaddingTop(2).AlignRight().Row(row =>
                             {
                                 if (group.WoodSubtotal > 0)
                                     row.AutoItem().PaddingRight(16).Text($"الخشب: ₪ {group.WoodSubtotal:0.##}").FontSize(8).FontColor(PrintInk.Secondary);
-                                row.AutoItem().PaddingRight(16).Text($"المجموع: ₪ {group.Subtotal:0.##}").Bold();
-                                row.AutoItem().PaddingRight(16).Text($"العمولة: - ₪ {group.Commission:0.##}").FontColor(PrintInk.Deduction);
-                                row.AutoItem().Text($"الصافي: ₪ {group.Net:0.##}").Bold();
+                                row.AutoItem().Text($"مجموع {group.ItemName}: ₪ {group.Subtotal:0.##}").Bold();
                             });
                         });
                     }
@@ -1271,29 +1277,73 @@ public class ExportService : IExportService
                                 table.Cell().Element(c => DataCell(c, true)).AlignRight().Text((itemsTotal - totalCommission).ToString("0.##")).Bold();
                             });
                         });
+
+                        // التسوية — the figures that turn a sales total into what the seller is
+                        // actually owed, once, at the end, in the order they are reasoned about.
+                        //
+                        // This used to be the page FOOTER, which QuestPDF repeats on every page:
+                        // a three-page statement printed the settlement three times and a reader
+                        // could not tell which one was final. Worse, the أجرة النقل line was
+                        // hidden whenever it came to zero — so a statement that HAD deducted the
+                        // transport looked exactly like one that had never heard of it. It is now
+                        // always written, zero included: a deduction nobody can see on the paper
+                        // is a deduction the person holding it has to take on trust.
+                        mainCol.Item().PaddingTop(4).Column(settleCol =>
+                        {
+                            settleCol.Item().Text("التسوية").Bold().FontSize(12);
+                            settleCol.Item().Table(table =>
+                            {
+                                table.ColumnsDefinition(columns =>
+                                {
+                                    columns.RelativeColumn(5);   // البيان
+                                    columns.RelativeColumn(3);   // المبلغ
+                                });
+
+                                var line = 0;
+                                void Settle(string label, string value, bool bold = false)
+                                {
+                                    var shaded = line++ % 2 == 1;
+                                    var l = table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(label);
+                                    var v = table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(value);
+                                    if (bold) { l.Bold(); v.Bold(); }
+                                }
+
+                                Settle("إجمالي المبيعات", $"₪ {itemsTotal:0.##}");
+                                Settle("إجمالي العمولة", $"- ₪ {totalCommission:0.##}");
+                                Settle("أجرة النقل", $"- ₪ {statement.TransportTotal:0.##}");
+                                Settle("الصافي المستحق للبائع", $"₪ {netDue:0.##}", bold: true);
+                                if (previousBalance != 0)
+                                {
+                                    Settle("الرصيد السابق (حساب البائع)", $"₪ {previousBalance:0.##}");
+                                    Settle("الإجمالي المستحق", $"₪ {(netDue + previousBalance):0.##}", bold: true);
+                                }
+                            });
+
+                            // Counts and the wood, deliberately kept OUT of the table above: none
+                            // of them is money moving between the market and this seller. سعر
+                            // الخشب in particular is the buyer's charge and the market's to keep,
+                            // so it is reported here and never added to anything.
+                            settleCol.Item().PaddingTop(6).AlignRight().DefaultTextStyle(x => x.FontSize(9)).Column(infoCol =>
+                            {
+                                if (totalWeightKg > 0)
+                                    infoCol.Item().Text($"إجمالي الوزن: {totalWeightKg:0.###} كغم");
+                                // العدد, not الصناديق — this sums the lines' Quantity, which has
+                                // been العدد since a line stopped being one number wearing a unit.
+                                // The old label said الصناديق and was simply the wrong word for it.
+                                if (totalCount > 0)
+                                    infoCol.Item().Text($"إجمالي العدد: {totalCount:0.###}");
+                                if (woodTotal > 0)
+                                    infoCol.Item().Text($"إجمالي الخشب (على المشتري — لا يُخصم من البائع): ₪ {woodTotal:0.##}");
+                            });
+                        });
                     }
                 });
 
+                // Page numbers only. Every total now lives in the content flow, where it is
+                // printed once and appears at the end — not repeated under every page.
                 page.Footer().ContentFromRightToLeft().Column(col =>
                 {
                     col.Item().LineHorizontal(1).LineColor(PrintInk.Text);
-                    if (totalWeightKg > 0)
-                        col.Item().AlignRight().Text($"إجمالي الوزن: {totalWeightKg:0.###} كغم");
-                    if (totalBoxes > 0)
-                        col.Item().AlignRight().Text($"إجمالي الصناديق: {totalBoxes:0.###}");
-                    // Shown, not added: سعر الخشب is on the buyer's bill and stays with the market.
-                    if (woodTotal > 0)
-                        col.Item().AlignRight().Text($"إجمالي الخشب (على المشتري): ₪ {woodTotal:0.##}").FontSize(9);
-                    col.Item().PaddingTop(4).AlignRight().Text($"إجمالي المبيعات: ₪ {itemsTotal:0.##}").Bold().FontSize(12);
-                    col.Item().AlignRight().Text($"إجمالي العمولة: - ₪ {totalCommission:0.##}").FontColor(PrintInk.Deduction).FontSize(11);
-                    if (statement.TransportTotal != 0)
-                        col.Item().AlignRight().Text($"أجرة النقل: - ₪ {statement.TransportTotal:0.##}").FontColor(PrintInk.Deduction).FontSize(11);
-                    col.Item().PaddingTop(2).AlignRight().Text($"الصافي المستحق للبائع: ₪ {netDue:0.##}").Bold().FontSize(13);
-                    if (previousBalance != 0)
-                    {
-                        col.Item().PaddingTop(2).AlignRight().Text($"الرصيد السابق (رصيد حساب البائع الحالي): ₪ {previousBalance:0.##}").FontSize(10);
-                        col.Item().PaddingTop(2).AlignRight().Text($"الإجمالي المستحق: ₪ {(netDue + previousBalance):0.##}").Bold().FontSize(13);
-                    }
                     col.Item().PaddingTop(6).AlignCenter().DefaultTextStyle(x => x.FontSize(8).FontColor(PrintInk.Secondary)).Text(x =>
                     {
                         x.Span("صفحة ");

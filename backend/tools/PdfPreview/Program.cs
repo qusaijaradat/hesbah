@@ -121,6 +121,43 @@ var statementLines = new List<StatementLineDto>
 Write("08-account-statement.pdf",
     export.GenerateAccountStatementPdf("محل أبو عمار للخضار", "كشف حساب مشتري", statementLines, 1829.19m, company));
 
+// كشف بائع — one seller, a date range, several invoices. The document people actually argue
+// over, because it is the one that says what the market owes someone.
+//
+// Two invoices on purpose: أجرة النقل is charged per INVOICE, so a statement's transport total
+// is a sum across invoices that no single item row can account for. That is exactly why the
+// deduction has to be stated on its own line at the end rather than folded into any item.
+var farmerStatementLines = new List<FarmerStatementLineDto>
+{
+    // (date, item, العدد, الوزن, السعر, سعر الخشب, إجمالي السطر, نسبة العمولة)
+    new(DateTimeOffset.Now.AddDays(-6), "بندورة", 12m, 120.5m, 3.5m, 5m, 421.75m, 0.10m),
+    new(DateTimeOffset.Now.AddDays(-6), "خيار", 40m, null, 12m, 6m, 480m, 0.10m),
+    new(DateTimeOffset.Now.AddDays(-2), "بندورة", 20m, 210m, 3.25m, 0m, 682.5m, 0.10m),
+};
+var farmerStatement = new FarmerStatementDto(9, "المزارع سامي حسن", TransportTotal: 145m, farmerStatementLines);
+
+// The settlement the PDF prints, recomputed here the same way it builds it — per LINE, because
+// a statement can span invoices written at different commission rates — and then run through
+// InvoiceCharge.ForSeller. If these two ever disagree, the printed كشف بائع is wrong about what
+// a person is owed, which is the one thing this document exists to say.
+var statementSales = farmerStatementLines.Sum(l => l.LineTotal);
+var statementCommission = farmerStatementLines.Sum(l =>
+    CommissionCalculator.Calculate(l.LineTotal, l.CommissionRateApplied).Commission);
+Same("seller statement net due",
+     InvoiceCharge.ForSeller(statementSales, statementCommission, farmerStatement.TransportTotal),
+     statementSales - statementCommission - farmerStatement.TransportTotal);
+
+Write("09-farmer-statement.pdf",
+    export.GenerateFarmerStatementPdf(farmerStatement, DateTimeOffset.Now.AddDays(-7), DateTimeOffset.Now,
+        company, previousBalance: 260m));
+
+// The same statement with no transport and no opening balance — the case that used to print no
+// أجرة النقل line at all, leaving a reader unable to tell a zero from an omission.
+Write("10-farmer-statement-no-transport.pdf",
+    export.GenerateFarmerStatementPdf(
+        new FarmerStatementDto(9, "المزارع سامي حسن", TransportTotal: 0m, farmerStatementLines),
+        DateTimeOffset.Now.AddDays(-7), DateTimeOffset.Now, company, previousBalance: 0m));
+
 Console.WriteLine($"\n{outDir}");
 
 void Write(string name, byte[] bytes)

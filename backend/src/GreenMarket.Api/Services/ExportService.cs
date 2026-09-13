@@ -659,7 +659,14 @@ public class ExportService : IExportService
                         for (var slotStart = 0; slotStart < perPage; slotStart += perRow)
                         {
                             var rowStart = slotStart;
-                            col.Item().MinHeight(rowHeight).Row(row =>
+                            // Height, not MinHeight. A row that only had a MINIMUM height grew to
+                            // whichever card in it was tallest, and every card inside it was then
+                            // free to be its own natural height — so each card ended where its own
+                            // item table ended, and InvoiceCard's Decoration had no slack to push
+                            // its totals down with. Fixing the height is what gives the filler
+                            // something to absorb, and it is what puts the الإجمالي of a one-line
+                            // card and a six-line card on the same line of the sheet.
+                            col.Item().Height(rowHeight).Row(row =>
                             {
                                 row.Spacing(columnSpacing);
                                 for (var i = 0; i < perRow; i++)
@@ -1459,14 +1466,18 @@ public class ExportService : IExportService
                 if (role == InvoicePrintRole.Farmer && !string.IsNullOrWhiteSpace(invoice.DriverName))
                     col.Item().Text($"السائق: {invoice.DriverName}").FontSize(8);
                 col.Item().PaddingTop(4).LineHorizontal(0.5f).LineColor(PrintInk.Text);
-
-                var isDriverCopy = role == InvoicePrintRole.Driver;
-
-                CardItemsTable(col, invoice.Items, isDriverCopy);
-
             });
 
-            card.Content().Text("");
+            // The item table IS the flexible middle — the part that is short on one invoice and
+            // long on the next, and therefore the part that has to absorb the difference. Putting
+            // an empty filler here instead and leaving the table in Before was the mistake: nothing
+            // then had a reason to stretch, and with the row's height fixed the card asked for more
+            // space than the quadrant had.
+            // ScaleToFit is the safety net that a FIXED height needs: an invoice with more lines than
+            // a quarter page can hold would otherwise abort the whole print run with a layout
+            // conflict. Shrunk-to-fit is a worse-looking card; a thrown exception is no cards at all,
+            // and dropping the extra rows silently would be a bill missing goods.
+            card.Content().ScaleToFit().Column(col => CardItemsTable(col, invoice.Items, role == InvoicePrintRole.Driver));
 
             card.After().Column(col =>
             {
@@ -1621,28 +1632,38 @@ public class ExportService : IExportService
     private void MergedInvoiceCard(IContainer container, MergedInvoiceGroupDto group, CompanyInfo company)
     {
         container.ContentFromRightToLeft()
-            .Border(1).BorderColor(PrintInk.Text).Padding(8).Column(col =>
+            .Border(1).BorderColor(PrintInk.Text).Padding(8)
+            // Same three-part card as InvoiceCard, and for the same reason: the totals belong on the
+            // bottom edge of the quarter, not wherever a merged day's item list happens to run out.
+            // A merged group is the longest list of all — it is every invoice a buyer took that day.
+            .Decoration(card =>
         {
-            CompanyHeaderBlock(col, company, 28f, textCol =>
+            card.Before().Column(col =>
             {
-                textCol.Item().AlignCenter().Text(company.Name).Bold().FontSize(12);
-                if (!string.IsNullOrWhiteSpace(company.Address))
-                    textCol.Item().AlignCenter().Text(company.Address).FontSize(8).FontColor(PrintInk.Secondary);
-                if (!string.IsNullOrWhiteSpace(company.RegistrationNumber))
-                    textCol.Item().AlignCenter().Text($"رقم السجل: {company.RegistrationNumber}").FontSize(8);
-                if (!string.IsNullOrWhiteSpace(company.Phone))
-                    textCol.Item().AlignCenter().Text($"هاتف: {company.Phone}").FontSize(8);
+                CompanyHeaderBlock(col, company, 28f, textCol =>
+                {
+                    textCol.Item().AlignCenter().Text(company.Name).Bold().FontSize(12);
+                    if (!string.IsNullOrWhiteSpace(company.Address))
+                        textCol.Item().AlignCenter().Text(company.Address).FontSize(8).FontColor(PrintInk.Secondary);
+                    if (!string.IsNullOrWhiteSpace(company.RegistrationNumber))
+                        textCol.Item().AlignCenter().Text($"رقم السجل: {company.RegistrationNumber}").FontSize(8);
+                    if (!string.IsNullOrWhiteSpace(company.Phone))
+                        textCol.Item().AlignCenter().Text($"هاتف: {company.Phone}").FontSize(8);
+                });
+                col.Item().PaddingTop(3).LineHorizontal(0.5f).LineColor(PrintInk.Text);
+                col.Item().PaddingTop(3).Text("فاتورة مشتري").Bold().FontSize(10);
+                col.Item().Text($"التاريخ: {group.Date:yyyy-MM-dd}").FontSize(9);
+                col.Item().Text($"المطلوب من: {group.MerchantName}").Bold().FontSize(10);
+                col.Item().PaddingTop(4).LineHorizontal(0.5f).LineColor(PrintInk.Text);
             });
-            col.Item().PaddingTop(3).LineHorizontal(0.5f).LineColor(PrintInk.Text);
-            col.Item().PaddingTop(3).Text("فاتورة مشتري").Bold().FontSize(10);
-            col.Item().Text($"التاريخ: {group.Date:yyyy-MM-dd}").FontSize(9);
-            col.Item().Text($"المطلوب من: {group.MerchantName}").Bold().FontSize(10);
-            col.Item().PaddingTop(4).LineHorizontal(0.5f).LineColor(PrintInk.Text);
 
-            CardItemsTable(col, group.Items, isDriverCopy: false);
+            card.Content().ScaleToFit().Column(col => CardItemsTable(col, group.Items, isDriverCopy: false));
 
-            col.Item().PaddingTop(4).LineHorizontal(0.5f).LineColor(PrintInk.Text);
-            CardMerchantTotals(col, group.WoodTotal, group.BoxFeeTotal, group.GrandTotal, group.PreviousBalance);
+            card.After().Column(col =>
+            {
+                col.Item().PaddingTop(4).LineHorizontal(0.5f).LineColor(PrintInk.Text);
+                CardMerchantTotals(col, group.WoodTotal, group.BoxFeeTotal, group.GrandTotal, group.PreviousBalance);
+            });
         });
     }
     /// <summary>

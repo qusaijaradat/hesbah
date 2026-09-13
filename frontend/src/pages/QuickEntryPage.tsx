@@ -12,7 +12,7 @@ import { parseScannedRows, parseSpokenRow } from "../lib/ledgerCapture";
 import type { KnownNames } from "../lib/ledgerCapture";
 import { listPartners } from "../api/partners";
 import { listItems } from "../api/items";
-import { shareFile } from "../lib/share";
+import { CaptureBar } from "../components/CaptureBar";
 
 /**
  * The browser's own speech recognition — free, no key, no account. Typed by hand because it is
@@ -82,12 +82,7 @@ export function QuickEntryPage() {
   const [pasting, setPasting] = useState(false);
   const [pasteText, setPasteText] = useState("");
   const [listening, setListening] = useState<number | null>(null);
-  const [spoken, setSpoken] = useState("");
-  // The photographed page, kept on screen beside the grid rather than saved anywhere. It is not
-  // uploaded and it is not read by anything — see the panel below for what it is actually for.
-  const [page, setPage] = useState<{ file: File; url: string } | null>(null);
-  const [pageBig, setPageBig] = useState(false);
-  const cameraInput = useRef<HTMLInputElement | null>(null);
+
   // Everyone and everything already on file. Fetched once: both capture paths match a rough
   // reading against this list rather than reading a name cold, which is the whole reason either
   // of them stands a chance on handwriting or on a noisy stall.
@@ -171,17 +166,14 @@ export function QuickEntryPage() {
    *
    * This is the path that works on an iPhone. The browser's own speech recognition is Chrome-only
    * — Safari has none — but every phone keyboard has a microphone key, and on iOS it dictates
-   * on-device. So instead of the app listening, the KEYBOARD listens, types into this box, and the
+   * on-device. So instead of the app listening, the KEYBOARD listens, types into the box, and the
    * same parser reads what it typed. Same result, one more tap, and on iOS the audio never leaves
    * the phone, which is better than the Chrome path rather than worse.
    */
-  function addSpokenRow() {
-    const said = spoken.trim();
-    if (said === "") return;
+  function addSpokenRow(said: string): string | null {
     const patch = parseSpokenRow(said, known);
     if (Object.keys(patch).length === 0) {
-      setError(`ما قدرت أطلع إشي أكيد من: "${said}" — جرّب تقول كلمة "عدد" و"سعر" قبل الأرقام.`);
-      return;
+      return `ما قدرت أطلع إشي أكيد من: "${said}" — جرّب تقول كلمة "عدد" و"سعر" قبل الأرقام.`;
     }
     setRows((prev) => {
       // Into the first empty row when there is one, so dictating does not leave a page full of
@@ -192,40 +184,8 @@ export function QuickEntryPage() {
         ? prev.map((r, i) => (i === at ? filled : r))
         : [...prev, filled, ...Array.from({ length: 2 }, emptyRow)];
     });
-    setSpoken("");
-    setError(null);
     setSaved(null);
-  }
-
-  /**
-   * The photographed page.
-   *
-   * Worth being plain about what this is and is not. It does NOT read the page — nothing free
-   * reads handwritten Arabic, and this app is not going to pretend otherwise by filling a grid
-   * with guesses. What it does is put the page on the screen next to the grid, so entering it
-   * means looking up instead of holding a notebook open with one hand, and so the photo can be
-   * sent on in one tap to something that CAN read it.
-   *
-   * It is never uploaded by this screen and never stored: the object URL dies with the page.
-   */
-  function capturePage(file: File | undefined) {
-    if (!file) return;
-    setPage((prev) => {
-      if (prev) URL.revokeObjectURL(prev.url);
-      return { file, url: URL.createObjectURL(file) };
-    });
-    setError(null);
-  }
-
-  function clearPage() {
-    setPage((prev) => { if (prev) URL.revokeObjectURL(prev.url); return null; });
-    setPageBig(false);
-  }
-
-  async function sharePage() {
-    if (!page) return;
-    const result = await shareFile(page.file, page.file.name || "ledger-page.jpg", page.file.type || "image/jpeg");
-    if (result === "unsupported") setError("متصفحك ما بدعم المشاركة المباشرة — نزّل الصورة وابعتها يدويًا.");
+    return null;
   }
 
   const live = rows.filter((r) => !isBlank(r));
@@ -348,25 +308,17 @@ export function QuickEntryPage() {
         </div>
       )}
 
-      {/* Deliberately above everything else: standing at a stall, this is the only control being
-          used — say the line, Enter, say the next one. */}
-      <div className="card p-3 mb-4">
-        <div className="flex items-center gap-2 flex-wrap">
-          <input
-            className="input flex-1 min-w-[16rem]"
-            placeholder="قول أو اكتب السطر: أبو علي بندورة عدد ٢٠ بسعر ٣٫٥ صناديق ١٠"
-            value={spoken}
-            onChange={(e) => setSpoken(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addSpokenRow(); } }}
-          />
-          <button className="btn-secondary" onClick={addSpokenRow} disabled={spoken.trim() === ""}>أضف سطر</button>
-        </div>
-        <p className="text-xs text-gray-500 mt-2">
+      {/* Both ways in, on every screen that takes rows off paper — see components/CaptureBar. */}
+      <CaptureBar
+        onSentence={addSpokenRow}
+        placeholder="قول أو اكتب السطر: أبو علي بندورة عدد ٢٠ بسعر ٣٫٥ صناديق ١٠"
+        hint={<>
           على الجوال اضغط زر المايك 🎤 اللي على لوحة المفاتيح وأملِ السطر — بيشتغل على أندرويد وآيفون.
           قول كلمة <span className="font-semibold">عدد</span> و<span className="font-semibold">سعر</span>
           و<span className="font-semibold">صناديق</span> قبل أرقامها، لأن الرقم اللي بدون كلمة قبله بينترك فاضي بدل ما ينحزر.
-        </p>
-      </div>
+          وصوّر الصفحة لتضل قدامك وأنت بتعبّي، أو شاركها لحدا يقرأها ورجّع الأسطر بـ«لصق من سكان».
+        </>}
+      />
 
       {error && <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-md p-3 mb-4">{error}</div>}
       {saved && (
@@ -378,33 +330,6 @@ export function QuickEntryPage() {
               <Link to={`/invoices/${inv.id}`} className="font-medium hover:underline">{inv.number}</Link>
             </span>
           ))}
-        </div>
-      )}
-
-      {page && (
-        <div className="card p-3 mb-4">
-          <div className="flex items-center gap-2 flex-wrap mb-2">
-            <span className="text-sm font-semibold">صفحة الدفتر</span>
-            <button className="text-xs text-brand-700 hover:underline" onClick={() => setPageBig((v) => !v)}>
-              {pageBig ? "تصغير" : "تكبير"}
-            </button>
-            <button className="text-xs text-brand-700 hover:underline" onClick={sharePage}>مشاركة الصورة</button>
-            <button className="text-xs text-red-600 hover:underline ms-auto" onClick={clearPage}>شيل الصورة</button>
-          </div>
-          {/* Kept on screen while the rows are typed: the point is to stop somebody holding a
-              notebook open with one hand. Tap it to make it big enough to read a faint line. */}
-          <img
-            src={page.url}
-            alt="صفحة الدفتر"
-            className={`w-full object-contain rounded border border-gray-200 cursor-zoom-in ${pageBig ? "max-h-[80vh]" : "max-h-56"}`
-            }
-            onClick={() => setPageBig((v) => !v)}
-          />
-          <p className="text-xs text-gray-500 mt-2">
-            الصورة بتضل قدامك وأنت بتعبّي، وما بتنرفع ولا بتنحفظ بأي مكان. لقراءتها آليًا لسه ما في حل مجاني
-            بيقرا الخط العربي — اضغط <span className="font-semibold">مشاركة الصورة</span> وابعتها، وارجع الأسطر
-            بـ<span className="font-semibold">لصق من سكان</span>.
-          </p>
         </div>
       )}
 
@@ -567,13 +492,7 @@ export function QuickEntryPage() {
           + ٥ أسطر
         </button>
         <button className="btn-secondary" onClick={() => setPasting(true)}>📋 لصق من سكان</button>
-        {/* capture="environment" opens the back camera straight away on a phone instead of the
-            file picker. On a desktop the same control is an ordinary "choose a file". */}
-        <input
-          ref={cameraInput} type="file" accept="image/*" capture="environment" className="hidden"
-          onChange={(e) => { capturePage(e.target.files?.[0]); e.target.value = ""; }}
-        />
-        <button className="btn-secondary" onClick={() => cameraInput.current?.click()}>📷 صوّر الصفحة</button>
+
         <button
           className="btn-primary"
           onClick={handleSaveAll}

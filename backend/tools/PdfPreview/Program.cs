@@ -110,6 +110,59 @@ Write("04-bulk-merchant.pdf", export.GenerateInvoicesBulkPdf(four, company, Invo
 Write("05-bulk-farmer.pdf", export.GenerateInvoicesBulkPdf(four, company, InvoicePrintRole.Farmer));
 Write("06-bulk-driver.pdf", export.GenerateInvoicesBulkPdf(four, company, InvoicePrintRole.Driver));
 
+
+// A second, deliberately SHORTER invoice — one line against the first one's three.
+//
+// It exists for exactly one picture: the 4-per-page sheet below mixes the two, so the sheet shows
+// whether the الإجمالي on a one-line card lands at the same height as the الإجمالي on a three-line
+// one. Four cards that agree is the whole point of pinning them to the bottom of the quarter; a
+// preview built from four copies of the same invoice could never show it either way.
+var shortItems = new List<InvoiceItemDto>
+{
+    new(4, "ملفوف", 10m, null, 4m, 10m, 0m, 0m, 40m),
+};
+var shortCommission = CommissionCalculator.Calculate(40m, 0.10m).Commission;
+var shortMarketProfit = MarketEarnings.ForInvoice(
+    shortCommission, boxFeeTotal: 15m, driverBoxFeeTotal: 5m, transportFee: 20m, woodTotal: 0m, hasDriver: true);
+
+var shortInvoice = new InvoiceDto(
+    102, "INV-2026-000043", DateTimeOffset.Now,
+    7, "محل أبو عمار للخضار", "970599111222",
+    9, "المزارع سامي حسن", "970599333444",
+    11, "السائق خالد", "970599555666",
+    InvoiceStatus.Active,
+    TotalWeightKg: 0m, TotalValue: 40m, TransportFee: 20m, WoodTotal: 0m,
+    TotalBoxes: 10m, TotalCartons: 0m, BoxPriceApplied: 1.5m, BoxFeeTotal: 15m,
+    DriverBoxFeeApplied: 0.5m, DriverBoxFeeTotal: 5m,
+    GrandTotal: 55m,
+    PreviousBalance: 0m,
+    CommissionRateApplied: 0.10m, Commission: shortCommission,
+    NetDueToFarmer: 16m, DriverDue: 25m,
+    ReturnsTotal: 0m,
+    PaidAmount: 0m, RemainingAmount: 55m, PaymentStatus: InvoicePaymentStatus.Unpaid,
+    MarketProfit: shortMarketProfit,
+    HasUnpricedItems: false,
+    Items: shortItems,
+    Returns: new List<GoodsReturnDto>());
+
+// Checked the same way as the invoice above — a short fixture is still a fixture, and one that
+// does not reconcile would print a picture of a bug rather than a picture of a layout.
+Same("short TotalValue", shortInvoice.TotalValue, shortItems.Sum(i => i.LineTotal));
+Same("short BoxFeeTotal", shortInvoice.BoxFeeTotal, shortInvoice.TotalBoxes * shortInvoice.BoxPriceApplied);
+Same("short DriverBoxFeeTotal", shortInvoice.DriverBoxFeeTotal, shortInvoice.TotalBoxes * shortInvoice.DriverBoxFeeApplied);
+Same("short GrandTotal", shortInvoice.GrandTotal,
+     InvoiceCharge.ForMerchant(shortInvoice.TotalValue, shortInvoice.WoodTotal, shortInvoice.BoxFeeTotal, shortInvoice.ReturnsTotal));
+Same("short NetDueToFarmer", shortInvoice.NetDueToFarmer,
+     InvoiceCharge.ForSeller(shortInvoice.TotalValue, shortInvoice.Commission, shortInvoice.TransportFee));
+Same("short DriverDue", shortInvoice.DriverDue,
+     InvoiceCharge.ForDriver(shortInvoice.TransportFee, shortInvoice.DriverBoxFeeTotal));
+Same("buyer - seller - driver == market (short)",
+     shortInvoice.GrandTotal - shortInvoice.NetDueToFarmer - shortInvoice.DriverDue, shortInvoice.MarketProfit);
+
+Write("11-bulk-mixed-lengths.pdf",
+    export.GenerateInvoicesBulkPdf(
+        new[] { invoice, shortInvoice, shortInvoice, invoice }, company, InvoicePrintRole.Merchant));
+
 Write("07-driver-manifest.pdf", export.GenerateDriverManifestPdf("السائق خالد", new[] { invoice, invoice }, company, previousBalance: 140m));
 
 var statementLines = new List<StatementLineDto>

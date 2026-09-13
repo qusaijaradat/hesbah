@@ -1398,119 +1398,140 @@ public class ExportService : IExportService
     /// </summary>
     private void InvoiceCard(IContainer container, InvoiceDto invoice, CompanyInfo company, InvoicePrintRole role)
     {
+        // Read before the layout below, because the pinned bottom half names the same person the
+        // header does and the two must not be able to disagree.
+        var (title, partyLabel, partyName) = role switch
+        {
+            InvoicePrintRole.Farmer => ("فاتورة بائع", "المطلوب إلى", invoice.FarmerName),
+            InvoicePrintRole.Driver => ("فاتورة سائق", "المطلوب إلى", invoice.DriverName),
+            _ => ("فاتورة مشتري", "المطلوب من", invoice.MerchantName),
+        };
+
         // Explicitly RTL (not just inherited from the caller's page-level setting) so this card
         // renders correctly — right-aligned text, and the item table's "الصنف" column as the
         // RIGHTMOST column (read first) — no matter what context it's ever called from.
         container.ContentFromRightToLeft()
-            .Border(1).BorderColor(PrintInk.Text).Padding(8).Column(col =>
+            .Border(1).BorderColor(PrintInk.Text).Padding(8)
+            // Everything under the item table is pinned to the BOTTOM of the quarter, not left to
+            // flow straight after the last row. Four invoices on one sheet have four different
+            // numbers of lines, so the totals used to sit at four different heights and the eye had
+            // to go looking for each one. Pinned, the الإجمالي on every card — and on every sheet —
+            // is in the same place, and reading a stack of them is one glance repeated.
+            //
+            // Decoration rather than a Column: its Content takes whatever the table left over, which
+            // is exactly the variable gap that has to absorb the difference.
+            .Decoration(card =>
         {
-            // Bug fix: this card used to show only the company name — Address/RegistrationNumber/
-            // Phone were never included at all (unlike the single-invoice A4 header, which does
-            // show them), so filling those in under Settings had no visible effect on the 4-per-
-            // page bulk print. Small font since it's a quarter-page card, but all four fields now
-            // match the single-invoice header's set.
-            CompanyHeaderBlock(col, company, 28f, textCol =>
+            card.Before().Column(col =>
             {
-                textCol.Item().AlignCenter().Text(company.Name).Bold().FontSize(10);
-                if (!string.IsNullOrWhiteSpace(company.Address))
-                    textCol.Item().AlignCenter().Text(company.Address).FontSize(7).FontColor(PrintInk.Secondary);
-                if (!string.IsNullOrWhiteSpace(company.RegistrationNumber))
-                    textCol.Item().AlignCenter().Text($"رقم السجل: {company.RegistrationNumber}").FontSize(7);
-                if (!string.IsNullOrWhiteSpace(company.Phone))
-                    textCol.Item().AlignCenter().Text($"هاتف: {company.Phone}").FontSize(7);
-            });
-            col.Item().PaddingTop(3).LineHorizontal(0.5f).LineColor(PrintInk.Text);
-            // Title and counterparty are the role's own — a بائع copy is addressed to the بائع,
-            // never "المطلوب من {merchant}". A missing name can't normally happen (the Farmer and
-            // Driver sections only ever select invoices that HAVE one — see InvoiceFilterRequest's
-            // HasFarmer/HasDriver), so "—" is a last-resort placeholder, not an expected state.
-            // The title still says which side this copy belongs to. The party line sits in the same
-            // place on all three, but the wording follows the direction of the money: the buyer owes
-            // the market ("المطلوب من"), while the market owes the seller and the driver
-            // ("المطلوب إلى").
-            var (title, partyLabel, partyName) = role switch
-            {
-                InvoicePrintRole.Farmer => ("فاتورة بائع", "المطلوب إلى", invoice.FarmerName),
-                InvoicePrintRole.Driver => ("فاتورة سائق", "المطلوب إلى", invoice.DriverName),
-                _ => ("فاتورة مشتري", "المطلوب من", invoice.MerchantName),
-            };
-            col.Item().PaddingTop(3).Text(title).Bold().FontSize(10);
-            col.Item().Text($"التاريخ: {invoice.Date:yyyy-MM-dd}").FontSize(9);
-            col.Item().Text($"{partyLabel}: {(string.IsNullOrWhiteSpace(partyName) ? "—" : partyName)}").Bold().FontSize(10);
-            // The seller's copy — and ONLY the seller's — also names the driver who hauled the
-            // load (explicit request: "بس فاتورة البائع تطلع فيها اسم السائق، الباقي" as is),
-            // matching what the full-page "نسخة البائع" already shows. The buyer's copy still
-            // hides both البائع and السائق, and the driver's copy still names only himself.
-            if (role == InvoicePrintRole.Farmer && !string.IsNullOrWhiteSpace(invoice.DriverName))
-                col.Item().Text($"السائق: {invoice.DriverName}").FontSize(8);
-            col.Item().PaddingTop(4).LineHorizontal(0.5f).LineColor(PrintInk.Text);
-
-            var isDriverCopy = role == InvoicePrintRole.Driver;
-
-            CardItemsTable(col, invoice.Items, isDriverCopy);
-
-            col.Item().PaddingTop(4).LineHorizontal(0.5f).LineColor(PrintInk.Text);
-
-            switch (role)
-            {
-                case InvoicePrintRole.Farmer:
-                    // Mirrors GenerateFarmerInvoicePdf's footer: TotalValue - Commission =
-                    // NetDueToFarmer. Neither سعر الخشب nor رسوم الصناديق is money owed to the
-                    // seller — the crates are the driver's and the box fee is the market's — so
-                    // the wood line is labelled as such and the box fee has no place here at all.
-                    col.Item().AlignRight().Text($"إجمالي المبيعات: ₪ {invoice.TotalValue:0.##}").FontSize(8);
-                    if (invoice.WoodTotal > 0)
-                        col.Item().AlignRight().Text($"سعر الخشب (لا يُضاف للمستحق): ₪ {invoice.WoodTotal:0.##}").FontSize(7);
-                    col.Item().AlignRight().Text($"العمولة ({invoice.CommissionRateApplied:0.##%}): - ₪ {invoice.Commission:0.##}").FontSize(7).FontColor(PrintInk.Deduction);
-                    if (invoice.TransportFee > 0)
-                        col.Item().AlignRight().Text($"أجرة النقل: - ₪ {invoice.TransportFee:0.##}").FontSize(7).FontColor(PrintInk.Deduction);
-                    col.Item().PaddingTop(2).AlignRight().Text($"الصافي المستحق: ₪ {invoice.NetDueToFarmer:0.##}").Bold().FontSize(10);
-                    break;
-
-                case InvoicePrintRole.Driver:
+                // Bug fix: this card used to show only the company name — Address/RegistrationNumber/
+                // Phone were never included at all (unlike the single-invoice A4 header, which does
+                // show them), so filling those in under Settings had no visible effect on the 4-per-
+                // page bulk print. Small font since it's a quarter-page card, but all four fields now
+                // match the single-invoice header's set.
+                CompanyHeaderBlock(col, company, 28f, textCol =>
                 {
-                    // Same three components, in the same order, as GenerateDriverManifestPdf's
-                    // footer — أجرة النقل + أجرة الصناديق + سعر الخشب (the driver is paid the full
-                    // wood price too, per the explicit requirement documented there) — so a
-                    // per-invoice driver copy and the driver's consolidated manifest can never
-                    // disagree about what he's owed.
-                    var totalBoxes = invoice.Items.Sum(it => it.BoxQuantity);
-                    if (totalBoxes > 0)
-                        col.Item().AlignRight().Text($"إجمالي الصناديق: {totalBoxes:0.###}").FontSize(7);
-                    if (invoice.TotalWeightKg > 0)
-                        col.Item().AlignRight().Text($"إجمالي الوزن: {invoice.TotalWeightKg:0.###} كغم").FontSize(7);
-                    col.Item().AlignRight().Text($"أجرة النقل: ₪ {invoice.TransportFee:0.##}").FontSize(8);
-                    if (invoice.DriverBoxFeeTotal > 0)
-                        col.Item().AlignRight().Text($"أجرة الصناديق: ₪ {invoice.DriverBoxFeeTotal:0.##}").FontSize(7);
-                    if (invoice.WoodTotal > 0)
-                        col.Item().AlignRight().Text($"سعر الخشب (لا يُضاف للمستحق): ₪ {invoice.WoodTotal:0.##}").FontSize(7).FontColor(PrintInk.Secondary);
-                    var driverDue = InvoiceCharge.ForDriver(invoice.TransportFee, invoice.DriverBoxFeeTotal);
-                    col.Item().PaddingTop(2).AlignRight().Text($"الإجمالي المستحق للسائق: ₪ {driverDue:0.##}").Bold().FontSize(10);
-                    break;
+                    textCol.Item().AlignCenter().Text(company.Name).Bold().FontSize(10);
+                    if (!string.IsNullOrWhiteSpace(company.Address))
+                        textCol.Item().AlignCenter().Text(company.Address).FontSize(7).FontColor(PrintInk.Secondary);
+                    if (!string.IsNullOrWhiteSpace(company.RegistrationNumber))
+                        textCol.Item().AlignCenter().Text($"رقم السجل: {company.RegistrationNumber}").FontSize(7);
+                    if (!string.IsNullOrWhiteSpace(company.Phone))
+                        textCol.Item().AlignCenter().Text($"هاتف: {company.Phone}").FontSize(7);
+                });
+                col.Item().PaddingTop(3).LineHorizontal(0.5f).LineColor(PrintInk.Text);
+                // Title and counterparty are the role's own — a بائع copy is addressed to the بائع,
+                // never "المطلوب من {merchant}". A missing name can't normally happen (the Farmer and
+                // Driver sections only ever select invoices that HAVE one — see InvoiceFilterRequest's
+                // HasFarmer/HasDriver), so "—" is a last-resort placeholder, not an expected state.
+                // The title still says which side this copy belongs to. The party line sits in the same
+                // place on all three, but the wording follows the direction of the money: the buyer owes
+                // the market ("المطلوب من"), while the market owes the seller and the driver
+                // ("المطلوب إلى").
+                col.Item().PaddingTop(3).Text(title).Bold().FontSize(10);
+                col.Item().Text($"التاريخ: {invoice.Date:yyyy-MM-dd}").FontSize(9);
+                col.Item().Text($"{partyLabel}: {(string.IsNullOrWhiteSpace(partyName) ? "—" : partyName)}").Bold().FontSize(10);
+                // The seller's copy — and ONLY the seller's — also names the driver who hauled the
+                // load (explicit request: "بس فاتورة البائع تطلع فيها اسم السائق، الباقي" as is),
+                // matching what the full-page "نسخة البائع" already shows. The buyer's copy still
+                // hides both البائع and السائق, and the driver's copy still names only himself.
+                if (role == InvoicePrintRole.Farmer && !string.IsNullOrWhiteSpace(invoice.DriverName))
+                    col.Item().Text($"السائق: {invoice.DriverName}").FontSize(8);
+                col.Item().PaddingTop(4).LineHorizontal(0.5f).LineColor(PrintInk.Text);
+
+                var isDriverCopy = role == InvoicePrintRole.Driver;
+
+                CardItemsTable(col, invoice.Items, isDriverCopy);
+
+            });
+
+            card.Content().Text("");
+
+            card.After().Column(col =>
+            {
+                col.Item().PaddingTop(4).LineHorizontal(0.5f).LineColor(PrintInk.Text);
+
+                switch (role)
+                {
+                    case InvoicePrintRole.Farmer:
+                        // Mirrors GenerateFarmerInvoicePdf's footer: TotalValue - Commission =
+                        // NetDueToFarmer. Neither سعر الخشب nor رسوم الصناديق is money owed to the
+                        // seller — the crates are the driver's and the box fee is the market's — so
+                        // the wood line is labelled as such and the box fee has no place here at all.
+                        col.Item().AlignRight().Text($"إجمالي المبيعات: ₪ {invoice.TotalValue:0.##}").FontSize(8);
+                        if (invoice.WoodTotal > 0)
+                            col.Item().AlignRight().Text($"سعر الخشب (لا يُضاف للمستحق): ₪ {invoice.WoodTotal:0.##}").FontSize(7);
+                        col.Item().AlignRight().Text($"العمولة ({invoice.CommissionRateApplied:0.##%}): - ₪ {invoice.Commission:0.##}").FontSize(7).FontColor(PrintInk.Deduction);
+                        if (invoice.TransportFee > 0)
+                            col.Item().AlignRight().Text($"أجرة النقل: - ₪ {invoice.TransportFee:0.##}").FontSize(7).FontColor(PrintInk.Deduction);
+                        col.Item().PaddingTop(2).AlignRight().Text($"الصافي المستحق: ₪ {invoice.NetDueToFarmer:0.##}").Bold().FontSize(10);
+                        break;
+
+                    case InvoicePrintRole.Driver:
+                    {
+                        // Same three components, in the same order, as GenerateDriverManifestPdf's
+                        // footer — أجرة النقل + أجرة الصناديق + سعر الخشب (the driver is paid the full
+                        // wood price too, per the explicit requirement documented there) — so a
+                        // per-invoice driver copy and the driver's consolidated manifest can never
+                        // disagree about what he's owed.
+                        var totalBoxes = invoice.Items.Sum(it => it.BoxQuantity);
+                        if (totalBoxes > 0)
+                            col.Item().AlignRight().Text($"إجمالي الصناديق: {totalBoxes:0.###}").FontSize(7);
+                        if (invoice.TotalWeightKg > 0)
+                            col.Item().AlignRight().Text($"إجمالي الوزن: {invoice.TotalWeightKg:0.###} كغم").FontSize(7);
+                        col.Item().AlignRight().Text($"أجرة النقل: ₪ {invoice.TransportFee:0.##}").FontSize(8);
+                        if (invoice.DriverBoxFeeTotal > 0)
+                            col.Item().AlignRight().Text($"أجرة الصناديق: ₪ {invoice.DriverBoxFeeTotal:0.##}").FontSize(7);
+                        if (invoice.WoodTotal > 0)
+                            col.Item().AlignRight().Text($"سعر الخشب (لا يُضاف للمستحق): ₪ {invoice.WoodTotal:0.##}").FontSize(7).FontColor(PrintInk.Secondary);
+                        var driverDue = InvoiceCharge.ForDriver(invoice.TransportFee, invoice.DriverBoxFeeTotal);
+                        col.Item().PaddingTop(2).AlignRight().Text($"الإجمالي المستحق للسائق: ₪ {driverDue:0.##}").Bold().FontSize(10);
+                        break;
+                    }
+
+                    default:
+                        if (invoice.ReturnsTotal > 0)
+                            col.Item().AlignRight().Text($"مرتجع: - ₪ {invoice.ReturnsTotal:0.##}").FontSize(7).FontColor(PrintInk.Deduction);
+                        CardMerchantTotals(col, invoice.WoodTotal, invoice.BoxFeeTotal, invoice.GrandTotal, invoice.PreviousBalance);
+                        break;
                 }
 
-                default:
-                    if (invoice.ReturnsTotal > 0)
-                        col.Item().AlignRight().Text($"مرتجع: - ₪ {invoice.ReturnsTotal:0.##}").FontSize(7).FontColor(PrintInk.Deduction);
-                    CardMerchantTotals(col, invoice.WoodTotal, invoice.BoxFeeTotal, invoice.GrandTotal, invoice.PreviousBalance);
-                    break;
-            }
-
-            // The same boxed addressee-and-total that closes the full-page invoices, scaled to a
-            // quarter page. A card is the copy most likely to be handed straight to someone, and it
-            // is the one where the working and the answer were hardest to tell apart.
-            //
-            // Each role's own total, matching the line its branch just printed — the buyer's
-            // including his previous balance the way his full-page copy does, the seller's and the
-            // driver's being this invoice alone, since neither card carries a running balance.
-            var (blockLabel, blockAmount) = role switch
-            {
-                InvoicePrintRole.Farmer => ("الصافي المستحق", invoice.NetDueToFarmer),
-                InvoicePrintRole.Driver => ("الإجمالي المستحق", InvoiceCharge.ForDriver(invoice.TransportFee, invoice.DriverBoxFeeTotal)),
-                _ => (invoice.PreviousBalance > 0 ? "الإجمالي المستحق" : "الإجمالي",
-                      invoice.GrandTotal + (invoice.PreviousBalance > 0 ? invoice.PreviousBalance : 0m)),
-            };
-            PartyTotalBlock(col, partyLabel, partyName ?? "", blockLabel, blockAmount, 0.52f);
+                // The same boxed addressee-and-total that closes the full-page invoices, scaled to a
+                // quarter page. A card is the copy most likely to be handed straight to someone, and it
+                // is the one where the working and the answer were hardest to tell apart.
+                //
+                // Each role's own total, matching the line its branch just printed — the buyer's
+                // including his previous balance the way his full-page copy does, the seller's and the
+                // driver's being this invoice alone, since neither card carries a running balance.
+                var (blockLabel, blockAmount) = role switch
+                {
+                    InvoicePrintRole.Farmer => ("الصافي المستحق", invoice.NetDueToFarmer),
+                    InvoicePrintRole.Driver => ("الإجمالي المستحق", InvoiceCharge.ForDriver(invoice.TransportFee, invoice.DriverBoxFeeTotal)),
+                    _ => (invoice.PreviousBalance > 0 ? "الإجمالي المستحق" : "الإجمالي",
+                          invoice.GrandTotal + (invoice.PreviousBalance > 0 ? invoice.PreviousBalance : 0m)),
+                };
+                PartyTotalBlock(col, partyLabel, partyName ?? "", blockLabel, blockAmount, 0.52f);
+            });
         });
     }
 

@@ -81,6 +81,7 @@ export function QuickEntryPage() {
   const [pasting, setPasting] = useState(false);
   const [pasteText, setPasteText] = useState("");
   const [listening, setListening] = useState<number | null>(null);
+  const [spoken, setSpoken] = useState("");
   // Everyone and everything already on file. Fetched once: both capture paths match a rough
   // reading against this list rather than reading a name cold, which is the whole reason either
   // of them stands a chance on handwriting or on a noisy stall.
@@ -157,6 +158,37 @@ export function QuickEntryPage() {
     recognition.current = r;
     setListening(index);
     r.start();
+  }
+
+  /**
+   * One sentence, typed or dictated, becomes one new row.
+   *
+   * This is the path that works on an iPhone. The browser's own speech recognition is Chrome-only
+   * — Safari has none — but every phone keyboard has a microphone key, and on iOS it dictates
+   * on-device. So instead of the app listening, the KEYBOARD listens, types into this box, and the
+   * same parser reads what it typed. Same result, one more tap, and on iOS the audio never leaves
+   * the phone, which is better than the Chrome path rather than worse.
+   */
+  function addSpokenRow() {
+    const said = spoken.trim();
+    if (said === "") return;
+    const patch = parseSpokenRow(said, known);
+    if (Object.keys(patch).length === 0) {
+      setError(`ما قدرت أطلع إشي أكيد من: "${said}" — جرّب تقول كلمة "عدد" و"سعر" قبل الأرقام.`);
+      return;
+    }
+    setRows((prev) => {
+      // Into the first empty row when there is one, so dictating does not leave a page full of
+      // blanks between the lines somebody typed.
+      const at = prev.findIndex(isBlank);
+      const filled = { ...emptyRow(), ...patch };
+      return at >= 0
+        ? prev.map((r, i) => (i === at ? filled : r))
+        : [...prev, filled, ...Array.from({ length: 2 }, emptyRow)];
+    });
+    setSpoken("");
+    setError(null);
+    setSaved(null);
   }
 
   const live = rows.filter((r) => !isBlank(r));
@@ -278,6 +310,26 @@ export function QuickEntryPage() {
           </ul>
         </div>
       )}
+
+      {/* Deliberately above everything else: standing at a stall, this is the only control being
+          used — say the line, Enter, say the next one. */}
+      <div className="card p-3 mb-4">
+        <div className="flex items-center gap-2 flex-wrap">
+          <input
+            className="input flex-1 min-w-[16rem]"
+            placeholder="قول أو اكتب السطر: أبو علي بندورة عدد ٢٠ بسعر ٣٫٥ صناديق ١٠"
+            value={spoken}
+            onChange={(e) => setSpoken(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addSpokenRow(); } }}
+          />
+          <button className="btn-secondary" onClick={addSpokenRow} disabled={spoken.trim() === ""}>أضف سطر</button>
+        </div>
+        <p className="text-xs text-gray-500 mt-2">
+          على الجوال اضغط زر المايك 🎤 اللي على لوحة المفاتيح وأملِ السطر — بيشتغل على أندرويد وآيفون.
+          قول كلمة <span className="font-semibold">عدد</span> و<span className="font-semibold">سعر</span>
+          و<span className="font-semibold">صناديق</span> قبل أرقامها، لأن الرقم اللي بدون كلمة قبله بينترك فاضي بدل ما ينحزر.
+        </p>
+      </div>
 
       {error && <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-md p-3 mb-4">{error}</div>}
       {saved && (
@@ -424,7 +476,7 @@ export function QuickEntryPage() {
                       <button
                         className={`text-xs whitespace-nowrap ${listening === idx ? "text-red-600 font-semibold" : "text-brand-700 hover:underline"}`}
                         onClick={() => listen(idx)}
-                        title="قول السطر: اسم المشتري، الصنف، عدد ٢٠، بسعر ٣٫٥، صناديق ١٠"
+                        title="تسجيل مباشر — Chrome فقط. على الآيفون استعمل خانة الكلام فوق مع مايك لوحة المفاتيح."
                       >
                         {listening === idx ? "● عم يسمع..." : "🎤 صوت"}
                       </button>

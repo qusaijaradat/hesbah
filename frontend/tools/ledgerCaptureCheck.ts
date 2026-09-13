@@ -107,6 +107,14 @@ console.log("\n== a spoken row ==");
   const r = parseSpokenRow("باذنجان وزن 75.25 كيلو سعر 2.75", known);
   check("وزن and سعر are told apart", r.weightKg === "75.25" && r.pricePerUnit === "2.75", JSON.stringify(r));
 }
+{
+  // iPhone dictation is the main voice path on iOS — Safari has no speech API — and an Arabic
+  // keyboard dictating Arabic types Arabic-Indic digits.
+  const r = parseSpokenRow("أبو علي بندورة عدد ٢٠ بسعر ٣.٥ صناديق ١٠", known);
+  check("dictated Arabic-Indic digits are read",
+    r.quantity === "20" && r.pricePerUnit === "3.5" && r.boxQuantity === "10", JSON.stringify(r));
+  check("and the names come through with them", r.itemName === "بندورة" && r.merchant?.id === 1);
+}
 check("an empty transcript fills nothing", Object.keys(parseSpokenRow("", known)).length === 0);
 
 console.log(`\nRESULT: ${passed} passed, ${failed} failed`);

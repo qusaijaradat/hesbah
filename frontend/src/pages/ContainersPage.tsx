@@ -25,6 +25,8 @@ import type { ContainerBalanceDto, ContainerDirection, ContainerHolderDto, Conta
  * wooden crates arriving with a seller's produce on "إضافة بضاعة". Everything else — every crate
  * handed out by hand, every sack, every return — is recorded here.
  */
+// Carton is still named here even though it can no longer be chosen: a movement recorded against
+// it before cartons stopped being tracked still has to render as a word rather than a blank.
 const TYPE_LABEL: Record<ContainerType, string> = { Box: "صناديق", Carton: "كرتون", Sack: "مخالات" };
 const TYPE_UNIT: Record<ContainerType, string> = { Box: "صندوق", Carton: "كرتونة", Sack: "مخلاة" };
 
@@ -266,8 +268,9 @@ function MovementForm({ partnerId, onSaved }: { partnerId: number; onSaved: () =
         <div>
           <label className="label">النوع</label>
           <select className="input" value={type} onChange={(e) => setType(e.target.value as ContainerType)}>
+            {/* Crates and sacks only. Cartons are counted on the invoice and on the reports, but
+                they are not the market's to get back, so there is nothing to track here. */}
             <option value="Box">صناديق</option>
-            <option value="Carton">كرتون</option>
             <option value="Sack">مخالات</option>
           </select>
         </div>

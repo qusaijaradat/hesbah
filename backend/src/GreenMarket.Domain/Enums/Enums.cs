@@ -53,6 +53,12 @@ public enum ContainerType
     /// <summary>"مخلاة" — its own kind, its own balance.</summary>
     Sack = 2,
     /// <summary>"كرتونة" — counted per invoice line beside the crates, and tracked here like them.</summary>
+    /// <summary>
+    /// Retired from tracking, kept so any movement already recorded against it still reads back.
+    /// Cartons are counted on an invoice line and reported beside the crates; they are not the
+    /// market's property to chase, so the containers screen neither derives them from invoices nor
+    /// offers them for a new movement.
+    /// </summary>
     Carton = 3
 }
 

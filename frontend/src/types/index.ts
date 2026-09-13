@@ -90,9 +90,12 @@ export interface StatementLineDto {
   notes?: string | null;
 }
 
-/** Crates ("صندوق") and sacks ("مخلاة") are counted apart — one balance each per person. */
-/** Cartons joined crates and sacks when an invoice line started counting its own عدد الكرتون —
- *  they leave with the buyer exactly the way crates do, so they are tracked the same way. */
+/** Crates ("صندوق") and sacks ("مخلاة") are counted apart — one balance each per person.
+ *
+ *  "Carton" is retired from tracking and kept only so a movement recorded against it before that
+ *  still reads back. Cartons are counted on an invoice line and reported beside the crates, but
+ *  they are not the market's property to chase, so the containers screen neither derives them
+ *  from invoices nor offers them for a new movement. */
 export type ContainerType = "Box" | "Carton" | "Sack";
 /** Out = the market handed them over; In = they came back. */
 export type ContainerDirection = "Out" | "In";

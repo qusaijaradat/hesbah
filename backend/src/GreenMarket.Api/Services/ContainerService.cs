@@ -66,7 +66,6 @@ public class ContainerService : IContainerService
         // Sellers and drivers have no invoice-derived side at all: everything they hold was handed
         // over by hand and is recorded below.
         var invoiceBoxes = await InvoiceContainersFor(partnerId, ContainerType.Box);
-        var invoiceCartons = await InvoiceContainersFor(partnerId, ContainerType.Carton);
 
         // The mirror image, on the seller's side: "صناديق خشب" counted on the "إضافة بضاعة" form
         // are real wooden crates that arrived with his produce, and they were being counted only
@@ -75,14 +74,16 @@ public class ContainerService : IContainerService
         // than re-typed, for the same reason the buyer's side is.
         var (goodsEntryCrates, goodsEntrySacks) = await GoodsEntryContainersFor(partnerId);
 
+        // Crates and sacks only. Cartons are counted on the invoice and on the reports, but they
+        // are not the market's property to get back the way a wooden crate is — so this screen,
+        // which exists to answer "مين ماسك صناديقي", has nothing to say about them.
         var balances = new List<ContainerBalanceDto>();
-        foreach (var type in new[] { ContainerType.Box, ContainerType.Carton, ContainerType.Sack })
+        foreach (var type in new[] { ContainerType.Box, ContainerType.Sack })
         {
-            // Crates and cartons leave on an invoice; crates and sacks arrive with a seller's produce.
+            // Crates leave on an invoice; crates and sacks arrive with a seller's produce.
             var fromInvoices = type switch
             {
                 ContainerType.Box => invoiceBoxes,
-                ContainerType.Carton => invoiceCartons,
                 _ => 0m
             };
             var fromGoodsEntries = type switch
@@ -179,16 +180,13 @@ public class ContainerService : IContainerService
 
         foreach (var row in manual)
             Add(row.PartnerId, row.Type, row.Direction == ContainerDirection.Out ? row.Total : -row.Total);
+        // Crates only from here — cartons are not chased. Hand-recorded movements are still added
+        // above whatever their kind, so a carton row someone entered before this does not silently
+        // disappear from a list of who is holding what.
         foreach (var row in issued)
-        {
             Add(row.PartnerId, ContainerType.Box, row.Boxes);
-            Add(row.PartnerId, ContainerType.Carton, row.Cartons);
-        }
         foreach (var row in backOnReturns)
-        {
             Add(row.PartnerId, ContainerType.Box, -row.Boxes);
-            Add(row.PartnerId, ContainerType.Carton, -row.Cartons);
-        }
         foreach (var row in goodsContainers)
         {
             Add(row.PartnerId, ContainerType.Box, -row.Crates);
@@ -215,29 +213,30 @@ public class ContainerService : IContainerService
     }
 
     /// <summary>
-    /// Containers of one kind on this partner's own active invoices AS A BUYER, net of what came
-    /// back on a مرتجع. Zero for anyone who has never been the merchant on an invoice, which is
-    /// what makes this safe to call for a seller or a driver. Only Box and Carton are carried on an
-    /// invoice line; any other kind is zero here and comes entirely from hand-recorded movements.
+    /// Crates on this partner's own active invoices AS A BUYER, net of what came back on a مرتجع.
+    /// Zero for anyone who has never been the merchant on an invoice, which is what makes this safe
+    /// to call for a seller or a driver.
+    ///
+    /// Crates are the only kind read off an invoice. Cartons are counted on the line and reported
+    /// beside the crates, but they are not tracked as something to get back; sacks never appear on
+    /// an invoice at all. Both therefore come entirely from hand-recorded movements.
     /// </summary>
     private async Task<decimal> InvoiceContainersFor(int partnerId, ContainerType type)
     {
-        // Every kind is named. Written as "Carton, else crates", a call for Sack would have come
-        // back holding CRATE counts — silently, and on a screen whose whole job is telling the kinds
-        // apart. Nothing asks for sacks here today; the point is that it cannot start lying if
-        // something does.
-        if (type is not (ContainerType.Box or ContainerType.Carton)) return 0m;
-        var wantsCartons = type == ContainerType.Carton;
+        // Named rather than assumed. Written as "else crates", a call for any other kind would come
+        // back holding CRATE counts — silently, on a screen whose whole job is telling the kinds
+        // apart.
+        if (type is not ContainerType.Box) return 0m;
 
         var issued = await _db.Invoices
             .Where(i => i.MerchantId == partnerId && i.Status == InvoiceStatus.Active)
             .SelectMany(i => i.Items)
-            .SumAsync(it => (decimal?)(wantsCartons ? it.CartonQuantity : it.BoxQuantity)) ?? 0;
+            .SumAsync(it => (decimal?)it.BoxQuantity) ?? 0;
 
         var back = await _db.GoodsReturns
             .Where(r => r.Invoice.MerchantId == partnerId && r.Invoice.Status == InvoiceStatus.Active)
             .SelectMany(r => r.Items)
-            .SumAsync(ri => (decimal?)(wantsCartons ? ri.CartonQuantity : ri.BoxQuantity)) ?? 0;
+            .SumAsync(ri => (decimal?)ri.BoxQuantity) ?? 0;
 
         return issued - back;
     }

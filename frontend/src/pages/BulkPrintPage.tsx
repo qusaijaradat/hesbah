@@ -122,6 +122,10 @@ function useRoleSection(role: Role) {
       invoiceNumberFrom: invoiceNumberFrom.trim() || undefined,
       invoiceNumberTo: invoiceNumberTo.trim() || undefined,
       status: "Active",
+      // Never print an unpriced invoice. A line still at price 0 means the goods went out before
+      // the market priced them, so the invoice total is not yet what the person owes — printing it
+      // hands them a bill that is short by however much has not been priced yet.
+      hasUnpricedItems: false,
       page: 1,
       pageSize: 500,
       ...roleFilter,
@@ -438,7 +442,13 @@ function SectionTable({ section }: { section: RoleSection }) {
   const columnCount = 6 + moneyColumns.length + 1;
 
   return (
-    <div className="card overflow-x-auto mb-4">
+    <div className="card mb-4">
+      {/* Said out loud rather than left as a mystery: an invoice someone expects to see here and
+          cannot find has a reason, and "it is still unpriced" is a reason they can act on. */}
+      <div className="text-xs text-gray-500 px-3 pt-3">
+        الفواتير غير المسعّرة ما بتظهر هون ولا بتنطبع — سعّرها أول وبتبيّن.
+      </div>
+      <div className="overflow-x-auto">
       <table className="table-base">
         <thead>
           <tr>
@@ -456,7 +466,7 @@ function SectionTable({ section }: { section: RoleSection }) {
           {section.loading ? (
             <tr><td colSpan={columnCount} className="text-center text-gray-400 py-6">جاري التحميل...</td></tr>
           ) : section.result.length === 0 ? (
-            <tr><td colSpan={columnCount} className="text-center text-gray-400 py-6">لا توجد فواتير مطابقة</td></tr>
+            <tr><td colSpan={columnCount} className="text-center text-gray-400 py-6">لا توجد فواتير مطابقة (الفواتير غير المسعّرة مستثناة)</td></tr>
           ) : (
             pager.pageRows.map((inv) => {
               const remaining = remainingOf(inv);
@@ -491,6 +501,7 @@ function SectionTable({ section }: { section: RoleSection }) {
           )}
         </tbody>
       </table>
+      </div>
       <TablePagination
         page={pager.page} pageSize={pager.pageSize} totalCount={pager.totalCount}
         itemLabel="فاتورة" onPageChange={pager.setPage} onPageSizeChange={pager.setPageSize}

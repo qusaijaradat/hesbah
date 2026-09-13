@@ -212,7 +212,10 @@ public class InvoiceFilterRequest
 
     /// <summary>"فواتير فيها أصناف غير مسعّرة" — true = only invoices carrying at least one line
     /// still at price 0. Goods go out unpriced and get priced later; without this there is no
-    /// list of what is still waiting, and an invoice can sit unpriced indefinitely.</summary>
+    /// list of what is still waiting, and an invoice can sit unpriced indefinitely.
+    ///
+    /// false is the opposite and NOT a synonym for null: exclude them. The print screens set it,
+    /// because an invoice with a line at price 0 has no total worth handing to anybody.</summary>
     public bool? HasUnpricedItems { get; set; }
 
     public string? ItemName { get; set; }

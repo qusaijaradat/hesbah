@@ -381,7 +381,8 @@ export interface InvoiceFilter {
    * also drop invoices where that person is the بائع. See backend InvoiceFilterRequest. */
   /** "الفواتير غير المدفوعة" — narrows to one payment state, computed server-side. */
   paymentStatus?: InvoicePaymentStatus;
-  /** true = only invoices with at least one line still unpriced (price 0). */
+  /** true = only invoices with at least one line still unpriced (price 0); false = exclude those,
+   *  which is what the print screens ask for; undefined = no opinion either way. */
   hasUnpricedItems?: boolean;
   excludeMerchantIds?: number[];
   excludeFarmerIds?: number[];

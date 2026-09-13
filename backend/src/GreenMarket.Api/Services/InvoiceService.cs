@@ -554,8 +554,15 @@ public class InvoiceService : IInvoiceService
         if (filter.MinAmount is not null) query = query.Where(i => i.TotalValue >= filter.MinAmount);
         if (filter.MaxAmount is not null) query = query.Where(i => i.TotalValue <= filter.MaxAmount);
         // "فيها أصناف غير مسعّرة" — a correlated Any() over the lines, translated to an EXISTS.
+        //
+        // Three states, not two. false is not "no opinion" — it is "leave them out", which is what
+        // the print screens ask for: an invoice with a line still at price 0 has no total to put on
+        // a bill, and printing one hands someone a document that understates what they owe. Null
+        // stays "I do not care either way".
         if (filter.HasUnpricedItems == true)
             query = query.Where(i => i.Items.Any(it => it.PricePerUnit == 0));
+        else if (filter.HasUnpricedItems == false)
+            query = query.Where(i => !i.Items.Any(it => it.PricePerUnit == 0));
 
         // Payment status. Compared against the STORED GrandTotal and the invoice's own linked
         // payments, so this is one translated query rather than loading every invoice to sort

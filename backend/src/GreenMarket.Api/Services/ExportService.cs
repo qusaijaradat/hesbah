@@ -392,7 +392,8 @@ public class ExportService : IExportService
                     {
                         var item = invoice.Items[i];
                         var shaded = i % 2 == 1;
-                        table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(item.ItemName);
+                        // Same as on the card: الصنف reads first, so it carries the weight.
+                        table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(item.ItemName).Bold();
                         table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(CountCell(item.Quantity));
                         table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(thermalWidth ? WeightCellCompact(item.WeightKg) : WeightCell(item.WeightKg));
                         // PricePerUnit == 0 means "not priced yet, will be priced later" (see
@@ -1431,13 +1432,13 @@ public class ExportService : IExportService
                 // match the single-invoice header's set.
                 CompanyHeaderBlock(col, company, 28f, textCol =>
                 {
-                    textCol.Item().AlignCenter().Text(company.Name).Bold().FontSize(10);
+                    textCol.Item().AlignCenter().Text(company.Name).Bold().FontSize(12);
                     if (!string.IsNullOrWhiteSpace(company.Address))
-                        textCol.Item().AlignCenter().Text(company.Address).FontSize(7).FontColor(PrintInk.Secondary);
+                        textCol.Item().AlignCenter().Text(company.Address).FontSize(8).FontColor(PrintInk.Secondary);
                     if (!string.IsNullOrWhiteSpace(company.RegistrationNumber))
-                        textCol.Item().AlignCenter().Text($"رقم السجل: {company.RegistrationNumber}").FontSize(7);
+                        textCol.Item().AlignCenter().Text($"رقم السجل: {company.RegistrationNumber}").FontSize(8);
                     if (!string.IsNullOrWhiteSpace(company.Phone))
-                        textCol.Item().AlignCenter().Text($"هاتف: {company.Phone}").FontSize(7);
+                        textCol.Item().AlignCenter().Text($"هاتف: {company.Phone}").FontSize(8);
                 });
                 col.Item().PaddingTop(3).LineHorizontal(0.5f).LineColor(PrintInk.Text);
                 // Title and counterparty are the role's own — a بائع copy is addressed to the بائع,
@@ -1478,12 +1479,12 @@ public class ExportService : IExportService
                         // NetDueToFarmer. Neither سعر الخشب nor رسوم الصناديق is money owed to the
                         // seller — the crates are the driver's and the box fee is the market's — so
                         // the wood line is labelled as such and the box fee has no place here at all.
-                        col.Item().AlignRight().Text($"إجمالي المبيعات: ₪ {invoice.TotalValue:0.##}").FontSize(8);
+                        col.Item().AlignRight().Text($"إجمالي المبيعات: ₪ {invoice.TotalValue:0.##}").FontSize(9);
                         if (invoice.WoodTotal > 0)
-                            col.Item().AlignRight().Text($"سعر الخشب (لا يُضاف للمستحق): ₪ {invoice.WoodTotal:0.##}").FontSize(7);
-                        col.Item().AlignRight().Text($"العمولة ({invoice.CommissionRateApplied:0.##%}): - ₪ {invoice.Commission:0.##}").FontSize(7).FontColor(PrintInk.Deduction);
+                            col.Item().AlignRight().Text($"سعر الخشب (لا يُضاف للمستحق): ₪ {invoice.WoodTotal:0.##}").FontSize(8);
+                        col.Item().AlignRight().Text($"العمولة ({invoice.CommissionRateApplied:0.##%}): - ₪ {invoice.Commission:0.##}").FontSize(8).FontColor(PrintInk.Deduction);
                         if (invoice.TransportFee > 0)
-                            col.Item().AlignRight().Text($"أجرة النقل: - ₪ {invoice.TransportFee:0.##}").FontSize(7).FontColor(PrintInk.Deduction);
+                            col.Item().AlignRight().Text($"أجرة النقل: - ₪ {invoice.TransportFee:0.##}").FontSize(8).FontColor(PrintInk.Deduction);
                         col.Item().PaddingTop(2).AlignRight().Text($"الصافي المستحق: ₪ {invoice.NetDueToFarmer:0.##}").Bold().FontSize(10);
                         break;
 
@@ -1496,14 +1497,14 @@ public class ExportService : IExportService
                         // disagree about what he's owed.
                         var totalBoxes = invoice.Items.Sum(it => it.BoxQuantity);
                         if (totalBoxes > 0)
-                            col.Item().AlignRight().Text($"إجمالي الصناديق: {totalBoxes:0.###}").FontSize(7);
+                            col.Item().AlignRight().Text($"إجمالي الصناديق: {totalBoxes:0.###}").FontSize(8);
                         if (invoice.TotalWeightKg > 0)
-                            col.Item().AlignRight().Text($"إجمالي الوزن: {invoice.TotalWeightKg:0.###} كغم").FontSize(7);
-                        col.Item().AlignRight().Text($"أجرة النقل: ₪ {invoice.TransportFee:0.##}").FontSize(8);
+                            col.Item().AlignRight().Text($"إجمالي الوزن: {invoice.TotalWeightKg:0.###} كغم").FontSize(8);
+                        col.Item().AlignRight().Text($"أجرة النقل: ₪ {invoice.TransportFee:0.##}").FontSize(9);
                         if (invoice.DriverBoxFeeTotal > 0)
-                            col.Item().AlignRight().Text($"أجرة الصناديق: ₪ {invoice.DriverBoxFeeTotal:0.##}").FontSize(7);
+                            col.Item().AlignRight().Text($"أجرة الصناديق: ₪ {invoice.DriverBoxFeeTotal:0.##}").FontSize(8);
                         if (invoice.WoodTotal > 0)
-                            col.Item().AlignRight().Text($"سعر الخشب (لا يُضاف للمستحق): ₪ {invoice.WoodTotal:0.##}").FontSize(7).FontColor(PrintInk.Secondary);
+                            col.Item().AlignRight().Text($"سعر الخشب (لا يُضاف للمستحق): ₪ {invoice.WoodTotal:0.##}").FontSize(8).FontColor(PrintInk.Secondary);
                         var driverDue = InvoiceCharge.ForDriver(invoice.TransportFee, invoice.DriverBoxFeeTotal);
                         col.Item().PaddingTop(2).AlignRight().Text($"الإجمالي المستحق للسائق: ₪ {driverDue:0.##}").Bold().FontSize(10);
                         break;
@@ -1511,7 +1512,7 @@ public class ExportService : IExportService
 
                     default:
                         if (invoice.ReturnsTotal > 0)
-                            col.Item().AlignRight().Text($"مرتجع: - ₪ {invoice.ReturnsTotal:0.##}").FontSize(7).FontColor(PrintInk.Deduction);
+                            col.Item().AlignRight().Text($"مرتجع: - ₪ {invoice.ReturnsTotal:0.##}").FontSize(8).FontColor(PrintInk.Deduction);
                         CardMerchantTotals(col, invoice.WoodTotal, invoice.BoxFeeTotal, invoice.GrandTotal, invoice.PreviousBalance);
                         break;
                 }
@@ -1588,7 +1589,9 @@ public class ExportService : IExportService
                 var item = items[i];
                 var shaded = i % 2 == 1;
                 var unpriced = item.PricePerUnit == 0;
-                table.Cell().Element(c => MiniDataCell(c, shaded)).AlignRight().Text(item.ItemName);
+                // Bold: الصنف is what the eye lands on first and the only column that is a word
+                // rather than a figure.
+                table.Cell().Element(c => MiniDataCell(c, shaded)).AlignRight().Text(item.ItemName).Bold();
                 table.Cell().Element(c => MiniDataCell(c, shaded)).AlignRight().Text(CountCell(item.Quantity));
                 table.Cell().Element(c => MiniDataCell(c, shaded)).AlignRight().Text(WeightCell(item.WeightKg));
                 table.Cell().Element(c => MiniDataCell(c, shaded)).AlignRight().Text(item.WoodPrice > 0 ? item.WoodPrice.ToString("0.##") : "—");
@@ -1609,13 +1612,13 @@ public class ExportService : IExportService
     private static void CardMerchantTotals(ColumnDescriptor column, decimal woodTotal, decimal boxFeeTotal, decimal grandTotal, decimal previousBalance)
     {
         if (woodTotal > 0)
-            column.Item().AlignRight().Text($"منها سعر الخشب: ₪ {woodTotal:0.##}").FontSize(7);
+            column.Item().AlignRight().Text($"منها سعر الخشب: ₪ {woodTotal:0.##}").FontSize(8);
         if (boxFeeTotal > 0)
-            column.Item().AlignRight().Text($"منها رسوم الصناديق: ₪ {boxFeeTotal:0.##}").FontSize(7);
+            column.Item().AlignRight().Text($"منها رسوم الصناديق: ₪ {boxFeeTotal:0.##}").FontSize(8);
         column.Item().PaddingTop(2).AlignRight().Text($"الإجمالي: ₪ {grandTotal:0.##}").Bold().FontSize(10);
         if (previousBalance > 0)
         {
-            column.Item().AlignRight().Text($"الرصيد السابق: ₪ {previousBalance:0.##}").FontSize(7);
+            column.Item().AlignRight().Text($"الرصيد السابق: ₪ {previousBalance:0.##}").FontSize(8);
             column.Item().PaddingTop(1).AlignRight().Text($"الإجمالي المستحق: ₪ {(grandTotal + previousBalance):0.##}").Bold().FontSize(10);
         }
     }
@@ -1634,13 +1637,13 @@ public class ExportService : IExportService
         {
             CompanyHeaderBlock(col, company, 28f, textCol =>
             {
-                textCol.Item().AlignCenter().Text(company.Name).Bold().FontSize(10);
+                textCol.Item().AlignCenter().Text(company.Name).Bold().FontSize(12);
                 if (!string.IsNullOrWhiteSpace(company.Address))
-                    textCol.Item().AlignCenter().Text(company.Address).FontSize(7).FontColor(PrintInk.Secondary);
+                    textCol.Item().AlignCenter().Text(company.Address).FontSize(8).FontColor(PrintInk.Secondary);
                 if (!string.IsNullOrWhiteSpace(company.RegistrationNumber))
-                    textCol.Item().AlignCenter().Text($"رقم السجل: {company.RegistrationNumber}").FontSize(7);
+                    textCol.Item().AlignCenter().Text($"رقم السجل: {company.RegistrationNumber}").FontSize(8);
                 if (!string.IsNullOrWhiteSpace(company.Phone))
-                    textCol.Item().AlignCenter().Text($"هاتف: {company.Phone}").FontSize(7);
+                    textCol.Item().AlignCenter().Text($"هاتف: {company.Phone}").FontSize(8);
             });
             col.Item().PaddingTop(3).LineHorizontal(0.5f).LineColor(PrintInk.Text);
             col.Item().PaddingTop(3).Text("فاتورة مشتري").Bold().FontSize(10);
@@ -1687,12 +1690,15 @@ public class ExportService : IExportService
     /// <summary>Shaded header cell for the shrunk-down invoice-card table used in the 4-per-page
     /// bulk print — same look as HeaderCell, just smaller to fit a quarter page.</summary>
     private static IContainer MiniHeaderCell(IContainer container) =>
-        container.Background(PrintInk.SubHeaderFill).PaddingVertical(2).PaddingHorizontal(3).DefaultTextStyle(x => x.Bold().FontSize(7));
+        container.Background(PrintInk.SubHeaderFill).PaddingVertical(3).PaddingHorizontal(4).DefaultTextStyle(x => x.Bold().FontSize(9));
 
     /// <summary>Alternating row shading for the shrunk-down invoice-card table — same look as
     /// DataCell, just smaller to fit a quarter page.</summary>
+    // 7pt was small enough that a quarter-page card's item lines had to be squinted at. A card is
+    // the copy most likely to be handed to someone across a counter, and the goods on it are the
+    // part being argued about.
     private static IContainer MiniDataCell(IContainer container, bool shaded) =>
-        container.Background(shaded ? PrintInk.ZebraFill : PrintInk.NoFill).PaddingVertical(2).PaddingHorizontal(3).DefaultTextStyle(x => x.FontSize(7));
+        container.Background(shaded ? PrintInk.ZebraFill : PrintInk.NoFill).PaddingVertical(3).PaddingHorizontal(4).DefaultTextStyle(x => x.FontSize(9));
 
     /// <summary>Shaded header cell for a "مرتب" (organized) look — grey background, bold text.</summary>
     /// <summary>

@@ -159,9 +159,59 @@ Same("short DriverDue", shortInvoice.DriverDue,
 Same("buyer - seller - driver == market (short)",
      shortInvoice.GrandTotal - shortInvoice.NetDueToFarmer - shortInvoice.DriverDue, shortInvoice.MarketProfit);
 
+
+// And a deliberately LONG one — six lines against the short one's single line.
+//
+// The mixed sheet below is the only check that a quarter-page card still FITS now that its table
+// and its totals have been enlarged. A card that overflows its quadrant is a layout failure that
+// no unit test would ever notice and that only shows up on paper.
+var longItems = new List<InvoiceItemDto>
+{
+    new(5, "بندورة", 10m, null, 4m, 10m, 0m, 0m, 40m),
+    new(6, "خيار", 10m, null, 4m, 10m, 0m, 0m, 40m),
+    new(7, "باذنجان", 10m, null, 4m, 10m, 0m, 0m, 40m),
+    new(8, "كوسا", 10m, null, 4m, 10m, 0m, 0m, 40m),
+    new(9, "فلفل", 10m, null, 4m, 10m, 0m, 0m, 40m),
+    new(10, "ملفوف", 10m, null, 4m, 10m, 0m, 0m, 40m),
+};
+var longCommission = CommissionCalculator.Calculate(240m, 0.10m).Commission;
+var longMarketProfit = MarketEarnings.ForInvoice(
+    longCommission, boxFeeTotal: 90m, driverBoxFeeTotal: 30m, transportFee: 20m, woodTotal: 0m, hasDriver: true);
+
+var longInvoice = new InvoiceDto(
+    103, "INV-2026-000044", DateTimeOffset.Now,
+    7, "محل أبو عمار للخضار", "970599111222",
+    9, "المزارع سامي حسن", "970599333444",
+    11, "السائق خالد", "970599555666",
+    InvoiceStatus.Active,
+    TotalWeightKg: 0m, TotalValue: 240m, TransportFee: 20m, WoodTotal: 0m,
+    TotalBoxes: 60m, TotalCartons: 0m, BoxPriceApplied: 1.5m, BoxFeeTotal: 90m,
+    DriverBoxFeeApplied: 0.5m, DriverBoxFeeTotal: 30m,
+    GrandTotal: 330m,
+    PreviousBalance: 1250m,
+    CommissionRateApplied: 0.10m, Commission: longCommission,
+    NetDueToFarmer: 196m, DriverDue: 50m,
+    ReturnsTotal: 0m,
+    PaidAmount: 0m, RemainingAmount: 330m, PaymentStatus: InvoicePaymentStatus.Unpaid,
+    MarketProfit: longMarketProfit,
+    HasUnpricedItems: false,
+    Items: longItems,
+    Returns: new List<GoodsReturnDto>());
+
+Same("long TotalValue", longInvoice.TotalValue, longItems.Sum(i => i.LineTotal));
+Same("long BoxFeeTotal", longInvoice.BoxFeeTotal, longInvoice.TotalBoxes * longInvoice.BoxPriceApplied);
+Same("long GrandTotal", longInvoice.GrandTotal,
+     InvoiceCharge.ForMerchant(longInvoice.TotalValue, longInvoice.WoodTotal, longInvoice.BoxFeeTotal, longInvoice.ReturnsTotal));
+Same("long NetDueToFarmer", longInvoice.NetDueToFarmer,
+     InvoiceCharge.ForSeller(longInvoice.TotalValue, longInvoice.Commission, longInvoice.TransportFee));
+Same("long DriverDue", longInvoice.DriverDue,
+     InvoiceCharge.ForDriver(longInvoice.TransportFee, longInvoice.DriverBoxFeeTotal));
+Same("buyer - seller - driver == market (long)",
+     longInvoice.GrandTotal - longInvoice.NetDueToFarmer - longInvoice.DriverDue, longInvoice.MarketProfit);
+
 Write("11-bulk-mixed-lengths.pdf",
     export.GenerateInvoicesBulkPdf(
-        new[] { invoice, shortInvoice, shortInvoice, invoice }, company, InvoicePrintRole.Merchant));
+        new[] { invoice, shortInvoice, longInvoice, shortInvoice }, company, InvoicePrintRole.Merchant));
 
 Write("07-driver-manifest.pdf", export.GenerateDriverManifestPdf("السائق خالد", new[] { invoice, invoice }, company, previousBalance: 140m));
 

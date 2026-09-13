@@ -11,9 +11,32 @@ import { TablePagination } from "../components/TablePagination";
 import { CREDIT_LIMIT_UI_ENABLED } from "../lib/featureFlags";
 import { useSelection } from "../lib/useSelection";
 import { runBulkDelete, summarizeBulkDelete } from "../lib/bulkDelete";
+import { useColumnFilters } from "../lib/useColumnFilters";
+import type { ColumnFilterSpec } from "../lib/columnFilters";
+import { ColumnFilterRow, ColumnFilterSummary } from "../components/ColumnFilterRow";
+import { BulkEditDialog } from "../components/BulkEditDialog";
+import type { BulkEditField } from "../components/BulkEditDialog";
 
 // Labels come from one place now (lib/format) — this map knew four of the seven combinations and
 // rendered the rest blank.
+
+// Module-level so the array identity is stable — useColumnFilters memoizes on it, and a spec
+// rebuilt every render would re-filter the whole list on every keystroke elsewhere on the page.
+//
+// The type column filters on the LABEL, not the flags enum: "بائع/سائق" is what the row shows,
+// and a filter that quietly matched something else than what is printed in the cell would be a
+// filter nobody could check.
+const PARTNER_FILTERS: ColumnFilterSpec<PartnerDto>[] = [
+  { key: "name", kind: "text", value: (p) => p.name },
+  { key: "type", kind: "select", value: (p) => partnerTypeLabel(p.type) },
+  { key: "whatsApp", kind: "text", value: (p) => p.whatsAppNumber ?? "" },
+  { key: "address", kind: "text", value: (p) => p.address ?? "" },
+  // One balance per row for filtering: a Both partner has two, and the cell already shows both.
+  // Ranging over whichever is set answers "مين عليه أكثر من ١٠٠٠" without pretending the two
+  // sides are one number — which they are not, and are never added together anywhere else.
+  { key: "balance", kind: "numberRange", value: (p) => p.merchantRemaining ?? p.farmerRemaining ?? 0 },
+  { key: "notes", kind: "text", value: (p) => p.notes ?? "" },
+];
 
 export function PartnersPage() {
   const { hasPermission } = useAuth();
@@ -27,8 +50,12 @@ export function PartnersPage() {
   const [error, setError] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const selection = useSelection();
-  const pager = usePagination(partners);
+  // Filter first, paginate the RESULT. The other order paginates 25 rows out of 400 and then
+  // answers a question about the whole table using only those 25.
+  const filters = useColumnFilters(partners, PARTNER_FILTERS);
+  const pager = usePagination(filters.rows);
   const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [bulkEditing, setBulkEditing] = useState(false);
 
   async function refresh() {
     setLoading(true);
@@ -101,6 +128,41 @@ export function PartnersPage() {
     if (outcome.failedCount > 0) setError(summarizeBulkDelete(outcome));
   }
 
+  /**
+   * What a bulk edit is allowed to change here. Two fields, both of them attributes rather than
+   * amounts: nothing on this list re-derives a balance.
+   *
+   * Each one re-sends the partner's whole record with the single field swapped, because the
+   * endpoint is a full PUT — reading the row for the other fields rather than trusting a partial
+   * body to leave them alone.
+   */
+  const bulkEditFields: BulkEditField<PartnerDto>[] = [
+    {
+      key: "type", label: "النوع / الدور", kind: "select",
+      options: (["Farmer", "Merchant", "Both", "Driver", "FarmerDriver", "MerchantDriver"] as PartnerType[])
+        .map((t) => ({ value: t, label: partnerTypeLabel(t) })),
+      current: (p) => partnerTypeLabel(p.type),
+      display: (v) => partnerTypeLabel(v as PartnerType),
+      apply: (p, v) => updatePartner(p.id, {
+        name: p.name, type: v as PartnerType, whatsAppNumber: p.whatsAppNumber ?? undefined,
+        address: p.address ?? undefined, notes: p.notes ?? undefined,
+        creditLimit: p.creditLimit ?? null, openingBalance: p.openingBalance ?? null,
+        includeOpeningBalanceInInvoices: p.includeOpeningBalanceInInvoices,
+      }).then(() => undefined),
+    },
+    {
+      key: "includeOpening", label: "إضافة الدين القديم للرصيد السابق بالفواتير", kind: "boolean",
+      current: (p) => (p.includeOpeningBalanceInInvoices ? "نعم" : "لا"),
+      display: (v) => (v === "yes" ? "نعم" : "لا"),
+      apply: (p, v) => updatePartner(p.id, {
+        name: p.name, type: p.type, whatsAppNumber: p.whatsAppNumber ?? undefined,
+        address: p.address ?? undefined, notes: p.notes ?? undefined,
+        creditLimit: p.creditLimit ?? null, openingBalance: p.openingBalance ?? null,
+        includeOpeningBalanceInInvoices: v === "yes",
+      }).then(() => undefined),
+    },
+  ];
+
   return (
     <div>
       <div className="flex items-center justify-between flex-wrap gap-3 mb-6">
@@ -119,14 +181,33 @@ export function PartnersPage() {
 
       {error && <div className="text-sm text-red-600 bg-red-50 rounded-md p-3 mb-4 whitespace-pre-line">{error}</div>}
 
-      {canDelete && selection.selected.size > 0 && (
+      {selection.selected.size > 0 && (canDelete || canEdit) && (
         <div className="flex items-center gap-3 mb-4">
           <span className="text-sm text-gray-600">محدد: <span className="font-semibold">{selection.selected.size}</span></span>
-          <button className="btn-danger text-sm" disabled={bulkDeleting} onClick={handleBulkDelete}>
-            {bulkDeleting ? "جاري الحذف..." : `حذف المحدد (${selection.selected.size})`}
-          </button>
+          {canEdit && (
+            <button className="btn-secondary text-sm" onClick={() => setBulkEditing(true)}>
+              تعديل المحدد ({selection.selected.size})
+            </button>
+          )}
+          {canDelete && (
+            <button className="btn-danger text-sm" disabled={bulkDeleting} onClick={handleBulkDelete}>
+              {bulkDeleting ? "جاري الحذف..." : `حذف المحدد (${selection.selected.size})`}
+            </button>
+          )}
         </div>
       )}
+
+      {bulkEditing && (
+        <BulkEditDialog
+          rows={partners.filter((p) => selection.selected.has(p.id))}
+          fields={bulkEditFields}
+          label={(p) => p.name}
+          onClose={() => setBulkEditing(false)}
+          onDone={async (message) => { setError(message); selection.clear(); await refresh(); }}
+        />
+      )}
+
+      <ColumnFilterSummary filters={filters} />
 
       <div className="card overflow-x-auto">
         <table className="table-base">
@@ -150,11 +231,22 @@ export function PartnersPage() {
               <th>ملاحظات</th>
               <th></th>
             </tr>
+            <ColumnFilterRow
+              columns={[
+                ...(canDelete ? [null] : []),
+                "name", "type", "whatsApp", "address",
+                ...(CREDIT_LIMIT_UI_ENABLED ? [null] : []),
+                "balance", "notes", null,
+              ]}
+              specs={PARTNER_FILTERS}
+              filters={filters}
+              rows={partners}
+            />
           </thead>
           <tbody>
             {loading ? (
               <tr><td colSpan={(CREDIT_LIMIT_UI_ENABLED ? 8 : 7) + (canDelete ? 1 : 0)} className="text-center text-gray-400 py-6">جاري التحميل...</td></tr>
-            ) : partners.length === 0 ? (
+            ) : filters.rows.length === 0 ? (
               <tr><td colSpan={(CREDIT_LIMIT_UI_ENABLED ? 8 : 7) + (canDelete ? 1 : 0)} className="text-center text-gray-400 py-6">لا يوجد نتائج</td></tr>
             ) : (
               pager.pageRows.map((p) => (

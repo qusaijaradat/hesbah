@@ -8,6 +8,20 @@ import { usePagination } from "../lib/usePagination";
 import { TablePagination } from "../components/TablePagination";
 import { useSelection } from "../lib/useSelection";
 import { runBulkDelete, summarizeBulkDelete } from "../lib/bulkDelete";
+import { useColumnFilters } from "../lib/useColumnFilters";
+import type { ColumnFilterSpec } from "../lib/columnFilters";
+import { ColumnFilterRow, ColumnFilterSummary } from "../components/ColumnFilterRow";
+import { BulkEditDialog } from "../components/BulkEditDialog";
+import type { BulkEditField } from "../components/BulkEditDialog";
+
+// Module-level: useColumnFilters memoizes on this array's identity.
+const EMPLOYEE_FILTERS: ColumnFilterSpec<EmployeeDto>[] = [
+  { key: "name", kind: "text", value: (e) => e.name },
+  { key: "phone", kind: "text", value: (e) => e.phone ?? "" },
+  { key: "notes", kind: "text", value: (e) => e.notes ?? "" },
+  { key: "active", kind: "boolean", value: (e) => e.isActive },
+  { key: "expenses", kind: "numberRange", value: (e) => e.totalExpenses },
+];
 
 export function EmployeesPage() {
   const { hasPermission } = useAuth();
@@ -20,8 +34,11 @@ export function EmployeesPage() {
   const [error, setError] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const selection = useSelection();
-  const pager = usePagination(employees);
+  // Filter first, paginate the result — never the other way round.
+  const filters = useColumnFilters(employees, EMPLOYEE_FILTERS);
+  const pager = usePagination(filters.rows);
   const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [bulkEditing, setBulkEditing] = useState(false);
 
   async function refresh() {
     setLoading(true);
@@ -58,6 +75,20 @@ export function EmployeesPage() {
     if (outcome.failedCount > 0) setError(summarizeBulkDelete(outcome));
   }
 
+  // One field, and it is the one that matters: deactivating a batch of employees. Their name,
+  // phone and notes are per-person by definition — there is no such thing as setting thirty
+  // people's phone number to the same value — so they are not offered here.
+  const bulkEditFields: BulkEditField<EmployeeDto>[] = [
+    {
+      key: "isActive", label: "الحالة (نشط / غير نشط)", kind: "boolean",
+      current: (e) => (e.isActive ? "نشط" : "غير نشط"),
+      display: (v) => (v === "yes" ? "نشط" : "غير نشط"),
+      apply: (e, v) => updateEmployee(e.id, {
+        name: e.name, phone: e.phone ?? undefined, notes: e.notes ?? undefined, isActive: v === "yes",
+      }).then(() => undefined),
+    },
+  ];
+
   return (
     <div>
       <div className="flex items-center justify-between flex-wrap gap-3 mb-6">
@@ -69,14 +100,33 @@ export function EmployeesPage() {
 
       {error && <div className="text-sm text-red-600 bg-red-50 rounded-md p-3 mb-4 whitespace-pre-line">{error}</div>}
 
-      {canDelete && selection.selected.size > 0 && (
+      {selection.selected.size > 0 && (canDelete || canEdit) && (
         <div className="flex items-center gap-3 mb-4">
           <span className="text-sm text-gray-600">محدد: <span className="font-semibold">{selection.selected.size}</span></span>
-          <button className="btn-danger text-sm" disabled={bulkDeleting} onClick={handleBulkDelete}>
-            {bulkDeleting ? "جاري الحذف..." : `حذف المحدد (${selection.selected.size})`}
-          </button>
+          {canEdit && (
+            <button className="btn-secondary text-sm" onClick={() => setBulkEditing(true)}>
+              تعديل المحدد ({selection.selected.size})
+            </button>
+          )}
+          {canDelete && (
+            <button className="btn-danger text-sm" disabled={bulkDeleting} onClick={handleBulkDelete}>
+              {bulkDeleting ? "جاري الحذف..." : `حذف المحدد (${selection.selected.size})`}
+            </button>
+          )}
         </div>
       )}
+
+      {bulkEditing && (
+        <BulkEditDialog
+          rows={employees.filter((e) => selection.selected.has(e.id))}
+          fields={bulkEditFields}
+          label={(e) => e.name}
+          onClose={() => setBulkEditing(false)}
+          onDone={async (message) => { setError(message); selection.clear(); await refresh(); }}
+        />
+      )}
+
+      <ColumnFilterSummary filters={filters} />
 
       {/* عمود "إجمالي المصاريف" هو تجميع كل مصروف/سحبة تم ربطها بهذا الموظف من صفحة
           "مصاريف الحسبة" — هذا هو ما يتيح معرفة كم أُعطي لكل موظف. */}
@@ -100,11 +150,17 @@ export function EmployeesPage() {
               <th>إجمالي المصاريف والسحوبات</th>
               <th></th>
             </tr>
+            <ColumnFilterRow
+              columns={[...(canDelete ? [null] : []), "name", "phone", "notes", "active", "expenses", null]}
+              specs={EMPLOYEE_FILTERS}
+              filters={filters}
+              rows={employees}
+            />
           </thead>
           <tbody>
             {loading ? (
               <tr><td colSpan={canDelete ? 7 : 6} className="text-center text-gray-400 py-6">جاري التحميل...</td></tr>
-            ) : employees.length === 0 ? (
+            ) : filters.rows.length === 0 ? (
               <tr><td colSpan={canDelete ? 7 : 6} className="text-center text-gray-400 py-6">لا يوجد موظفون بعد</td></tr>
             ) : (
               pager.pageRows.map((e) => (

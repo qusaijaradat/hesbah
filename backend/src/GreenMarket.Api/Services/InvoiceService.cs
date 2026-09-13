@@ -12,6 +12,7 @@ public interface IInvoiceService
 {
     Task<InvoiceDto> CreateAsync(CreateInvoiceRequest request, int recordedByUserId);
     Task<InvoiceDto> UpdateAsync(int id, CreateInvoiceRequest request);
+    Task<InvoiceDto> UpdateAttributesAsync(int id, UpdateInvoiceAttributesRequest request);
     Task<InvoiceDto> GetAsync(int id);
     Task<PagedResult<InvoiceListItemDto>> ListAsync(InvoiceFilterRequest filter);
     Task<IReadOnlyList<InvoiceDto>> GetManyAsync(IReadOnlyList<int> ids);
@@ -378,39 +379,10 @@ public class InvoiceService : IInvoiceService
 
         // Same sync as the farmer's Sale row above, mirrored for the driver's TransportFee row
         // (previousDriverId was captured up front alongside previousFarmerId, before invoice.DriverId
-        // got overwritten above).
-        var existingTransportFee = await _db.FarmerTransactions
-            .SingleOrDefaultAsync(t => t.InvoiceId == invoice.Id && t.Type == FarmerTransactionType.TransportFee);
-
-        if (driver is null || (invoice.TransportFee <= 0 && driverBoxFeeTotal <= 0))
-        {
-            // Driver removed, or the transport fee, box-handling fee, AND wood-price total all
-            // zeroed out — nothing left to post.
-            if (existingTransportFee is not null) _db.FarmerTransactions.Remove(existingTransportFee);
-        }
-        else if (existingTransportFee is not null && previousDriverId == driver.Id)
-        {
-            // Same driver as before — just correct the fee/date on their existing ledger row.
-            // Amount folds in driverBoxFeeTotal but not سعر الخشب, same as CreateAsync — see its
-            // own comment.
-            existingTransportFee.Date = invoice.Date;
-            existingTransportFee.Amount = InvoiceCharge.ForDriver(invoice.TransportFee, driverBoxFeeTotal);
-            existingTransportFee.Notes = $"أجرة نقل تلقائية من الفاتورة {invoice.InvoiceNumber} (معدّلة)";
-        }
-        else
-        {
-            // Driver was added for the first time, or swapped for a different one.
-            if (existingTransportFee is not null) _db.FarmerTransactions.Remove(existingTransportFee);
-            _db.FarmerTransactions.Add(new FarmerTransaction
-            {
-                FarmerId = driver.Id,
-                Type = FarmerTransactionType.TransportFee,
-                InvoiceId = invoice.Id,
-                Date = invoice.Date,
-                Amount = InvoiceCharge.ForDriver(invoice.TransportFee, driverBoxFeeTotal),
-                Notes = $"أجرة نقل تلقائية من الفاتورة {invoice.InvoiceNumber} (معدّلة)"
-            });
-        }
+        // got overwritten above). Extracted so UpdateAttributesAsync drives the identical rules —
+        // "who is owed the transport, and how much" written out twice is exactly how a driver ends
+        // up paid for an invoice he no longer has.
+        await SyncDriverTransportRowAsync(invoice, driver, previousDriverId, driverBoxFeeTotal);
 
         // Merchant swapped for someone else — any payment already linked to THIS invoice (Payments
         // page's "ربط بفاتورة محددة") was reducing the OLD merchant's balance, and would keep doing
@@ -795,6 +767,118 @@ public class InvoiceService : IInvoiceService
     /// at least one matching invoice, so the caller still gets a proper "لا توجد فواتير..." message
     /// (farmer exists, just nothing in range) instead of a bare 404.
     /// </summary>
+    /// <summary>
+    /// Puts the driver's أجرة النقل ledger row where it belongs after the invoice's driver, fee or
+    /// date may have changed: removed when there is no driver or nothing to pay, corrected in place
+    /// when it is the same driver, moved when it is a different one.
+    ///
+    /// <paramref name="previousDriverId"/> is the driver BEFORE the change — the caller captures it
+    /// before overwriting invoice.DriverId, because "same driver as before" is the difference
+    /// between correcting a row and leaving the old driver still owed for an invoice that is no
+    /// longer his.
+    /// </summary>
+    private async Task SyncDriverTransportRowAsync(
+        Invoice invoice, Partner? driver, int? previousDriverId, decimal driverBoxFeeTotal)
+    {
+        var existingTransportFee = await _db.FarmerTransactions
+            .SingleOrDefaultAsync(t => t.InvoiceId == invoice.Id && t.Type == FarmerTransactionType.TransportFee);
+
+        if (driver is null || (invoice.TransportFee <= 0 && driverBoxFeeTotal <= 0))
+        {
+            // Driver removed, or the transport fee and box-handling fee both zeroed out — nothing
+            // left to post.
+            if (existingTransportFee is not null) _db.FarmerTransactions.Remove(existingTransportFee);
+        }
+        else if (existingTransportFee is not null && previousDriverId == driver.Id)
+        {
+            // Same driver as before — just correct the fee/date on their existing ledger row.
+            // Amount folds in driverBoxFeeTotal but not سعر الخشب, same as CreateAsync — see its
+            // own comment.
+            existingTransportFee.Date = invoice.Date;
+            existingTransportFee.Amount = InvoiceCharge.ForDriver(invoice.TransportFee, driverBoxFeeTotal);
+            existingTransportFee.Notes = $"أجرة نقل تلقائية من الفاتورة {invoice.InvoiceNumber} (معدّلة)";
+        }
+        else
+        {
+            // Driver was added for the first time, or swapped for a different one.
+            if (existingTransportFee is not null) _db.FarmerTransactions.Remove(existingTransportFee);
+            _db.FarmerTransactions.Add(new FarmerTransaction
+            {
+                FarmerId = driver.Id,
+                Type = FarmerTransactionType.TransportFee,
+                InvoiceId = invoice.Id,
+                Date = invoice.Date,
+                Amount = InvoiceCharge.ForDriver(invoice.TransportFee, driverBoxFeeTotal),
+                Notes = $"أجرة نقل تلقائية من الفاتورة {invoice.InvoiceNumber} (معدّلة)"
+            });
+        }
+    }
+
+    /// <summary>
+    /// Changes the driver and/or the date of an invoice, and NOTHING else. Exists for the bulk edit
+    /// on the invoices table.
+    ///
+    /// The obvious implementation — rebuild a CreateInvoiceRequest from the stored invoice with the
+    /// two fields swapped and hand it to UpdateAsync — is the wrong one, and it took reading
+    /// UpdateAsync to see why: an edit there deliberately RE-READS the current commission rate, box
+    /// price and driver box fee from Settings and re-applies them. That is a reasonable tradeoff
+    /// when someone is sitting in front of one invoice they meant to edit. Run it over forty
+    /// invoices under a button labelled "change the driver" and it silently re-prices forty old
+    /// invoices at today's rates — the exact silent money move the bulk edit promises not to make.
+    ///
+    /// So this touches the two fields, the ledger rows that carry the invoice's date, and stops.
+    /// Every stored rate is left exactly as the invoice recorded it.
+    /// </summary>
+    public async Task<InvoiceDto> UpdateAttributesAsync(int id, UpdateInvoiceAttributesRequest request)
+    {
+        if (request.Date is null && request.DriverId is null && !request.ClearDriver)
+            throw new ValidationAppException("لا يوجد أي تعديل مطلوب.");
+
+        var invoice = await _db.Invoices.Include(i => i.Items)
+            .SingleOrDefaultAsync(i => i.Id == id) ?? throw new NotFoundAppException("Invoice", id);
+
+        if (invoice.Status == InvoiceStatus.Cancelled)
+            throw new ConflictAppException("Cannot edit a cancelled invoice.");
+
+        // Captured before DriverId is overwritten — SyncDriverTransportRowAsync needs the old one.
+        var previousDriverId = invoice.DriverId;
+
+        if (request.Date is not null) invoice.Date = request.Date.Value;
+
+        Partner? driver;
+        if (request.ClearDriver)
+        {
+            driver = null;
+            invoice.DriverId = null;
+        }
+        else if (request.DriverId is not null)
+        {
+            // Through the same resolver the edit screen uses, so picking an existing seller as a
+            // driver grants them the driver role rather than refusing or duplicating the person.
+            driver = await ResolveOptionalPartnerAsync(request.DriverId, null, PartnerType.Driver, "driver");
+            invoice.DriverId = driver?.Id;
+        }
+        else
+        {
+            // Date-only change: the driver is unchanged, but his ledger row carries the invoice's
+            // date and has to follow it.
+            driver = invoice.DriverId is null ? null : await _db.Partners.FindAsync(invoice.DriverId.Value);
+        }
+
+        // The invoice's OWN stored rate, never the setting's current value — see the note above.
+        var driverBoxFeeTotal = invoice.Items.Sum(it => it.BoxQuantity) * invoice.DriverBoxFeeApplied;
+        await SyncDriverTransportRowAsync(invoice, driver, previousDriverId, driverBoxFeeTotal);
+
+        // The seller's Sale row is dated by the invoice too. Its AMOUNT is untouched: nothing here
+        // changes what was sold or what it sold for.
+        var sale = await _db.FarmerTransactions
+            .SingleOrDefaultAsync(t => t.InvoiceId == invoice.Id && t.Type == FarmerTransactionType.Sale);
+        if (sale is not null) sale.Date = invoice.Date;
+
+        await _db.SaveChangesAsync();
+        return await GetAsync(invoice.Id);
+    }
+
     public async Task<FarmerStatementDto> GetFarmerStatementAsync(int farmerId, DateTimeOffset? dateFrom, DateTimeOffset? dateTo)
     {
         var farmer = await _db.Partners.FindAsync(farmerId) ?? throw new NotFoundAppException("Partner (farmer)", farmerId);

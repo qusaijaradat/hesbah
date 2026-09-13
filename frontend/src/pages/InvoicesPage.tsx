@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { deleteInvoice, downloadInvoicePdf, downloadInvoicesExcel, getInvoice, listInvoices, triggerBlobDownload } from "../api/invoices";
+import { deleteInvoice, downloadInvoicePdf, downloadInvoicesExcel, getInvoice, listInvoices, triggerBlobDownload, updateInvoiceAttributes } from "../api/invoices";
 import { getFarmerAccount } from "../api/partners";
 import { listSettings } from "../api/settings";
 import type { InvoiceFilter, InvoiceListItemDto, InvoicePaymentStatus } from "../types";
@@ -13,6 +13,8 @@ import { TablePagination } from "../components/TablePagination";
 import { runBulkDelete, summarizeBulkDelete } from "../lib/bulkDelete";
 import { InvoiceLink, PartnerLink } from "../components/RecordLinks";
 import { PartnerAutocomplete } from "../components/PartnerAutocomplete";
+import { BulkEditDialog } from "../components/BulkEditDialog";
+import type { BulkEditField } from "../components/BulkEditDialog";
 
 const STATUS_LABELS: Record<string, string> = { Active: "فعّالة", Cancelled: "ملغاة" };
 
@@ -85,6 +87,8 @@ export function InvoicesPage() {
   // uses (lib/useSelection + lib/bulkDelete), so the toolbar, header checkbox and failure summary
   // all behave identically to the Payments/Partners/Items pages.
   const canDelete = hasPermission("invoices.delete");
+  const canEdit = hasPermission("invoices.edit");
+  const [bulkEditing, setBulkEditing] = useState(false);
   const selection = useSelection();
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [bulkError, setBulkError] = useState<string | null>(null);
@@ -144,6 +148,38 @@ export function InvoicesPage() {
     await refresh();
     if (outcome.failedCount > 0) setBulkError(summarizeBulkDelete(outcome));
   }
+
+  /**
+   * The two attributes an invoice may be changed by in bulk, both through the narrow PATCH rather
+   * than the full PUT — see api/invoices.updateInvoiceAttributes for why that distinction is the
+   * whole point.
+   *
+   * Not here, and not by oversight: the buyer, the seller, the items, the prices and أجرة النقل.
+   * Every one of them moves somebody's balance.
+   */
+  const bulkEditFields: BulkEditField<InvoiceListItemDto>[] = [
+    {
+      // A free search over everyone, not a list of the drivers already on these invoices — those
+      // are the set you are trying to CHANGE when a day went out under the wrong driver or none.
+      // Sellers are searchable too: picking one grants them the driver role rather than creating a
+      // second record for the same person (backend PartnerRoles).
+      key: "driver", label: "السائق", kind: "partner",
+      partnerTypes: ["Driver", "Farmer"],
+      emptyLabel: "أو: شيل السائق من المحدد",
+      current: (inv) => inv.driverName ?? "بدون سائق",
+      // "none" is what the clear button puts in `value`, so an invoice that already has no driver
+      // reads as unchanged instead of being sent a pointless clear.
+      currentKey: (inv) => (inv.driverId ? String(inv.driverId) : "none"),
+      apply: (inv, v) => updateInvoiceAttributes(inv.id, v === "none"
+        ? { clearDriver: true }
+        : { driverId: Number(v) }).then(() => undefined),
+    },
+    {
+      key: "date", label: "التاريخ", kind: "date",
+      current: (inv) => inv.date.slice(0, 10),
+      apply: (inv, v) => updateInvoiceAttributes(inv.id, { date: new Date(v).toISOString() }).then(() => undefined),
+    },
+  ];
 
   async function handleExport() {
     const blob = await downloadInvoicesExcel(filter);
@@ -329,13 +365,30 @@ export function InvoicesPage() {
 
       {bulkError && <div className="text-sm text-red-600 bg-red-50 rounded-md p-3 mb-4 whitespace-pre-line">{bulkError}</div>}
 
-      {canDelete && selection.selected.size > 0 && (
+      {selection.selected.size > 0 && (canDelete || canEdit) && (
         <div className="flex items-center gap-3 mb-4">
           <span className="text-sm text-gray-600">محدد: <span className="font-semibold">{selection.selected.size}</span></span>
-          <button className="btn-danger text-sm" disabled={bulkDeleting} onClick={handleBulkDelete}>
-            {bulkDeleting ? "جاري الحذف..." : `حذف المحدد (${selection.selected.size})`}
-          </button>
+          {canEdit && (
+            <button className="btn-secondary text-sm" onClick={() => setBulkEditing(true)}>
+              تعديل المحدد ({selection.selected.size})
+            </button>
+          )}
+          {canDelete && (
+            <button className="btn-danger text-sm" disabled={bulkDeleting} onClick={handleBulkDelete}>
+              {bulkDeleting ? "جاري الحذف..." : `حذف المحدد (${selection.selected.size})`}
+            </button>
+          )}
         </div>
+      )}
+
+      {bulkEditing && (
+        <BulkEditDialog
+          rows={rows.filter((inv) => selection.selected.has(inv.id))}
+          fields={bulkEditFields}
+          label={(inv) => `${inv.invoiceNumber} — ${inv.merchantName}`}
+          onClose={() => setBulkEditing(false)}
+          onDone={async (message) => { setBulkError(message); selection.clear(); await refresh(); }}
+        />
       )}
 
       <div className="card overflow-x-auto">

@@ -53,6 +53,13 @@ public class InvoicesController : ControllerBase
     public async Task<ActionResult<InvoiceDto>> Update(int id, CreateInvoiceRequest request) =>
         Ok(await _invoiceService.UpdateAsync(id, request));
 
+    /// <summary>Driver and/or date only — see InvoiceService.UpdateAttributesAsync for why the bulk
+    /// edit does not go through the PUT above.</summary>
+    [HttpPatch("{id:int}/attributes")]
+    [RequirePermission(PermissionKeys.InvoicesEdit)]
+    public async Task<ActionResult<InvoiceDto>> UpdateAttributes(int id, UpdateInvoiceAttributesRequest request) =>
+        Ok(await _invoiceService.UpdateAttributesAsync(id, request));
+
     [HttpPost("{id:int}/cancel")]
     [RequirePermission(PermissionKeys.InvoicesCancel)]
     public async Task<ActionResult<InvoiceDto>> Cancel(int id, CancelInvoiceRequest request) =>

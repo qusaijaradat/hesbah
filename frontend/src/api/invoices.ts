@@ -45,6 +45,25 @@ export async function updateInvoice(id: number, payload: {
   return data;
 }
 
+/**
+ * Driver and/or date only — the narrow endpoint behind the invoices table's bulk edit.
+ *
+ * Not updateInvoice with a couple of fields swapped: an edit through the PUT above re-reads the
+ * current commission rate and box prices from settings and re-applies them, which is fine for one
+ * invoice someone is looking at and is forty silently re-priced invoices under a button that says
+ * "change the driver". See backend InvoiceService.UpdateAttributesAsync.
+ *
+ * Both fields are optional and null means "leave alone", so removing a driver has its own flag.
+ */
+export async function updateInvoiceAttributes(id: number, payload: {
+  date?: string;
+  driverId?: number;
+  clearDriver?: boolean;
+}) {
+  const { data } = await apiClient.patch<InvoiceDto>(`/invoices/${id}/attributes`, payload);
+  return data;
+}
+
 export async function cancelInvoice(id: number, reason: string) {
   const { data } = await apiClient.post<InvoiceDto>(`/invoices/${id}/cancel`, { reason });
   return data;

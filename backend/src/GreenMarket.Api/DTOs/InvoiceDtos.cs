@@ -38,6 +38,19 @@ public record CreateInvoiceRequest(
     IReadOnlyList<InvoiceItemInput> Items,
     decimal TransportFee = 0);
 
+/// <summary>
+/// The only two things a bulk edit on the invoices table may change. Deliberately not a subset of
+/// CreateInvoiceRequest: that one carries the items, the fee and the parties, and a partial
+/// version of it would invite exactly the money edits this endpoint exists to avoid.
+///
+/// null means "leave it alone" for both fields, which is why removing a driver needs its own flag
+/// — a null DriverId cannot mean both "no change" and "nobody".
+/// </summary>
+public record UpdateInvoiceAttributesRequest(
+    DateTimeOffset? Date = null,
+    int? DriverId = null,
+    bool ClearDriver = false);
+
 public record InvoiceItemDto(
     int Id, string ItemName, decimal Quantity, decimal? WeightKg, decimal PricePerUnit,
     decimal BoxQuantity, decimal CartonQuantity, decimal WoodPrice, decimal LineTotal);

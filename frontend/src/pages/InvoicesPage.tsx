@@ -10,6 +10,7 @@ import { apiErrorMessage } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { useSelection } from "../lib/useSelection";
 import { TablePagination } from "../components/TablePagination";
+import { CollapsibleRows } from "../components/CollapsibleRows";
 import { runBulkDelete, summarizeBulkDelete } from "../lib/bulkDelete";
 import { InvoiceLink, PartnerLink } from "../components/RecordLinks";
 import { PartnerAutocomplete } from "../components/PartnerAutocomplete";
@@ -394,7 +395,50 @@ export function InvoicesPage() {
         />
       )}
 
-      <div className="card overflow-x-auto">
+      <div className="card">
+        {/* The busiest table in the app, and the one a phone served worst: twelve columns of which
+            two were visible. The card leads with the buyer and the total — what somebody is
+            looking for — and the rest is a tap away. */}
+        <div className="sm:hidden">
+          <CollapsibleRows
+            rows={rows}
+            rowKey={(inv) => inv.id}
+            title={(inv) => (
+              <>
+                {inv.merchantName}
+                <span className="block text-xs font-normal text-gray-500 font-mono">{inv.invoiceNumber}</span>
+              </>
+            )}
+            value={(inv) => formatCurrency(inv.grandTotal)}
+            leading={canDelete ? (inv) => (
+              <input type="checkbox" checked={selection.selected.has(inv.id)} onChange={() => selection.toggleOne(inv.id)} />
+            ) : undefined}
+            details={(inv) => [
+              { label: "التاريخ", value: formatDate(inv.date) },
+              { label: "البائع", value: inv.farmerName || "—" },
+              { label: "السائق", value: inv.driverName || "—" },
+              { label: "الأصناف", value: inv.itemsSummary || "—" },
+              { label: "القيمة", value: formatCurrency(inv.totalValue) },
+              {
+                label: "حالة الدفع",
+                value: (
+                  <span className={`text-xs px-2 py-0.5 rounded-full ${PAYMENT_STATUS_CLASS[inv.paymentStatus]}`}>
+                    {PAYMENT_STATUS_LABELS[inv.paymentStatus]}
+                  </span>
+                ),
+              },
+              { label: "الحالة", value: STATUS_LABELS[inv.status] ?? inv.status },
+              {
+                label: "",
+                value: (
+                  <Link to={`/invoices/${inv.id}`} className="text-brand-700 hover:underline">تفاصيل</Link>
+                ),
+              },
+            ]}
+            empty="لا توجد فواتير"
+          />
+        </div>
+        <div className="hidden sm:block overflow-x-auto">
         <table className="table-base">
           <thead>
             <tr>
@@ -533,6 +577,7 @@ export function InvoicesPage() {
             )}
           </tbody>
         </table>
+        </div>
 
         {/* Paged by the BACKEND (page/pageSize go into the filter), so a year of invoices is never
             fetched just to show 25 — the shared bar just drives the server's own paging here. */}

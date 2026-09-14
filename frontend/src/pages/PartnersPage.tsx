@@ -8,6 +8,7 @@ import { formatCurrency, partnerHasRole, partnerTypeLabel } from "../lib/format"
 import { useAuth } from "../auth/AuthContext";
 import { usePagination } from "../lib/usePagination";
 import { TablePagination } from "../components/TablePagination";
+import { CollapsibleRows } from "../components/CollapsibleRows";
 import { CREDIT_LIMIT_UI_ENABLED } from "../lib/featureFlags";
 import { useSelection } from "../lib/useSelection";
 import { runBulkDelete, summarizeBulkDelete } from "../lib/bulkDelete";
@@ -209,7 +210,30 @@ export function PartnersPage() {
 
       <ColumnFilterSummary filters={filters} />
 
-      <div className="card overflow-x-auto">
+      <div className="card">
+        {/* Cards on a phone, the table above 640px — see components/CollapsibleRows. */}
+        <div className="sm:hidden">
+          <CollapsibleRows
+            rows={pager.pageRows}
+            rowKey={(p) => p.id}
+            title={(p) => p.name}
+            value={(p) => renderRemaining(p)}
+            leading={canDelete ? (p) => (
+              <input
+                type="checkbox" checked={selection.selected.has(p.id)}
+                onChange={() => selection.toggleOne(p.id)}
+              />
+            ) : undefined}
+            details={(p) => [
+              { label: "النوع", value: partnerTypeLabel(p.type) },
+              { label: "واتساب", value: p.whatsAppNumber || "—" },
+              { label: "العنوان", value: p.address || "—" },
+              { label: "ملاحظات", value: p.notes || "—" },
+            ]}
+            empty="لا يوجد نتائج"
+          />
+        </div>
+        <div className="hidden sm:block overflow-x-auto">
         <table className="table-base">
           <thead>
             <tr>
@@ -290,6 +314,7 @@ export function PartnersPage() {
             )}
           </tbody>
         </table>
+        </div>
         <TablePagination
           page={pager.page} pageSize={pager.pageSize} totalCount={pager.totalCount}
           itemLabel="شخص" onPageChange={pager.setPage} onPageSizeChange={pager.setPageSize}

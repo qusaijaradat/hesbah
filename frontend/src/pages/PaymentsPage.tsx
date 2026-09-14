@@ -15,6 +15,7 @@ import { useSelection } from "../lib/useSelection";
 import { runBulkDelete, summarizeBulkDelete } from "../lib/bulkDelete";
 import { usePagination } from "../lib/usePagination";
 import { TablePagination } from "../components/TablePagination";
+import { CollapsibleRows } from "../components/CollapsibleRows";
 import { CHECK_METHOD, PAYMENT_METHOD_OPTIONS, PaymentLineFields, emptyLine, lineTotal, paymentRequestsFromLine, validatePaymentLine } from "../components/PaymentLineFields";
 import type { PaymentLine } from "../components/PaymentLineFields";
 import { InvoiceLink, PartnerLink } from "../components/RecordLinks";
@@ -188,7 +189,27 @@ function PaymentsTab({ canCreate, canEdit, canDelete }: { canCreate: boolean; ca
 
       <ColumnFilterSummary filters={filters} />
 
-      <div className="card overflow-x-auto">
+      <div className="card">
+        <div className="sm:hidden">
+          <CollapsibleRows
+            rows={pager.pageRows}
+            rowKey={(p) => p.id}
+            title={(p) => p.partnerName}
+            value={(p) => formatCurrency(p.amount)}
+            leading={canDelete ? (p) => (
+              <input type="checkbox" checked={selection.selected.has(p.id)} onChange={() => selection.toggleOne(p.id)} />
+            ) : undefined}
+            details={(p) => [
+              { label: "التاريخ", value: formatDate(p.date) },
+              { label: "الاتجاه", value: PAYMENT_DIRECTION_LABELS[p.direction] },
+              { label: "الفاتورة", value: p.invoiceNumber || "—" },
+              { label: "طريقة الدفع", value: p.method || "—" },
+              { label: "ملاحظات", value: p.notes || "—" },
+            ]}
+            empty="لا توجد دفعات"
+          />
+        </div>
+        <div className="hidden sm:block overflow-x-auto">
         <table className="table-base">
           <thead>
             <tr>
@@ -259,6 +280,7 @@ function PaymentsTab({ canCreate, canEdit, canDelete }: { canCreate: boolean; ca
             ))}
           </tbody>
         </table>
+        </div>
         <TablePagination
           page={pager.page} pageSize={pager.pageSize} totalCount={pager.totalCount}
           itemLabel="دفعة" onPageChange={pager.setPage} onPageSizeChange={pager.setPageSize}
@@ -762,7 +784,25 @@ function ExpensesTab({ canCreate, canEdit, canDelete }: { canCreate: boolean; ca
 
       <ColumnFilterSummary filters={filters} />
 
-      <div className="card overflow-x-auto">
+      <div className="card">
+        <div className="sm:hidden">
+          <CollapsibleRows
+            rows={pager.pageRows}
+            rowKey={(e) => e.id}
+            title={(e) => e.description}
+            value={(e) => formatCurrency(e.amount)}
+            leading={canDelete ? (e) => (
+              <input type="checkbox" checked={selection.selected.has(e.id)} onChange={() => selection.toggleOne(e.id)} />
+            ) : undefined}
+            details={(e) => [
+              { label: "التاريخ", value: formatDate(e.date) },
+              { label: "الفئة", value: e.category || "—" },
+              { label: "الموظف", value: e.employeeName || "—" },
+            ]}
+            empty="لا توجد مصاريف"
+          />
+        </div>
+        <div className="hidden sm:block overflow-x-auto">
         <table className="table-base">
           <thead>
             <tr>
@@ -813,6 +853,7 @@ function ExpensesTab({ canCreate, canEdit, canDelete }: { canCreate: boolean; ca
             ))}
           </tbody>
         </table>
+        </div>
         <TablePagination
           page={pager.page} pageSize={pager.pageSize} totalCount={pager.totalCount}
           itemLabel="مصروف" onPageChange={pager.setPage} onPageSizeChange={pager.setPageSize}

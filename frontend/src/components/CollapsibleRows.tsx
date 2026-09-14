@@ -13,6 +13,12 @@ interface Props<T> {
   value?: (row: T) => React.ReactNode;
   /** The rest of the columns, as label/value pairs, revealed when the card is opened. */
   details: (row: T) => { label: string; value: React.ReactNode }[];
+  /**
+   * Rendered to the side of the title and OUTSIDE the toggle — a selection checkbox, typically.
+   * Outside because an input nested in a button is invalid HTML and, worse, a checkbox that also
+   * opens the card means every attempt to tick one does two things.
+   */
+  leading?: (row: T) => React.ReactNode;
   empty?: string;
 }
 
@@ -31,7 +37,7 @@ interface Props<T> {
  * Which means every screen using this renders both and hides one. That is the cost, and it is
  * accepted deliberately: the alternative is one layout that is a compromise on both.
  */
-export function CollapsibleRows<T>({ rows, rowKey, title, value, details, empty }: Props<T>) {
+export function CollapsibleRows<T>({ rows, rowKey, title, value, details, leading, empty }: Props<T>) {
   const [open, setOpen] = useState<Set<string | number>>(new Set());
 
   function toggle(key: string | number) {
@@ -54,8 +60,12 @@ export function CollapsibleRows<T>({ rows, rowKey, title, value, details, empty 
         const pairs = details(row);
         return (
           <div key={key}>
+            {/* The toggle and anything beside it on one line; the detail list is a SIBLING of that
+                line, not of the button — nested in the flex row it would open sideways. */}
+            <div className="flex items-center">
+            {leading && <div className="ps-3">{leading(row)}</div>}
             <button
-              className="w-full flex items-center gap-2 px-3 py-3 text-start"
+              className="flex-1 flex items-center gap-2 px-3 py-3 text-start"
               onClick={() => toggle(key)}
               aria-expanded={isOpen}
             >
@@ -65,6 +75,7 @@ export function CollapsibleRows<T>({ rows, rowKey, title, value, details, empty 
               <span className="flex-1 font-medium">{title(row)}</span>
               {value && <span className="font-semibold whitespace-nowrap">{value(row)}</span>}
             </button>
+            </div>
             {isOpen && (
               <dl className="px-3 pb-3 ps-8 grid grid-cols-2 gap-x-3 gap-y-1 text-sm">
                 {pairs.map((p) => (

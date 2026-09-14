@@ -261,7 +261,18 @@ function TopDebtList({ title, rows, accountPath }: {
   return (
     <div className="card p-4">
       <h2 className="font-semibold mb-3">{title}</h2>
-      <div className="overflow-x-auto">
+      <div>
+      <div className="sm:hidden divide-y divide-gray-100">
+        {rows.map((row) => (
+          <div key={row.partnerId} className="flex items-baseline justify-between gap-3 py-2">
+            <Link to={`/partners/${row.partnerId}/${accountPath}`} className="text-brand-700 hover:underline">
+              {row.name}
+            </Link>
+            <span className="font-semibold whitespace-nowrap">{formatCurrency(row.remaining)}</span>
+          </div>
+        ))}
+      </div>
+      <div className="hidden sm:block overflow-x-auto">
       <table className="table-base">
         <tbody>
           {rows.map((row) => (
@@ -276,6 +287,7 @@ function TopDebtList({ title, rows, accountPath }: {
           ))}
         </tbody>
       </table>
+      </div>
       </div>
     </div>
   );

@@ -91,7 +91,30 @@ export function ItemsPage() {
         </div>
       )}
 
-      <div className="card overflow-x-auto">
+      <div className="card">
+        <div className="sm:hidden divide-y divide-gray-100">
+          {loading ? (
+            <div className="text-center text-gray-400 py-6">جاري التحميل...</div>
+          ) : items.length === 0 ? (
+            <div className="text-center text-gray-400 py-6">لا يوجد أصناف بعد</div>
+          ) : (
+            pager.pageRows.map((item) => (
+              <div key={item.id} className="flex items-center gap-3 px-3 py-3">
+                {canDelete && (
+                  <input type="checkbox" checked={selection.selected.has(item.id)} onChange={() => selection.toggleOne(item.id)} />
+                )}
+                <span className="flex-1 font-medium">{item.name}</span>
+                {canEdit && (
+                  <button className="text-gray-500 text-sm hover:underline" onClick={() => setEditing(item)}>تعديل</button>
+                )}
+                {canDelete && (
+                  <button className="text-red-500 text-sm hover:underline" onClick={() => handleDelete(item)}>حذف</button>
+                )}
+              </div>
+            ))
+          )}
+        </div>
+        <div className="hidden sm:block overflow-x-auto">
         <table className="table-base">
           <thead>
             <tr>
@@ -135,6 +158,7 @@ export function ItemsPage() {
             )}
           </tbody>
         </table>
+        </div>
         <TablePagination
           page={pager.page} pageSize={pager.pageSize} totalCount={pager.totalCount}
           itemLabel="صنف" onPageChange={pager.setPage} onPageSizeChange={pager.setPageSize}

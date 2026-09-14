@@ -96,7 +96,7 @@ export function SacksPage() {
 
       {canCreate && openForm && (
         <div className="modal-backdrop" onClick={() => setOpenForm(null)}>
-          <div className="w-full sm:max-w-2xl sm:my-8" onClick={(e) => e.stopPropagation()}>
+          <div className="modal-card sm:max-w-2xl sm:my-8 p-4" onClick={(e) => e.stopPropagation()}>
             <MovementForm
               title={openForm === "withdraw" ? "سحب مخالات" : "ارتجاع مخالات"}
               action={openForm}
@@ -254,7 +254,7 @@ function MovementForm({ title, action, kinds, onKinds, onClose, onDone, onError 
   }
 
   return (
-    <div className="card p-4">
+    <div>
       <div className="flex items-center justify-between mb-3">
         <h2 className="font-semibold">{title}</h2>
         <button className="text-sm text-gray-500 hover:underline" onClick={onClose}>إغلاق</button>
@@ -274,30 +274,35 @@ function MovementForm({ title, action, kinds, onKinds, onClose, onDone, onError 
       {/* Several kinds at once, because that is how they physically move. */}
       <div className="space-y-2 mb-3">
         {lines.map((line, idx) => (
-          <div key={idx} className="flex items-end gap-2 flex-wrap">
-            <div className="flex-1 min-w-[9rem]">
+          <div
+            key={idx}
+            className="rounded-md border border-gray-200 p-3 sm:border-0 sm:p-0 sm:flex sm:items-end sm:gap-2 sm:flex-wrap"
+          >
+            <div className="mb-2 sm:mb-0 sm:flex-1 sm:min-w-[9rem]">
               <label className="label">النوع</label>
               <select className="input" value={line.kindId} onChange={(e) => update(idx, { kindId: e.target.value })}>
                 <option value="">بدون نوع</option>
                 {kinds.map((k) => <option key={k.id} value={k.id}>{k.name}</option>)}
               </select>
             </div>
-            <div className="w-24">
+            <div className="mb-2 sm:mb-0 sm:w-24">
               <label className="label">العدد</label>
               <input
                 className="input" type="number" min="0" step="1" value={line.quantity}
                 onChange={(e) => update(idx, { quantity: e.target.value })}
               />
             </div>
-            <button className="text-xs text-brand-700 hover:underline pb-2" onClick={() => addKind(idx)}>+ نوع جديد</button>
-            {lines.length > 1 && (
-              <button
-                className="text-xs text-red-600 hover:underline pb-2"
-                onClick={() => setLines((prev) => prev.filter((_, i) => i !== idx))}
-              >
-                حذف
-              </button>
-            )}
+            <div className="flex gap-4 sm:contents">
+              <button className="text-xs text-brand-700 hover:underline sm:pb-2" onClick={() => addKind(idx)}>+ نوع جديد</button>
+              {lines.length > 1 && (
+                <button
+                  className="text-xs text-red-600 hover:underline sm:pb-2"
+                  onClick={() => setLines((prev) => prev.filter((_, i) => i !== idx))}
+                >
+                  حذف
+                </button>
+              )}
+            </div>
           </div>
         ))}
         <button className="text-sm text-brand-700 hover:underline" onClick={() => setLines((prev) => [...prev, emptyLine()])}>
@@ -310,11 +315,11 @@ function MovementForm({ title, action, kinds, onKinds, onClose, onDone, onError 
         <input className="input" value={notes} onChange={(e) => setNotes(e.target.value)} />
       </div>
 
-      <div className="flex items-center gap-3 flex-wrap">
-        <button className="btn-primary" onClick={submit} disabled={busy}>
+      <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:flex-wrap">
+        <button className="btn-primary w-full sm:w-auto" onClick={submit} disabled={busy}>
           {busy ? "جاري الحفظ..." : `حفظ (${total} مخلاة)`}
         </button>
-        <button className="btn-secondary" onClick={onClose} disabled={busy}>إلغاء</button>
+        <button className="btn-secondary w-full sm:w-auto" onClick={onClose} disabled={busy}>إلغاء</button>
         <span className="text-xs text-gray-500">كل نوع بينحفظ بسطره، والكل بعملية وحدة.</span>
       </div>
     </div>
@@ -548,7 +553,29 @@ function StockTable({ kinds, canEdit, onSaved, onError }: {
         </div>
       )}
 
-      <div className="overflow-x-auto mt-3">
+      <div className="mt-3">
+        <div className="sm:hidden divide-y divide-gray-100">
+          {kinds.length === 0 ? (
+            <div className="text-center text-gray-400 py-6">ما في أنواع بعد — ضيف واحد فوق</div>
+          ) : kinds.map((k) => (
+            <div key={k.id} className="flex items-center gap-3 py-3">
+              <span className="flex-1 font-medium">{k.name}</span>
+              {canEdit ? (
+                <input
+                  className="input w-24" type="number" min="0" step="1"
+                  value={draft[k.id] ?? String(k.stockQuantity)}
+                  onChange={(e) => setDraft((d) => ({ ...d, [k.id]: e.target.value }))}
+                />
+              ) : <span className="font-semibold">{k.stockQuantity}</span>}
+              {canEdit && draft[k.id] !== undefined && (
+                <button className="text-sm text-brand-700 hover:underline" disabled={savingId === k.id} onClick={() => save(k)}>
+                  {savingId === k.id ? "..." : "حفظ"}
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+        <div className="hidden sm:block overflow-x-auto">
         <table className="table-base">
           <thead>
             <tr><th>النوع</th><th>كم عندي</th>{canEdit && <th></th>}</tr>
@@ -581,6 +608,7 @@ function StockTable({ kinds, canEdit, onSaved, onError }: {
             ))}
           </tbody>
         </table>
+        </div>
       </div>
     </div>
   );

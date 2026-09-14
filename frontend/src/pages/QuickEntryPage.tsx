@@ -358,7 +358,117 @@ export function QuickEntryPage() {
         </div>
       )}
 
-      <div className="card overflow-x-auto mb-4">
+      <div className="card mb-4">
+        <div className="sm:hidden p-3 space-y-3">
+          {rows.map((row, idx) => {
+            const rowFindings = findingsByRow.get(idx) ?? [];
+            const hasError = rowFindings.some((f) => f.severity === "error");
+            const hasWarn = !hasError && rowFindings.length > 0;
+            const total = lineTotalOf({
+              quantity: num(row.quantity),
+              weightKg: row.weightKg.trim() === "" ? null : num(row.weightKg),
+              pricePerUnit: num(row.pricePerUnit),
+            });
+            return (
+              <div
+                key={idx}
+                className={`rounded-md border p-3 ${hasError ? "border-red-300 bg-red-50" : hasWarn ? "border-amber-300 bg-amber-50" : "border-gray-200"}`}
+              >
+                <div className="flex items-baseline justify-between mb-2">
+                  <span className="text-xs text-gray-400">سطر {idx + 1}</span>
+                  <span className="text-sm font-semibold">
+                    {num(row.pricePerUnit) > 0 ? formatCurrency(total) : <span className="text-amber-600 text-xs">غير مسعّر</span>}
+                  </span>
+                </div>
+
+                <div className="space-y-2">
+                  <PartnerAutocomplete
+                    label="المشتري" value={row.merchant}
+                    onChange={(p) => updateRow(idx, { merchant: p })}
+                    text={row.merchantText}
+                    onFreeTextChange={(t) => updateRow(idx, { merchantText: t })}
+                    allowNew newTypeLabel="مشتري" types={["Merchant"]}
+                  />
+                  <div>
+                    <label className="label">الصنف</label>
+                    <ItemAutocomplete value={row.itemName} onChange={(name) => updateRow(idx, { itemName: name })} />
+                  </div>
+                  <div className="grid grid-cols-3 gap-2">
+                    <div>
+                      <label className="label">العدد</label>
+                      <input className="input" type="number" min="0" step="0.001" value={row.quantity}
+                        onChange={(e) => updateRow(idx, { quantity: e.target.value })} />
+                    </div>
+                    <div>
+                      <label className="label">الوزن</label>
+                      <input className="input" type="number" min="0" step="0.001" value={row.weightKg} placeholder="—"
+                        onChange={(e) => updateRow(idx, { weightKg: e.target.value })} />
+                    </div>
+                    <div>
+                      <label className="label">السعر</label>
+                      <input className="input" type="number" min="0" step="0.01" value={row.pricePerUnit}
+                        onChange={(e) => updateRow(idx, { pricePerUnit: e.target.value })} />
+                    </div>
+                  </div>
+                  <PartnerAutocomplete
+                    label="السائق" value={row.driver}
+                    onChange={(p) => updateRow(idx, { driver: p })}
+                    text={row.driverText}
+                    onFreeTextChange={(t) => updateRow(idx, { driverText: t })}
+                    allowNew newTypeLabel="سائق" types={["Driver", "Farmer"]}
+                  />
+                  <PartnerAutocomplete
+                    label="البائع" value={row.farmer}
+                    onChange={(p) => updateRow(idx, { farmer: p })}
+                    text={row.farmerText}
+                    onFreeTextChange={(t) => updateRow(idx, { farmerText: t })}
+                    allowNew newTypeLabel="بائع" types={["Farmer"]}
+                  />
+                  <div className="grid grid-cols-3 gap-2">
+                    <div>
+                      <label className="label">الصناديق</label>
+                      <input className="input" type="number" min="0" step="1" value={row.boxQuantity}
+                        onChange={(e) => updateRow(idx, { boxQuantity: e.target.value })} />
+                    </div>
+                    <div>
+                      <label className="label">الكرتون</label>
+                      <input className="input" type="number" min="0" step="1" value={row.cartonQuantity} placeholder="—"
+                        onChange={(e) => updateRow(idx, { cartonQuantity: e.target.value })} />
+                    </div>
+                    <div>
+                      <label className="label">الخشب</label>
+                      <input className="input" type="number" min="0" step="0.01" value={row.woodPrice} placeholder="—"
+                        onChange={(e) => updateRow(idx, { woodPrice: e.target.value })} />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="label">أجرة النقل</label>
+                    <input className="input" type="number" min="0" step="0.01" value={row.transportFee}
+                      placeholder="للفاتورة كلها — بسطر واحد بس"
+                      onChange={(e) => updateRow(idx, { transportFee: e.target.value })} />
+                  </div>
+                </div>
+
+                <div className="flex gap-4 mt-3">
+                  {hasSpeechRecognition() && (
+                    <button
+                      className={`text-xs ${listening === idx ? "text-red-600 font-semibold" : "text-brand-700 hover:underline"}`}
+                      onClick={() => listen(idx)}
+                    >
+                      {listening === idx ? "● عم يسمع..." : "🎤 صوت"}
+                    </button>
+                  )}
+                  {idx > 0 && (
+                    <button className="text-xs text-brand-700 hover:underline" onClick={() => copyDown(idx)}>
+                      ↑ زي فوق
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        <div className="hidden sm:block overflow-x-auto">
         <table className="table-base">
           <thead>
             <tr>
@@ -489,6 +599,7 @@ export function QuickEntryPage() {
             })}
           </tbody>
         </table>
+        </div>
       </div>
 
       <div className="flex items-center gap-2 flex-wrap">

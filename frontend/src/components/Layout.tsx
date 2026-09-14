@@ -3,7 +3,12 @@ import { Link, NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { AlertsBanner } from "./AlertsBanner";
 
-const NAV_ITEMS = [
+/**
+ * Exported so the landing redirect can be derived from the SAME list the sidebar renders. A user
+ * whose role only reaches one screen has to land ON that screen, and a second hand-maintained
+ * list of where people can go would drift from this one the first time a page was added.
+ */
+export const NAV_ITEMS = [
   { to: "/", label: "لوحة التحكم", permission: null },
   { to: "/invoices", label: "الفواتير", permission: "invoices.view" },
   { to: "/invoices/print", label: "طباعة الفواتير", permission: "invoices.view" },
@@ -11,7 +16,7 @@ const NAV_ITEMS = [
   { to: "/items", label: "الأصناف", permission: "items.view" },
   { to: "/daily-closing", label: "الإغلاق اليومي", permission: "reports.view" },
   { to: "/containers", label: "الصناديق", permission: "boxes.view" },
-  { to: "/sacks", label: "المخالات", permission: "boxes.view" },
+  { to: "/sacks", label: "المخالات", permission: "sacks.view" },
   { to: "/partners", label: "الباعة والسائقين والمشترين", permission: "partners.view" },
   { to: "/farmers-goods", label: "بضاعة الباعة", permission: "farmerGoods.view" },
   { to: "/debts", label: "قيمة الديون", permission: "partners.view" },

@@ -241,6 +241,21 @@ public static class PermissionKeys
     // the roles screen as a capability someone could hand out.
     public const string BoxesDelete = "boxes.delete";
 
+    /// <summary>
+    /// "المخالات" — its OWN keys, not the crates'.
+    ///
+    /// The market wanted an account that can record sacks going out and coming back and see
+    /// nothing else at all. Sharing boxes.* would have meant that account could also work the
+    /// crates screen, and a permission that hands out more than its name says is the kind nobody
+    /// audits until it matters.
+    ///
+    /// No SacksEdit, same reasoning as crates: a movement is never edited. A wrong one is deleted
+    /// and entered again, which leaves both the mistake and the correction in the audit trail.
+    /// </summary>
+    public const string SacksView = "sacks.view";
+    public const string SacksCreate = "sacks.create";
+    public const string SacksDelete = "sacks.delete";
+
     public const string ReportsView = "reports.view";
     public const string ReportsExport = "reports.export";
 
@@ -283,6 +298,7 @@ public static class PermissionKeys
         EmployeesView, EmployeesCreate, EmployeesEdit, EmployeesDelete,
         FarmerGoodsView, FarmerGoodsCreate, FarmerGoodsEdit, FarmerGoodsDelete,
         BoxesView, BoxesCreate, BoxesDelete,
+        SacksView, SacksCreate, SacksDelete,
         ReportsView, ReportsExport,
         SettingsView, SettingsEdit,
         UsersView, UsersCreate, UsersEdit,

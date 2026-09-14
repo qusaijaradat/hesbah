@@ -34,7 +34,7 @@ const emptyLine = (): KindLine => ({ kindId: "", quantity: "" });
 
 export function SacksPage() {
   const { hasPermission } = useAuth();
-  const canCreate = hasPermission("boxes.create");
+  const canCreate = hasPermission("sacks.create");
 
   const [kinds, setKinds] = useState<SackKindDto[]>([]);
   const [data, setData] = useState<SacksOverviewDto | null>(null);

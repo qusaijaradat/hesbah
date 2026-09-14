@@ -90,6 +90,7 @@ public static class DbSeeder
                 PermissionKeys.PaymentsView, PermissionKeys.PaymentsCreate, PermissionKeys.PaymentsEdit,
                 PermissionKeys.FarmerGoodsView, PermissionKeys.FarmerGoodsCreate, PermissionKeys.FarmerGoodsEdit,
                 PermissionKeys.BoxesView, PermissionKeys.BoxesCreate,
+                PermissionKeys.SacksView, PermissionKeys.SacksCreate,
                 PermissionKeys.ReportsView
             },
             [SeedRoleNames.Accountant] = new[]
@@ -97,14 +98,15 @@ public static class DbSeeder
                 PermissionKeys.InvoicesView, PermissionKeys.PartnersView,
                 PermissionKeys.PaymentsView, PermissionKeys.PaymentsCreate, PermissionKeys.PaymentsEdit,
                 PermissionKeys.ExpensesView, PermissionKeys.ExpensesCreate, PermissionKeys.ExpensesEdit,
-                PermissionKeys.EmployeesView, PermissionKeys.FarmerGoodsView, PermissionKeys.BoxesView,
+                PermissionKeys.EmployeesView, PermissionKeys.FarmerGoodsView,
+                PermissionKeys.BoxesView, PermissionKeys.SacksView,
                 PermissionKeys.ReportsView, PermissionKeys.ReportsExport
             },
             [SeedRoleNames.Viewer] = new[]
             {
                 PermissionKeys.InvoicesView, PermissionKeys.PartnersView, PermissionKeys.PaymentsView,
                 PermissionKeys.ItemsView, PermissionKeys.EmployeesView, PermissionKeys.ExpensesView,
-                PermissionKeys.FarmerGoodsView, PermissionKeys.BoxesView,
+                PermissionKeys.FarmerGoodsView, PermissionKeys.BoxesView, PermissionKeys.SacksView,
                 PermissionKeys.ReportsView
             },
         };

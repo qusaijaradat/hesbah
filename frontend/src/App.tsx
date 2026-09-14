@@ -1,7 +1,7 @@
-import { BrowserRouter, Routes, Route } from "react-router-dom";
-import { AuthProvider } from "./auth/AuthContext";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { AuthProvider, useAuth } from "./auth/AuthContext";
 import { ProtectedRoute } from "./auth/ProtectedRoute";
-import { Layout } from "./components/Layout";
+import { Layout, NAV_ITEMS } from "./components/Layout";
 import { GlobalLoadingBar } from "./components/GlobalLoadingBar";
 import { useEnterAdvancesFocus } from "./lib/formNavigation";
 import { LoginPage } from "./pages/LoginPage";
@@ -32,6 +32,33 @@ import { UsersPage } from "./pages/UsersPage";
 import { RolesPage } from "./pages/RolesPage";
 import { AuditLogPage } from "./pages/AuditLogPage";
 
+/**
+ * Where "/" actually goes.
+ *
+ * The dashboard is not something everybody can open: its figures are the market's whole day, so it
+ * needs reports.view. An account created to do one job — record sacks, say, and nothing else —
+ * used to land on it and get an empty screen with errors behind it, which reads as a broken login
+ * rather than as a permission they were never given.
+ *
+ * So a user without it is sent to the first screen their role actually reaches, taken from the
+ * sidebar's own list so the two can never disagree.
+ */
+function Landing() {
+  const { hasPermission } = useAuth();
+  if (hasPermission("reports.view")) return <DashboardPage />;
+
+  const first = NAV_ITEMS.find((item) => item.to !== "/" && item.permission && hasPermission(item.permission));
+  // Nobody at all: better an honest sentence than a blank page or a redirect loop.
+  if (!first) {
+    return (
+      <div className="card p-6 text-center text-gray-600">
+        حسابك ما إله صلاحية على أي شاشة — راجع المسؤول.
+      </div>
+    );
+  }
+  return <Navigate to={first.to} replace />;
+}
+
 function Protected({ children, permission }: { children: React.ReactNode; permission?: string }) {
   return (
     <ProtectedRoute requirePermission={permission}>
@@ -54,7 +81,7 @@ export default function App() {
         <Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route path="/change-password" element={<ProtectedRoute skipPasswordGate><ChangePasswordPage /></ProtectedRoute>} />
-          <Route path="/" element={<Protected><DashboardPage /></Protected>} />
+          <Route path="/" element={<Protected><Landing /></Protected>} />
           <Route path="/invoices" element={<Protected permission="invoices.view"><InvoicesPage /></Protected>} />
           <Route path="/invoices/new" element={<Protected permission="invoices.create"><InvoiceNewPage /></Protected>} />
           {/* Experimental — see QuickEntryPage. Same permission as the normal form, since it
@@ -81,7 +108,7 @@ export default function App() {
           <Route path="/containers" element={<Protected permission="boxes.view"><ContainersPage /></Protected>} />
           {/* Sacks have their own section: they come in colours and shapes, and a balance that
               does not name the kind cannot be argued from. See SacksPage. */}
-          <Route path="/sacks" element={<Protected permission="boxes.view"><SacksPage /></Protected>} />
+          <Route path="/sacks" element={<Protected permission="sacks.view"><SacksPage /></Protected>} />
           <Route path="/settings" element={<Protected permission="settings.view"><SettingsPage /></Protected>} />
           <Route path="/users" element={<Protected permission="users.view"><UsersPage /></Protected>} />
           <Route path="/roles" element={<Protected permission="roles.view"><RolesPage /></Protected>} />

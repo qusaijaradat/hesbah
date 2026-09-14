@@ -5,6 +5,7 @@ import {
 import type { SacksFilter } from "../api/sacks";
 import type { SackKindDto, SackLineInput, SacksOverviewDto } from "../types";
 import { apiErrorMessage } from "../api/client";
+import { createPartner } from "../api/partners";
 import { useAuth } from "../auth/AuthContext";
 import { PartnerAutocomplete } from "../components/PartnerAutocomplete";
 import { PdfActions } from "../components/PdfActions";
@@ -193,6 +194,8 @@ function MovementForm({ title, action, kinds, onKinds, onClose, onDone, onError 
   onDone: (message: string) => void;
   onError: (message: string) => void;
 }) {
+  const { hasPermission } = useAuth();
+  const canCreatePartners = hasPermission("partners.create");
   const [partner, setPartner] = useState<{ id: number; name: string } | null>(null);
   const [date, setDate] = useState(() => todayLocalDateString());
   const [lines, setLines] = useState<KindLine[]>([emptyLine()]);
@@ -200,6 +203,21 @@ function MovementForm({ title, action, kinds, onKinds, onClose, onDone, onError 
   const [busy, setBusy] = useState(false);
 
   const total = lines.reduce((sum, l) => sum + (parseFloat(l.quantity) || 0), 0);
+
+  /**
+   * A name nobody has recorded yet becomes a person, from here. Saved as "مشتري" because that is
+   * the closest of the three roles the system has — there is no "تاجر" type — and because the roles
+   * only ever ADD (see PartnerRoles): the day he buys something, that is what he becomes, and
+   * nothing recorded here is taken away.
+   */
+  async function createTrader(name: string) {
+    try {
+      const created = await createPartner({ name, type: "Merchant" });
+      return { id: created.id, name: created.name };
+    } catch (err) {
+      throw new Error(apiErrorMessage(err, "فشلت إضافة الشخص"));
+    }
+  }
 
   function update(index: number, patch: Partial<KindLine>) {
     setLines((prev) => prev.map((l, i) => (i === index ? { ...l, ...patch } : l)));
@@ -261,9 +279,17 @@ function MovementForm({ title, action, kinds, onKinds, onClose, onDone, onError 
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2 mb-3">
+        {/* Anyone at all, not only a seller/buyer/driver: sacks go out to whoever is standing
+            there, and an outside trader who has never been on an invoice is the common case. The
+            picker was already unrestricted; what it could not do was accept a name it had never
+            seen, which sent staff off to the partners page and back for a person whose only
+            business with the market is fifty sacks. */}
         <PartnerAutocomplete
           label="الشخص" value={partner} onChange={setPartner}
           placeholder="اكتب الاسم واختره من القائمة..."
+          allowNew={canCreatePartners}
+          newTypeLabel="مشتري"
+          onCreateNew={canCreatePartners ? createTrader : undefined}
         />
         <div>
           <label className="label">التاريخ</label>

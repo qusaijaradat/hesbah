@@ -646,6 +646,9 @@ export interface GoodsEntryDto {
   /** "مخالات" — the same kind of plain container count as woodQuantity, tracked in the same
    *  ledger and kept on its own balance (see ContainerBalanceDto). */
   sackQuantity: number;
+  /** Which kind of sack he brought them in — null on every delivery recorded before kinds existed. */
+  sackKindId?: number | null;
+  sackKindName?: string | null;
   notes?: string | null;
 }
 

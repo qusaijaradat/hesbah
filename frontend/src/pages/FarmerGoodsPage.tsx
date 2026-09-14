@@ -5,12 +5,13 @@ import { getFarmerGoods } from "../api/invoices";
 import { createPartner } from "../api/partners";
 import { createGoodsEntry, deleteGoodsEntry, getFarmerGoodsStock, getGoodsGlobalStock, printFarmerGoodsStockPdf, updateGoodsEntry } from "../api/goods";
 import { apiErrorMessage } from "../api/client";
+import { listSackKinds } from "../api/sacks";
 import { PartnerAutocomplete } from "../components/PartnerAutocomplete";
 import { ItemAutocomplete } from "../components/ItemAutocomplete";
 import { GoodsGlobalStockCard } from "../components/GoodsGlobalStockCard";
 import { formatCount, formatDate, formatWeight, todayLocalDateString } from "../lib/format";
 import { useAuth } from "../auth/AuthContext";
-import type { FarmerGoodsRow, FarmerGoodsStockDto, GoodsEntryDto, GoodsStockRow } from "../types";
+import type { FarmerGoodsRow, FarmerGoodsStockDto, GoodsEntryDto, GoodsStockRow, SackKindDto } from "../types";
 import { useSelection } from "../lib/useSelection";
 import { runBulkDelete, summarizeBulkDelete } from "../lib/bulkDelete";
 import { PdfActions } from "../components/PdfActions";
@@ -77,6 +78,14 @@ export function FarmerGoodsPage() {
   const [entryQuantity, setEntryQuantity] = useState("");
   const [entryWoodQuantity, setEntryWoodQuantity] = useState("");
   const [entrySackQuantity, setEntrySackQuantity] = useState("");
+  // Which kind of sack he brought them in. Loaded once; a colour that is not on the list is added
+  // from the sacks screen, which is where kinds are managed.
+  const [entrySackKindId, setEntrySackKindId] = useState("");
+  const [sackKinds, setSackKinds] = useState<SackKindDto[]>([]);
+
+  useEffect(() => {
+    listSackKinds().then(setSackKinds).catch(() => undefined);
+  }, []);
   const [entryNotes, setEntryNotes] = useState("");
   const [savingEntry, setSavingEntry] = useState(false);
   const [entryError, setEntryError] = useState<string | null>(null);
@@ -153,6 +162,7 @@ export function FarmerGoodsPage() {
     setEntryQuantity(String(entry.quantity));
     setEntryWoodQuantity(entry.woodQuantity > 0 ? String(entry.woodQuantity) : "");
     setEntrySackQuantity(entry.sackQuantity > 0 ? String(entry.sackQuantity) : "");
+    setEntrySackKindId(entry.sackKindId != null ? String(entry.sackKindId) : "");
     setEntryNotes(entry.notes ?? "");
     setEntryError(null);
   }
@@ -176,6 +186,7 @@ export function FarmerGoodsPage() {
         quantity,
         woodQuantity,
         sackQuantity,
+        sackKindId: entrySackKindId === "" ? null : Number(entrySackKindId),
         notes: entryNotes.trim() || null,
       };
       if (editingEntry) {
@@ -301,9 +312,18 @@ export function FarmerGoodsPage() {
                 </div>
                 <div>
                   {/* نفس فكرة صناديق الخشب — عدد المخالات الي إجت مع البضاعة، مستقل عن الكمية
-                      وعن الصناديق، وبنحسب برصيده لحاله بشاشة الصناديق والمخالات. */}
+                      وعن الصناديق، وبنحسب برصيده لحاله بشاشة المخالات. */}
                   <label className="label">مخالات (اختياري)</label>
                   <input type="number" step="1" min="0" className="input w-32" value={entrySackQuantity} onChange={(e) => setEntrySackQuantity(e.target.value)} placeholder="0" />
+                </div>
+                <div>
+                  {/* Which colour arrived. Without it these land as "بدون نوع" on the sacks screen,
+                      which is honest but not much use when the argument is about which ones. */}
+                  <label className="label">نوع المخالات</label>
+                  <select className="input w-32" value={entrySackKindId} onChange={(e) => setEntrySackKindId(e.target.value)}>
+                    <option value="">بدون نوع</option>
+                    {sackKinds.map((k) => <option key={k.id} value={k.id}>{k.name}</option>)}
+                  </select>
                 </div>
                 <div className="w-full max-w-xs">
                   <label className="label">ملاحظات (اختياري)</label>

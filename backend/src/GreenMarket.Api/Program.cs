@@ -550,6 +550,9 @@ using (var scope = app.Services.CreateScope())
     {
         await db.Database.ExecuteSqlRawAsync("""
             ALTER TABLE IF EXISTS farmer_goods_entries ADD COLUMN IF NOT EXISTS "SackQuantity" numeric(14,3) NOT NULL DEFAULT 0;
+            -- Nullable: a delivery recorded before sack kinds existed has none, and those sacks
+            -- are still his. They read as "بدون نوع" rather than being assigned a colour.
+            ALTER TABLE IF EXISTS farmer_goods_entries ADD COLUMN IF NOT EXISTS "SackKindId" integer NULL;
             """);
     }
     catch (Exception ex)

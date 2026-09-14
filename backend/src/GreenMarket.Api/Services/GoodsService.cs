@@ -123,8 +123,15 @@ public class GoodsService : IGoodsService
         .OrderBy(r => r.ItemName)
         .ToList();
 
+        // The kind names in one lookup rather than a join per row — a stock page lists a whole
+        // season of deliveries and most of them share a handful of colours.
+        var entryKindIds = entries.Where(e => e.SackKindId != null).Select(e => e.SackKindId!.Value).Distinct().ToList();
+        var entryKinds = await _db.SackKinds.Where(k => entryKindIds.Contains(k.Id))
+            .ToDictionaryAsync(k => k.Id, k => k.Name);
+
         var entryDtos = entries.Select(e => new GoodsEntryDto(
-            e.Id, e.FarmerId, farmer.Name, e.Date, e.ItemName, e.Quantity, e.WeightKg, e.WoodQuantity, e.SackQuantity, e.Notes)).ToList();
+            e.Id, e.FarmerId, farmer.Name, e.Date, e.ItemName, e.Quantity, e.WeightKg, e.WoodQuantity, e.SackQuantity,
+            e.SackKindId, e.SackKindId is null ? null : entryKinds.GetValueOrDefault(e.SackKindId.Value), e.Notes)).ToList();
 
         return new FarmerGoodsStockDto(farmer.Id, farmer.Name, entryDtos, stock);
     }
@@ -239,13 +246,15 @@ public class GoodsService : IGoodsService
             WeightKg = request.WeightKg,
             WoodQuantity = request.WoodQuantity,
             SackQuantity = request.SackQuantity,
+            SackKindId = request.SackKindId,
             Notes = request.Notes,
             CreatedByUserId = recordedByUserId
         };
         _db.FarmerGoodsEntries.Add(entry);
         await _db.SaveChangesAsync();
 
-        return new GoodsEntryDto(entry.Id, entry.FarmerId, farmer.Name, entry.Date, entry.ItemName, entry.Quantity, entry.WeightKg, entry.WoodQuantity, entry.SackQuantity, entry.Notes);
+        return new GoodsEntryDto(entry.Id, entry.FarmerId, farmer.Name, entry.Date, entry.ItemName, entry.Quantity,
+            entry.WeightKg, entry.WoodQuantity, entry.SackQuantity, entry.SackKindId, await KindNameAsync(entry.SackKindId), entry.Notes);
     }
 
     public async Task<GoodsEntryDto> UpdateAsync(int id, UpdateGoodsEntryRequest request)
@@ -261,12 +270,18 @@ public class GoodsService : IGoodsService
         entry.WeightKg = request.WeightKg;
         entry.WoodQuantity = request.WoodQuantity;
         entry.SackQuantity = request.SackQuantity;
+        entry.SackKindId = request.SackKindId;
         entry.Notes = request.Notes;
         await _db.SaveChangesAsync();
 
         var farmer = await _db.Partners.FindAsync(entry.FarmerId);
-        return new GoodsEntryDto(entry.Id, entry.FarmerId, farmer?.Name ?? "", entry.Date, entry.ItemName, entry.Quantity, entry.WeightKg, entry.WoodQuantity, entry.SackQuantity, entry.Notes);
+        return new GoodsEntryDto(entry.Id, entry.FarmerId, farmer?.Name ?? "", entry.Date, entry.ItemName, entry.Quantity,
+            entry.WeightKg, entry.WoodQuantity, entry.SackQuantity, entry.SackKindId, await KindNameAsync(entry.SackKindId), entry.Notes);
     }
+
+    /// <summary>The kind's name for a single entry being echoed back after a save.</summary>
+    private async Task<string?> KindNameAsync(int? kindId) =>
+        kindId is null ? null : (await _db.SackKinds.FindAsync(kindId.Value))?.Name;
 
     /// <summary>Soft-delete, same convention as every other AuditableEntity — a mistaken intake
     /// entry disappears from the log and from the stock computation above, without losing the

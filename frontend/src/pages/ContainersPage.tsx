@@ -10,7 +10,13 @@ import { useAuth } from "../auth/AuthContext";
 import type { ContainerBalanceDto, ContainerDirection, ContainerHolderDto, ContainerType, PartnerContainersDto } from "../types";
 
 /**
- * "الصناديق والمخالات" — the empty containers the market lends out and expects back.
+ * "الصناديق" — the crates the market lends out and expects back.
+ *
+ * Sacks used to share this screen and have their own now (SacksPage): they come in colours and
+ * shapes, and a sack balance that does not name the kind is unarguable — thirty red out and
+ * fifty yellow back is not square, however even the totals look. Movements recorded here before
+ * that split are still sacks somebody is holding; they read as "بدون نوع" over there rather than
+ * disappearing, which is why this file still knows the word.
  *
  * Counts only. Whatever the market eventually charges for one is a separate matter and stays out
  * of the person's account balance, which is about produce: a crate owed and a shekel owed are not
@@ -89,7 +95,7 @@ export function ContainersPage() {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold mb-2">الصناديق والمخالات</h1>
+      <h1 className="text-2xl font-bold mb-2">الصناديق</h1>
       <p className="text-sm text-gray-500 mb-6">
         عدد فقط — لا علاقة له بحساب الشخص المالي. "المتبقي عليه" معناه إنه ماسك هالعدد من صناديقك،
         و"عندنا إله" معناه العكس — صناديقه هو موجودة عندك.
@@ -234,6 +240,7 @@ function BalanceCard({ balance }: { balance: ContainerBalanceDto }) {
 }
 
 function MovementForm({ partnerId, onSaved }: { partnerId: number; onSaved: () => void }) {
+  // Fixed, not chosen: this form records crates. See the note beside the picker.
   const [type, setType] = useState<ContainerType>("Box");
   const [direction, setDirection] = useState<ContainerDirection>("Out");
   const [date, setDate] = useState(() => todayLocalDateString());
@@ -271,8 +278,11 @@ function MovementForm({ partnerId, onSaved }: { partnerId: number; onSaved: () =
           <select className="input" value={type} onChange={(e) => setType(e.target.value as ContainerType)}>
             {/* Crates and sacks only. Cartons are counted on the invoice and on the reports, but
                 they are not the market's to get back, so there is nothing to track here. */}
+            {/* Crates only. Sacks have their own screen now — they come in colours and shapes,
+                and recording one here would be a movement with no kind on it, invisible to every
+                total over there. The type names below stay, because movements recorded from this
+                picker before sacks moved out still have to render as a word. */}
             <option value="Box">صناديق</option>
-            <option value="Sack">مخالات</option>
           </select>
         </div>
         <div>

@@ -12,18 +12,21 @@ namespace GreenMarket.Api.DTOs;
 /// and FarmerGoodsPage.tsx.</summary>
 public record GoodsEntryDto(
     int Id, int FarmerId, string FarmerName, DateTimeOffset Date,
-    string ItemName, decimal Quantity, decimal? WeightKg, decimal WoodQuantity, decimal SackQuantity, string? Notes);
+    string ItemName, decimal Quantity, decimal? WeightKg, decimal WoodQuantity, decimal SackQuantity,
+    int? SackKindId, string? SackKindName, string? Notes);
 
 /// <summary>FarmerId is required — unlike an invoice, a goods intake entry is always logged
 /// against an already-known farmer (the page's own farmer picker doesn't allow typing a brand
 /// new name), so there's no FarmerName find-or-create fallback here.</summary>
 public record CreateGoodsEntryRequest(
     int FarmerId, DateTimeOffset Date, string ItemName,
-    decimal Quantity, decimal? WeightKg = null, decimal WoodQuantity = 0, decimal SackQuantity = 0, string? Notes = null);
+    decimal Quantity, decimal? WeightKg = null, decimal WoodQuantity = 0, decimal SackQuantity = 0,
+    int? SackKindId = null, string? Notes = null);
 
 public record UpdateGoodsEntryRequest(
     DateTimeOffset Date, string ItemName,
-    decimal Quantity, decimal? WeightKg = null, decimal WoodQuantity = 0, decimal SackQuantity = 0, string? Notes = null);
+    decimal Quantity, decimal? WeightKg = null, decimal WoodQuantity = 0, decimal SackQuantity = 0,
+    int? SackKindId = null, string? Notes = null);
 
 /// <summary>
 /// One row of the "المتوفر حاليًا" (currently available) stock summary — per item + unit, across

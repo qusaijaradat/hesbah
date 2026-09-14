@@ -48,5 +48,16 @@ public class FarmerGoodsEntry : AuditableEntity
     /// keep separate balances, so ten of each is ten of each, not twenty of something.</summary>
     public decimal SackQuantity { get; set; }
 
+    /// <summary>
+    /// Which kind of sack he brought them in — a colour, a shape. Nullable and staying that way:
+    /// every delivery recorded before kinds existed has none, and those sacks are still his.
+    ///
+    /// The market is holding these, not lending them, so on the sacks screen they count on the
+    /// IN side — which is what makes his outstanding go negative there, correctly: the market owes
+    /// him sacks rather than the other way round.
+    /// </summary>
+    public int? SackKindId { get; set; }
+    public SackKind? SackKind { get; set; }
+
     public string? Notes { get; set; }
 }

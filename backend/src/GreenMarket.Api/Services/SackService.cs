@@ -183,15 +183,51 @@ public class SackService : ISackService
             })
             .ToListAsync();
 
+        // Sacks a SELLER brought his produce in, recorded on "إضافة بضاعة" rather than here.
+        //
+        // They belong on this screen, on the IN side. The market is holding them — they arrived
+        // and did not leave — so they push his outstanding NEGATIVE, which is the truth: the market
+        // owes him sacks rather than the other way round. Left out, a seller who has brought his
+        // own sacks in all season reads as square on a screen whose whole job is saying who is
+        // holding whose, and the crate side has netted them this way from the beginning
+        // (ContainerService.GoodsEntryContainersFor).
+        var goodsQuery = _db.FarmerGoodsEntries.AsNoTracking().Where(e => e.SackQuantity > 0);
+        if (dateFrom is not null) goodsQuery = goodsQuery.Where(e => e.Date >= dateFrom);
+        if (dateTo is not null) goodsQuery = goodsQuery.Where(e => e.Date <= dateTo);
+        if (partnerId is not null) goodsQuery = goodsQuery.Where(e => e.FarmerId == partnerId);
+
+        var goodsRows = await goodsQuery
+            .Select(e => new
+            {
+                e.Id,
+                PartnerId = e.FarmerId,
+                PartnerName = e.Farmer.Name,
+                PartnerWhatsApp = e.Farmer.WhatsAppNumber,
+                e.SackKindId,
+                KindName = e.SackKind != null ? e.SackKind.Name : null,
+                e.Date,
+                Quantity = e.SackQuantity,
+            })
+            .ToListAsync();
+
         // Kept beside the movements rather than on them: a movement does not need a phone number,
         // and putting one on every row would carry the same string a hundred times.
-        var whatsAppByPartner = rows
-            .GroupBy(r => r.PartnerId)
+        var whatsAppByPartner = rows.Select(r => (r.PartnerId, r.PartnerWhatsApp))
+            .Concat(goodsRows.Select(g => (g.PartnerId, g.PartnerWhatsApp)))
+            .GroupBy(x => x.PartnerId)
             .ToDictionary(g => g.Key, g => g.Select(x => x.PartnerWhatsApp).FirstOrDefault(x => x != null));
 
         var movements = rows.Select(r => new SackMovementDto(
             r.Id, r.PartnerId, r.PartnerName, r.SackKindId, r.KindName ?? NoKind,
             r.Direction.ToString(), r.Date, r.Quantity, r.Notes)).ToList();
+
+        // Negative ids so they cannot collide with a real movement's, and so the delete button on
+        // this screen has nothing to aim at: a goods entry is corrected on its own page, where the
+        // produce it came with is corrected too.
+        movements.AddRange(goodsRows.Select(g => new SackMovementDto(
+            -g.Id, g.PartnerId, g.PartnerName, g.SackKindId, g.KindName ?? NoKind,
+            nameof(ContainerDirection.In), g.Date, g.Quantity, "جابها مع البضاعة")));
+        movements = movements.OrderByDescending(m => m.Date).ThenByDescending(m => m.Id).ToList();
 
         // Out − In, per kind. Positive means that many of the market's sacks are in other people's
         // hands; negative means the market is holding more of that kind than it lent, which is a

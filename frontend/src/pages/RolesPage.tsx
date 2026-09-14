@@ -4,6 +4,7 @@ import type { PermissionDto, RoleDto } from "../types";
 import { apiErrorMessage } from "../api/client";
 import { useSelection } from "../lib/useSelection";
 import { runBulkDelete, summarizeBulkDelete } from "../lib/bulkDelete";
+import { CollapsibleRows } from "../components/CollapsibleRows";
 
 // Human-readable Arabic labels for the fixed, known permission keys (see PermissionKeys.All on
 // the backend). A key added later without an entry here just falls back to showing its raw
@@ -174,7 +175,20 @@ export function RolesPage() {
         </div>
       )}
 
-      <div className="card overflow-x-auto">
+      <div className="card">
+        <div className="sm:hidden">
+          <CollapsibleRows
+            rows={roles}
+            rowKey={(r) => r.id}
+            title={(r) => r.name}
+            value={(r) => `${r.permissions.length} صلاحية`}
+            details={(r) => [
+              { label: "الوصف", value: r.description || "—" },
+            ]}
+            empty="لا توجد أدوار"
+          />
+        </div>
+        <div className="hidden sm:block overflow-x-auto">
         <table className="table-base">
           <thead>
             <tr>
@@ -207,6 +221,7 @@ export function RolesPage() {
             ))}
           </tbody>
         </table>
+        </div>
       </div>
 
       {editing && (

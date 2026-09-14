@@ -13,6 +13,7 @@ import type { ColumnFilterSpec } from "../lib/columnFilters";
 import { ColumnFilterRow, ColumnFilterSummary } from "../components/ColumnFilterRow";
 import { BulkEditDialog } from "../components/BulkEditDialog";
 import type { BulkEditField } from "../components/BulkEditDialog";
+import { CollapsibleRows } from "../components/CollapsibleRows";
 
 // Module-level: useColumnFilters memoizes on this array's identity.
 const EMPLOYEE_FILTERS: ColumnFilterSpec<EmployeeDto>[] = [
@@ -130,7 +131,25 @@ export function EmployeesPage() {
 
       {/* عمود "إجمالي المصاريف" هو تجميع كل مصروف/سحبة تم ربطها بهذا الموظف من صفحة
           "مصاريف الحسبة" — هذا هو ما يتيح معرفة كم أُعطي لكل موظف. */}
-      <div className="card overflow-x-auto">
+      <div className="card">
+        <div className="sm:hidden">
+          <CollapsibleRows
+            rows={pager.pageRows}
+            rowKey={(e) => e.id}
+            title={(e) => e.name}
+            value={(e) => formatCurrency(e.totalExpenses)}
+            leading={canDelete ? (e) => (
+              <input type="checkbox" checked={selection.selected.has(e.id)} onChange={() => selection.toggleOne(e.id)} />
+            ) : undefined}
+            details={(e) => [
+              { label: "رقم الهاتف", value: e.phone || "—" },
+              { label: "الحالة", value: e.isActive ? "نشط" : "غير نشط" },
+              { label: "ملاحظات", value: e.notes || "—" },
+            ]}
+            empty="لا يوجد موظفون بعد"
+          />
+        </div>
+        <div className="hidden sm:block overflow-x-auto">
         <table className="table-base">
           <thead>
             <tr>
@@ -194,6 +213,7 @@ export function EmployeesPage() {
             )}
           </tbody>
         </table>
+        </div>
         <TablePagination
           page={pager.page} pageSize={pager.pageSize} totalCount={pager.totalCount}
           itemLabel="موظف" onPageChange={pager.setPage} onPageSizeChange={pager.setPageSize}

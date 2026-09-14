@@ -3,6 +3,7 @@ import { TablePagination } from "../components/TablePagination";
 import { listAuditLogEntityNames, listAuditLogs, type AuditLogFilter } from "../api/auditLogs";
 import type { AuditLogDto } from "../types";
 import { formatDateTime } from "../lib/format";
+import { CollapsibleRows } from "../components/CollapsibleRows";
 
 const ACTION_LABELS: Record<string, string> = {
   Created: "إضافة",
@@ -91,7 +92,23 @@ export function AuditLogPage() {
         <div className="text-sm text-gray-500 ms-auto">{totalCount} سجل</div>
       </div>
 
-      <div className="card overflow-x-auto">
+      <div className="card">
+        {/* The log is read newest-first for what changed, so the card leads with the record and
+            the time rather than the id, which is only useful once you are already looking. */}
+        <div className="sm:hidden">
+          <CollapsibleRows
+            rows={logs}
+            rowKey={(log) => log.id}
+            title={(log) => entityLabel(log.entityName)}
+            value={(log) => <span className="text-xs text-gray-500">{formatDateTime(log.at)}</span>}
+            details={(log) => [
+              { label: "المستخدم", value: log.userFullName ?? "—" },
+              { label: "المعرّف", value: log.entityId },
+            ]}
+            empty="لا توجد سجلات مطابقة"
+          />
+        </div>
+        <div className="hidden sm:block overflow-x-auto">
         <table className="table-base">
           <thead>
             <tr><th>الوقت</th><th>المستخدم</th><th>نوع البيانات</th><th>الإجراء</th><th>المعرّف</th><th></th></tr>
@@ -132,6 +149,7 @@ export function AuditLogPage() {
             ))}
           </tbody>
         </table>
+        </div>
         {/* Paged by the BACKEND — the shared bar just drives the server's own page/pageSize. */}
         <TablePagination
           page={filter.page ?? 1} pageSize={filter.pageSize ?? 30} totalCount={totalCount}

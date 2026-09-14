@@ -3,6 +3,7 @@ import { createUser, listRoles, listUsers, updateUser } from "../api/users";
 import type { RoleDto, UserDto } from "../types";
 import { apiErrorMessage } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
+import { CollapsibleRows } from "../components/CollapsibleRows";
 
 export function UsersPage() {
   const { hasPermission } = useAuth();
@@ -27,7 +28,21 @@ export function UsersPage() {
         {canCreate && <button className="btn-primary" onClick={() => setEditing("new")}>+ إضافة مستخدم</button>}
       </div>
 
-      <div className="card overflow-x-auto">
+      <div className="card">
+        <div className="sm:hidden">
+          <CollapsibleRows
+            rows={users}
+            rowKey={(u) => u.id}
+            title={(u) => u.fullName}
+            value={(u) => <span className={u.isActive ? "" : "text-gray-400"}>{u.isActive ? "نشط" : "معطّل"}</span>}
+            details={(u) => [
+              { label: "اسم المستخدم", value: u.username },
+              { label: "الدور", value: u.roleName },
+            ]}
+            empty="لا يوجد مستخدمون"
+          />
+        </div>
+        <div className="hidden sm:block overflow-x-auto">
         <table className="table-base">
           <thead><tr><th>الاسم</th><th>اسم المستخدم</th><th>الدور</th><th>الحالة</th><th></th></tr></thead>
           <tbody>
@@ -46,6 +61,7 @@ export function UsersPage() {
             ))}
           </tbody>
         </table>
+        </div>
       </div>
 
       {editing && (

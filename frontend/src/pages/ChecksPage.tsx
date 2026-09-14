@@ -10,6 +10,7 @@ import { TablePagination } from "../components/TablePagination";
 import type { CheckClearanceStatus, PaymentDto } from "../types";
 import { InvoiceLink, PartnerLink } from "../components/RecordLinks";
 import { PdfActions } from "../components/PdfActions";
+import { CollapsibleRows } from "../components/CollapsibleRows";
 
 /** Pending checks due within this many days (but not yet overdue) get the amber "قريبًا" highlight
  * — distinct from the red "فات الاستحقاق" highlight for ones already overdue. Gives an early warning
@@ -175,7 +176,26 @@ export function ChecksPage() {
 
       {error && <div className="text-sm text-red-600 bg-red-50 rounded-md p-2 mb-4">{error}</div>}
 
-      <div className="card overflow-x-auto">
+      <div className="card">
+        {/* A check is read for one thing first — is it late — so that is what the closed card says. */}
+        <div className="sm:hidden">
+          <CollapsibleRows
+            rows={pager.pageRows}
+            rowKey={(c) => c.id}
+            title={(c) => c.partnerName}
+            value={(c) => formatCurrency(c.amount)}
+            details={(c) => [
+              { label: "تاريخ الاستحقاق", value: c.checkDueDate ? formatDate(c.checkDueDate) : "—" },
+              { label: "الاتجاه", value: PAYMENT_DIRECTION_LABELS[c.direction] },
+              { label: "رقم الشيك", value: c.checkNumber || "—" },
+              { label: "الفاتورة", value: c.invoiceNumber || "—" },
+              { label: "الحالة", value: STATUS_LABELS[c.checkStatus ?? "Pending"] },
+              { label: "تاريخ الصرف", value: c.checkClearedDate ? formatDate(c.checkClearedDate) : "—" },
+            ]}
+            empty="لا توجد شيكات"
+          />
+        </div>
+        <div className="hidden sm:block overflow-x-auto">
         <table className="table-base">
           <thead>
             <tr>
@@ -253,6 +273,7 @@ export function ChecksPage() {
             })}
           </tbody>
         </table>
+        </div>
         <TablePagination
           page={pager.page} pageSize={pager.pageSize} totalCount={pager.totalCount}
           itemLabel="شيك" onPageChange={pager.setPage} onPageSizeChange={pager.setPageSize}

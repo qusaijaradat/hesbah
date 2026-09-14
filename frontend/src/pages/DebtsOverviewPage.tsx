@@ -8,6 +8,7 @@ import { apiErrorMessage } from "../api/client";
 import { formatCurrency, todayLocalDateString } from "../lib/format";
 import type { PartnerDebtRow } from "../types";
 import { PdfActions } from "../components/PdfActions";
+import { CollapsibleRows } from "../components/CollapsibleRows";
 
 /// <summary>
 /// "قيمة الديون" overview page: one screen, 3 sections (بائع/سائق/مشتري), each listing everyone of
@@ -131,7 +132,26 @@ function DebtSection({
   return (
     <div>
       <h2 className="text-lg font-bold mb-3">{title} <span className="text-sm font-normal text-gray-400">({rows.length})</span></h2>
-      <div className="card overflow-x-auto">
+      <div className="card">
+        <div className="sm:hidden">
+          <CollapsibleRows
+            rows={pager.pageRows}
+            rowKey={(r) => r.partnerId}
+            title={(r) => r.name}
+            value={(r) => (
+              <span className={r.remaining > 0 ? "text-red-700" : "text-brand-700"}>
+                {formatCurrency(Math.abs(r.remaining))}
+              </span>
+            )}
+            details={(r) => [
+              { label: "دين قديم", value: r.oldDebt !== 0 ? formatCurrency(Math.abs(r.oldDebt)) : "—" },
+              { label: "دين حالي", value: r.currentDebt !== 0 ? formatCurrency(Math.abs(r.currentDebt)) : "—" },
+              { label: "", value: r.remaining > 0 ? owedByThemLabel : owedToThemLabel },
+            ]}
+            empty={emptyText}
+          />
+        </div>
+        <div className="hidden sm:block overflow-x-auto">
         <table className="table-base">
           <thead>
             <tr>
@@ -182,6 +202,7 @@ function DebtSection({
             </tfoot>
           )}
         </table>
+        </div>
         <TablePagination
           page={pager.page} pageSize={pager.pageSize} totalCount={pager.totalCount}
           itemLabel="شخص" onPageChange={pager.setPage} onPageSizeChange={pager.setPageSize}

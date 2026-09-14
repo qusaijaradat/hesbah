@@ -823,6 +823,8 @@ export interface SackKindDto {
   id: number;
   name: string;
   isActive: boolean;
+  /** How many of this kind the market OWNS — the whole lot, out with people or on the shelf. */
+  stockQuantity: number;
 }
 
 /** One kind and how many of it, inside a single handover or return. */
@@ -851,6 +853,11 @@ export interface SackKindTotalDto {
   sackKindName: string;
   out: number;
   in: number;
+  /** From the kind's own store count. Zero for "بدون نوع", which owns nothing. */
+  owned: number;
+  /** owned − outstanding: what should be on the shelf. Can exceed owned when the market is
+   *  holding somebody else's sacks, which is a real state and not an error. */
+  remaining: number;
   /** Out − In. Negative is a real state — more came back than went out — and is shown, not clamped. */
   outstanding: number;
 }

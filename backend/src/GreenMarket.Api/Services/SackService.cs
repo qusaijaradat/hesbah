@@ -47,7 +47,7 @@ public class SackService : ISackService
         if (!includeInactive) query = query.Where(k => k.IsActive);
         return await query
             .OrderBy(k => k.Name)
-            .Select(k => new SackKindDto(k.Id, k.Name, k.IsActive))
+            .Select(k => new SackKindDto(k.Id, k.Name, k.IsActive, k.StockQuantity))
             .ToListAsync();
     }
 
@@ -68,13 +68,13 @@ public class SackService : ISackService
                 existing.IsActive = true;
                 await _db.SaveChangesAsync();
             }
-            return new SackKindDto(existing.Id, existing.Name, existing.IsActive);
+            return new SackKindDto(existing.Id, existing.Name, existing.IsActive, existing.StockQuantity);
         }
 
-        var kind = new SackKind { Name = name, IsActive = true };
+        var kind = new SackKind { Name = name, IsActive = true, StockQuantity = request.StockQuantity };
         _db.SackKinds.Add(kind);
         await _db.SaveChangesAsync();
-        return new SackKindDto(kind.Id, kind.Name, kind.IsActive);
+        return new SackKindDto(kind.Id, kind.Name, kind.IsActive, kind.StockQuantity);
     }
 
     public async Task<SackKindDto> UpdateKindAsync(int id, UpdateSackKindRequest request)
@@ -86,10 +86,13 @@ public class SackService : ISackService
         var clash = await _db.SackKinds.AnyAsync(k => k.Id != id && k.Name.ToLower() == name.ToLower());
         if (clash) throw new ConflictAppException("في نوع ثاني بنفس الاسم.");
 
+        if (request.StockQuantity < 0) throw new ValidationAppException("عدد المخزن ما بكون سالب.");
+
         kind.Name = name;
         kind.IsActive = request.IsActive;
+        kind.StockQuantity = request.StockQuantity;
         await _db.SaveChangesAsync();
-        return new SackKindDto(kind.Id, kind.Name, kind.IsActive);
+        return new SackKindDto(kind.Id, kind.Name, kind.IsActive, kind.StockQuantity);
     }
 
     public async Task<IReadOnlyList<SackMovementDto>> CreateMovementAsync(
@@ -229,6 +232,10 @@ public class SackService : ISackService
             nameof(ContainerDirection.In), g.Date, g.Quantity, "جابها مع البضاعة")));
         movements = movements.OrderByDescending(m => m.Date).ThenByDescending(m => m.Id).ToList();
 
+        // What the market OWNS of each kind, which no movement can tell us — movements say how
+        // many left and came back, never how many there were to begin with.
+        var owned = await _db.SackKinds.AsNoTracking().ToDictionaryAsync(k => k.Id, k => k.StockQuantity);
+
         // Out − In, per kind. Positive means that many of the market's sacks are in other people's
         // hands; negative means the market is holding more of that kind than it lent, which is a
         // real state (somebody returned more than they took) and is left showing as a negative
@@ -239,8 +246,27 @@ public class SackService : ISackService
             {
                 var outQty = g.Where(x => x.Direction == nameof(ContainerDirection.Out)).Sum(x => x.Quantity);
                 var inQty = g.Where(x => x.Direction == nameof(ContainerDirection.In)).Sum(x => x.Quantity);
-                return new SackKindTotalDto(g.Key.SackKindId, g.Key.SackKindName, outQty, inQty, outQty - inQty);
+                var outstanding = outQty - inQty;
+                // "بدون نوع" is not a kind and owns nothing — its store count is deliberately zero
+                // rather than borrowed from somewhere, so the shelf figure beside it reads as the
+                // negative of what is out, which is exactly what is known about it.
+                var have = g.Key.SackKindId is null ? 0m : owned.GetValueOrDefault(g.Key.SackKindId.Value);
+                return new SackKindTotalDto(
+                    g.Key.SackKindId, g.Key.SackKindName, outQty, inQty, outstanding,
+                    have, have - outstanding);
             })
+            .ToList();
+
+        // A kind nobody has moved this period still belongs on the list: "عندي ٢٠٠ أصفر وكلهن
+        // بالمخزن" is an answer, and a kind that vanishes whenever it is idle is a store count
+        // nobody can trust to be complete.
+        var movedKindIds = totals.Where(t => t.SackKindId is not null).Select(t => t.SackKindId!.Value).ToHashSet();
+        var idle = await _db.SackKinds.AsNoTracking()
+            .Where(k => k.IsActive && !movedKindIds.Contains(k.Id))
+            .Select(k => new SackKindTotalDto(k.Id, k.Name, 0m, 0m, 0m, k.StockQuantity, k.StockQuantity))
+            .ToListAsync();
+
+        totals = totals.Concat(idle)
             .OrderBy(t => t.SackKindName, StringComparer.CurrentCulture)
             .ToList();
 

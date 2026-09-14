@@ -2025,29 +2025,36 @@ public class ExportService : IExportService
                     main.Item().Text("الإجمالي حسب النوع").Bold().FontSize(12);
                     main.Item().Table(table =>
                     {
-                        table.ColumnsDefinition(c => { c.RelativeColumn(3); c.RelativeColumn(2); c.RelativeColumn(2); c.RelativeColumn(2); });
+                        table.ColumnsDefinition(c => { c.RelativeColumn(3); c.RelativeColumn(2); c.RelativeColumn(2); c.RelativeColumn(2); c.RelativeColumn(2); c.RelativeColumn(2); });
                         table.Header(h =>
                         {
                             h.Cell().Element(HeaderCell).AlignRight().Text("النوع");
+                            h.Cell().Element(HeaderCell).AlignRight().Text("عندي");
                             h.Cell().Element(HeaderCell).AlignRight().Text("طلع");
                             h.Cell().Element(HeaderCell).AlignRight().Text("رجع");
-                            h.Cell().Element(HeaderCell).AlignRight().Text("برا (عند الناس)");
+                            h.Cell().Element(HeaderCell).AlignRight().Text("برا");
+                            h.Cell().Element(HeaderCell).AlignRight().Text("بالمخزن");
                         });
                         for (var i = 0; i < data.Totals.Count; i++)
                         {
                             var t = data.Totals[i];
                             var shaded = i % 2 == 1;
                             table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(t.SackKindName);
+                            table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(t.Owned.ToString("0.###"));
                             table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(t.Out.ToString("0.###"));
                             table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(t.In.ToString("0.###"));
-                            table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(t.Outstanding.ToString("0.###")).Bold();
+                            table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(t.Outstanding.ToString("0.###"));
+                            // The one somebody is at the store to read.
+                            table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(t.Remaining.ToString("0.###")).Bold();
                         }
                         if (data.Totals.Count > 0)
                         {
                             table.Cell().Element(c => DataCell(c, true)).AlignRight().Text("الإجمالي").Bold();
+                            table.Cell().Element(c => DataCell(c, true)).AlignRight().Text(data.Totals.Sum(t => t.Owned).ToString("0.###")).Bold();
                             table.Cell().Element(c => DataCell(c, true)).AlignRight().Text(data.Totals.Sum(t => t.Out).ToString("0.###")).Bold();
                             table.Cell().Element(c => DataCell(c, true)).AlignRight().Text(data.Totals.Sum(t => t.In).ToString("0.###")).Bold();
                             table.Cell().Element(c => DataCell(c, true)).AlignRight().Text(data.Totals.Sum(t => t.Outstanding).ToString("0.###")).Bold();
+                            table.Cell().Element(c => DataCell(c, true)).AlignRight().Text(data.Totals.Sum(t => t.Remaining).ToString("0.###")).Bold();
                         }
                     });
 

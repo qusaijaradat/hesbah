@@ -14,12 +14,13 @@ export async function listSackKinds(includeInactive = false) {
  * back on if it had been retired), so pressing this twice cannot produce two half-balances for the
  * same sacks.
  */
-export async function createSackKind(name: string) {
-  const { data } = await apiClient.post<SackKindDto>("/sacks/kinds", { name });
+export async function createSackKind(name: string, stockQuantity = 0) {
+  const { data } = await apiClient.post<SackKindDto>("/sacks/kinds", { name, stockQuantity });
   return data;
 }
 
-export async function updateSackKind(id: number, payload: { name: string; isActive: boolean }) {
+/** Also where the store count is corrected — see SackKind.StockQuantity. */
+export async function updateSackKind(id: number, payload: { name: string; isActive: boolean; stockQuantity: number }) {
   const { data } = await apiClient.put<SackKindDto>(`/sacks/kinds/${id}`, payload);
   return data;
 }

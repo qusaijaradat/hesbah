@@ -315,11 +315,14 @@ var sackMovements = new List<SackMovementDto>
 
 var sackTotals = sackMovements
     .GroupBy(m => (m.SackKindId, m.SackKindName))
-    .Select(g => new SackKindTotalDto(
-        g.Key.SackKindId, g.Key.SackKindName,
-        g.Where(x => x.Direction == "Out").Sum(x => x.Quantity),
-        g.Where(x => x.Direction == "In").Sum(x => x.Quantity),
-        g.Where(x => x.Direction == "Out").Sum(x => x.Quantity) - g.Where(x => x.Direction == "In").Sum(x => x.Quantity)))
+    .Select(g => {
+        var o = g.Where(x => x.Direction == "Out").Sum(x => x.Quantity);
+        var i = g.Where(x => x.Direction == "In").Sum(x => x.Quantity);
+        // 200 of each owned, so the shelf figure on the page is something a reader can check:
+        // 200 owned less 30 still out is 170 on the shelf.
+        var have = g.Key.SackKindId is null ? 0m : 200m;
+        return new SackKindTotalDto(g.Key.SackKindId, g.Key.SackKindName, o, i, o - i, have, have - (o - i));
+    })
     .ToList();
 
 var sackByPartner = sackMovements

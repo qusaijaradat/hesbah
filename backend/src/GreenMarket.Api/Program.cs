@@ -327,6 +327,9 @@ using (var scope = app.Services.CreateScope())
                 "IsDeleted"    boolean NOT NULL DEFAULT false
             );
             CREATE UNIQUE INDEX IF NOT EXISTS "IX_sack_kinds_Name" ON sack_kinds ("Name");
+            -- How many of the kind the market owns. Zero until somebody counts the store, and zero
+            -- reads as "not counted yet" on the screen rather than as "none".
+            ALTER TABLE sack_kinds ADD COLUMN IF NOT EXISTS "StockQuantity" numeric(14,3) NOT NULL DEFAULT 0;
 
             ALTER TABLE container_movements ADD COLUMN IF NOT EXISTS "SackKindId" integer NULL;
             CREATE INDEX IF NOT EXISTS "IX_container_movements_SackKindId"

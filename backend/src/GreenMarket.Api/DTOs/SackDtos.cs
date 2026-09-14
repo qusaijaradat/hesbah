@@ -1,10 +1,10 @@
 namespace GreenMarket.Api.DTOs;
 
 /// <summary>A kind of sack the market distinguishes — a colour, a shape. Created from the picker.</summary>
-public record SackKindDto(int Id, string Name, bool IsActive);
+public record SackKindDto(int Id, string Name, bool IsActive, decimal StockQuantity);
 
-public record CreateSackKindRequest(string Name);
-public record UpdateSackKindRequest(string Name, bool IsActive);
+public record CreateSackKindRequest(string Name, decimal StockQuantity = 0);
+public record UpdateSackKindRequest(string Name, bool IsActive, decimal StockQuantity = 0);
 
 /// <summary>
 /// One kind and how many of it, inside a single handover or return.
@@ -46,7 +46,14 @@ public record SackMovementDto(
 /// The market's own position in one kind: how many went out, how many came back, and the
 /// difference — which is how many of that kind are in other people's hands right now.
 /// </summary>
-public record SackKindTotalDto(int? SackKindId, string SackKindName, decimal Out, decimal In, decimal Outstanding);
+/// <param name="Owned">How many of the kind the market has, from SackKind.StockQuantity. Zero for
+/// the "بدون نوع" line, which is not a kind and has no store count of its own.</param>
+/// <param name="Remaining">Owned − Outstanding: what should be on the shelf right now. Can exceed
+/// Owned, and correctly — when a seller's own sacks are sitting in the store, Outstanding is
+/// negative and the market is physically holding more than it owns.</param>
+public record SackKindTotalDto(
+    int? SackKindId, string SackKindName, decimal Out, decimal In, decimal Outstanding,
+    decimal Owned, decimal Remaining);
 
 /// <summary>One person's position in one kind. Carries their WhatsApp number so the row itself can
 /// send them what they owe — looking it up separately would be a second round trip per row.</summary>

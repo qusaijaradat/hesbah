@@ -10,6 +10,7 @@ public class SackKindConfiguration : IEntityTypeConfiguration<SackKind>
     {
         builder.ToTable("sack_kinds");
         builder.Property(x => x.Name).IsRequired().HasMaxLength(60);
+        builder.Property(x => x.StockQuantity).HasColumnType("numeric(14,3)");
         // Unique on the NAME, so "أحمر" typed twice on two different days is one kind and not two
         // half-balances. The soft-delete filter does not reach a unique index, which is what we
         // want here: a kind is deactivated, never deleted, and its name stays taken.

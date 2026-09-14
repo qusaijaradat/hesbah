@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import {
-  createSackKind, listSackKinds, printSacksOverviewPdf, returnSacks, sacksOverview, withdrawSacks,
+  createSackKind, listSackKinds, printSacksOverviewPdf, returnSacks, sacksOverview, updateSackKind, withdrawSacks,
 } from "../api/sacks";
 import type { SacksFilter } from "../api/sacks";
 import type { SackKindDto, SackLineInput, SacksOverviewDto } from "../types";
@@ -48,7 +48,7 @@ export function SacksPage() {
   const [openForm, setOpenForm] = useState<"withdraw" | "return" | null>(null);
   // Three answers to three different questions, one at a time. Stacked, they were a single
   // scroll of three tables where finding the one you came for meant reading past the other two.
-  const [tab, setTab] = useState<"overall" | "people" | "log">("overall");
+  const [tab, setTab] = useState<"overall" | "people" | "log" | "stock">("overall");
 
   // The report's own filter, separate from either form's date.
   const [filterFrom, setFilterFrom] = useState("");
@@ -146,6 +146,7 @@ export function SacksPage() {
           ["overall", "الوضع العام"],
           ["people", "عند مين"],
           ["log", "سجل الحركات"],
+          ["stock", "المخزن والأنواع"],
         ] as const).map(([key, label]) => (
           <button
             key={key}
@@ -166,6 +167,14 @@ export function SacksPage() {
           {tab === "overall" && <Totals data={data} />}
           {tab === "people" && <ByPartner data={data} />}
           {tab === "log" && <Movements data={data} />}
+          {tab === "stock" && (
+            <StockTable
+              kinds={kinds}
+              canEdit={canCreate}
+              onSaved={async () => { setKinds(await listSackKinds()); refresh(); }}
+              onError={setError}
+            />
+          )}
         </>
       )}
     </div>
@@ -316,47 +325,58 @@ function MovementForm({ title, action, kinds, onKinds, onClose, onDone, onError 
 function Totals({ data }: { data: SacksOverviewDto }) {
   const out = data.totals.reduce((s, t) => s + t.out, 0);
   const back = data.totals.reduce((s, t) => s + t.in, 0);
+  const owned = data.totals.reduce((s, t) => s + t.owned, 0);
+  const remaining = data.totals.reduce((s, t) => s + t.remaining, 0);
   // How many kinds are not square — the number that says whether there is anything to chase at
   // all, which the per-kind table below can only answer by being read line by line.
   const openKinds = data.totals.filter((t) => t.outstanding !== 0).length;
   return (
     <>
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
-        <StatCard label="طلع" value={String(out)} />
-        <StatCard label="رجع" value={String(back)} />
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+        <StatCard label="عندي (الكل)" value={String(owned)} hint={owned === 0 ? "ما عبّيت المخزن بعد" : undefined} />
         <StatCard
           label="برا (عند الناس)" value={String(out - back)}
           tone={out - back > 0 ? "negative" : "positive"}
           hint={openKinds > 0 ? `${openKinds} نوع مش مخالص` : "كل الأنواع مخالصة"}
         />
+        {/* The one somebody standing at the store is actually asking. */}
+        <StatCard
+          label="بالمخزن (بقدر أعطي)" value={String(remaining)}
+          tone={remaining > 0 ? "positive" : "negative"}
+        />
+        <StatCard label="طلع / رجع" value={`${out} / ${back}`} />
       </div>
     <div className="card mb-4">
       <div className="px-4 pt-4 pb-1 font-semibold">حسب النوع</div>
       <div className="overflow-x-auto">
         <table className="table-base">
           <thead>
-            <tr><th>النوع</th><th>طلع</th><th>رجع</th><th>برا (عند الناس)</th></tr>
+            <tr><th>النوع</th><th>عندي</th><th>طلع</th><th>رجع</th><th>برا</th><th>بالمخزن</th></tr>
           </thead>
           <tbody>
             {data.totals.length === 0 ? (
-              <tr><td colSpan={4} className="text-center text-gray-400 py-6">لا توجد حركات</td></tr>
+              <tr><td colSpan={6} className="text-center text-gray-400 py-6">لا توجد أنواع ولا حركات</td></tr>
             ) : (
               <>
                 {data.totals.map((t) => (
                   <tr key={t.sackKindId ?? "none"}>
                     <td className="font-medium">{t.sackKindName}</td>
+                    <td className="text-gray-500">{t.owned || "—"}</td>
                     <td>{t.out}</td>
                     <td>{t.in}</td>
                     {/* A negative here is real — more came back than went out — and is shown as
                         such. Hiding it would hide whatever mistake produced it. */}
-                    <td className={`font-semibold ${t.outstanding < 0 ? "text-red-600" : ""}`}>{t.outstanding}</td>
+                    <td className={t.outstanding < 0 ? "text-red-600" : ""}>{t.outstanding}</td>
+                    <td className={`font-semibold ${t.remaining < 0 ? "text-red-600" : ""}`}>{t.remaining}</td>
                   </tr>
                 ))}
                 <tr className="bg-gray-50">
                   <td className="font-semibold">الإجمالي</td>
+                  <td className="font-semibold">{owned}</td>
                   <td className="font-semibold">{out}</td>
                   <td className="font-semibold">{back}</td>
                   <td className="font-semibold">{out - back}</td>
+                  <td className="font-semibold">{remaining}</td>
                 </tr>
               </>
             )}
@@ -406,6 +426,113 @@ function ByPartner({ data }: { data: SacksOverviewDto }) {
                     <span className="text-xs text-gray-400">لا يوجد رقم</span>
                   )}
                 </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Where the store count is typed in.
+ *
+ * The movements can say how many went out and came back; only a person counting the store can
+ * say how many there were. Without this the screen answers "who has mine" and cannot answer "how
+ * many can I hand out", which is the question asked at the gate.
+ */
+function StockTable({ kinds, canEdit, onSaved, onError }: {
+  kinds: SackKindDto[];
+  canEdit: boolean;
+  onSaved: () => void;
+  onError: (message: string) => void;
+}) {
+  const [draft, setDraft] = useState<Record<number, string>>({});
+  const [savingId, setSavingId] = useState<number | null>(null);
+  const [newName, setNewName] = useState("");
+  const [newStock, setNewStock] = useState("");
+
+  async function save(kind: SackKindDto) {
+    const raw = draft[kind.id];
+    if (raw === undefined) return;
+    const value = parseFloat(raw);
+    if (!Number.isFinite(value) || value < 0) { onError("عدد المخزن لازم يكون رقم مش سالب."); return; }
+    setSavingId(kind.id);
+    try {
+      await updateSackKind(kind.id, { name: kind.name, isActive: kind.isActive, stockQuantity: value });
+      setDraft((d) => { const next = { ...d }; delete next[kind.id]; return next; });
+      onSaved();
+    } catch (err) {
+      onError(apiErrorMessage(err, "تعذّر حفظ المخزن"));
+    } finally {
+      setSavingId(null);
+    }
+  }
+
+  async function add() {
+    const name = newName.trim();
+    if (name === "") return;
+    try {
+      await createSackKind(name, newStock ? Number(newStock) : 0);
+      setNewName("");
+      setNewStock("");
+      onSaved();
+    } catch (err) {
+      onError(apiErrorMessage(err, "تعذّر إضافة النوع"));
+    }
+  }
+
+  return (
+    <div className="card">
+      <div className="px-4 pt-4 text-xs text-gray-500">
+        اكتب كم مخلاة عندك من كل نوع — الكل، سواء بالمخزن أو برا عند الناس. الي بالمخزن بينحسب لحاله:
+        <span className="font-semibold"> عندي − برا</span>.
+      </div>
+
+      {canEdit && (
+        <div className="flex items-end gap-2 flex-wrap px-4 pt-3">
+          <div>
+            <label className="label">نوع جديد</label>
+            <input className="input w-40" value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="أحمر" />
+          </div>
+          <div>
+            <label className="label">كم عندك</label>
+            <input className="input w-28" type="number" min="0" step="1" value={newStock} onChange={(e) => setNewStock(e.target.value)} placeholder="0" />
+          </div>
+          <button className="btn-secondary" onClick={add} disabled={newName.trim() === ""}>إضافة</button>
+        </div>
+      )}
+
+      <div className="overflow-x-auto mt-3">
+        <table className="table-base">
+          <thead>
+            <tr><th>النوع</th><th>كم عندي</th>{canEdit && <th></th>}</tr>
+          </thead>
+          <tbody>
+            {kinds.length === 0 ? (
+              <tr><td colSpan={canEdit ? 3 : 2} className="text-center text-gray-400 py-6">ما في أنواع بعد — ضيف واحد فوق</td></tr>
+            ) : kinds.map((k) => (
+              <tr key={k.id}>
+                <td className="font-medium">{k.name}</td>
+                <td>
+                  {canEdit ? (
+                    <input
+                      className="input w-28" type="number" min="0" step="1"
+                      value={draft[k.id] ?? String(k.stockQuantity)}
+                      onChange={(e) => setDraft((d) => ({ ...d, [k.id]: e.target.value }))}
+                    />
+                  ) : k.stockQuantity}
+                </td>
+                {canEdit && (
+                  <td>
+                    {draft[k.id] !== undefined && (
+                      <button className="text-sm text-brand-700 hover:underline" disabled={savingId === k.id} onClick={() => save(k)}>
+                        {savingId === k.id ? "..." : "حفظ"}
+                      </button>
+                    )}
+                  </td>
+                )}
               </tr>
             ))}
           </tbody>

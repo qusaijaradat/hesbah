@@ -119,7 +119,9 @@ export function ContainersPage() {
       ) : data ? (
         <>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
-            {data.balances.map((b) => (
+            {/* Crates here; sacks have their own screen, where their kind is part of the balance.
+                Shown as a card each way round would be the same sacks counted on two pages. */}
+            {data.balances.filter((b) => b.type !== "Sack").map((b) => (
               <BalanceCard key={b.type} balance={b} />
             ))}
           </div>
@@ -153,10 +155,15 @@ export function ContainersPage() {
  * whose name to type, and clicking a row fills the picker in above.
  */
 function HoldersTable({ holders, onPick }: { holders: ContainerHolderDto[] | null; onPick: (id: number, name: string) => void }) {
-  const pager = usePagination(holders ?? []);
+  // Sacks are somebody else's screen now, and listing them here under a heading that says
+  // صناديقي would be a heading that lies. Filtered by EXCLUDING sacks rather than by keeping only
+  // crates: a stray كرتون row from before cartons stopped being tracked still belongs to somebody,
+  // and keeping only Box would make it disappear from both screens at once.
+  const crates = (holders ?? []).filter((h) => h.type !== "Sack");
+  const pager = usePagination(crates);
   return (
     <div className="card overflow-x-auto mt-6">
-      <div className="px-4 pt-4 pb-1 text-sm font-semibold text-gray-700">مين ماسك صناديقي ومخالاتي</div>
+      <div className="px-4 pt-4 pb-1 text-sm font-semibold text-gray-700">مين ماسك صناديقي</div>
       <table className="table-base">
         <thead>
           <tr><th>الشخص</th><th>النوع</th><th>عليه</th><th>عندنا إله</th></tr>
@@ -164,8 +171,8 @@ function HoldersTable({ holders, onPick }: { holders: ContainerHolderDto[] | nul
         <tbody>
           {holders === null ? (
             <tr><td colSpan={4} className="text-center text-gray-400 py-6">جاري التحميل...</td></tr>
-          ) : holders.length === 0 ? (
-            <tr><td colSpan={4} className="text-center text-gray-400 py-6">كل الحسابات مظبوطة — ما في حدا ماسك صناديق أو مخالات</td></tr>
+          ) : crates.length === 0 ? (
+            <tr><td colSpan={4} className="text-center text-gray-400 py-6">كل الحسابات مظبوطة — ما في حدا ماسك صناديق</td></tr>
           ) : pager.pageRows.map((h) => (
             <tr key={`${h.partnerId}-${h.type}`}>
               <td>

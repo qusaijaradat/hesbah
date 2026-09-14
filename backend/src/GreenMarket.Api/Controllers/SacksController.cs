@@ -58,13 +58,13 @@ public class SacksController : ControllerBase
     [HttpPost("withdrawals")]
     [RequirePermission(PermissionKeys.SacksCreate)]
     public async Task<ActionResult<IReadOnlyList<SackMovementDto>>> Withdraw(CreateSackMovementRequest request) =>
-        Ok(await _sacks.CreateMovementAsync(ContainerDirection.Out, request, CurrentUserId()));
+        Ok(await _sacks.CreateMovementAsync(ContainerDirection.Out, request));
 
     /// <summary>"ارتجاع" — sacks coming back, several kinds in one event.</summary>
     [HttpPost("returns")]
     [RequirePermission(PermissionKeys.SacksCreate)]
     public async Task<ActionResult<IReadOnlyList<SackMovementDto>>> Return(CreateSackMovementRequest request) =>
-        Ok(await _sacks.CreateMovementAsync(ContainerDirection.In, request, CurrentUserId()));
+        Ok(await _sacks.CreateMovementAsync(ContainerDirection.In, request));
 
     [HttpDelete("movements/{movementId:int}")]
     [RequirePermission(PermissionKeys.SacksDelete)]
@@ -91,9 +91,6 @@ public class SacksController : ControllerBase
         var company = await CompanyAsync();
         return File(_export.GenerateSacksOverviewPdf(data, company), "application/pdf", "sacks.pdf");
     }
-
-    private int CurrentUserId() =>
-        int.TryParse(User.FindFirst("sub")?.Value ?? User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value, out var id) ? id : 0;
 
     /// <summary>The printed header, built from Settings the same way every other print does it.</summary>
     private async Task<CompanyInfo> CompanyAsync()

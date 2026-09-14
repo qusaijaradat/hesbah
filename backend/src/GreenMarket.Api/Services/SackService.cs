@@ -24,9 +24,15 @@ public interface ISackService
     Task<SackKindDto> CreateKindAsync(CreateSackKindRequest request);
     Task<SackKindDto> UpdateKindAsync(int id, UpdateSackKindRequest request);
 
-    /// <summary>Records one handover or one return — several kinds, one event. See the request type.</summary>
+    /// <summary>
+    /// Records one handover or one return — several kinds, one event. See the request type.
+    ///
+    /// Takes no user id: AppDbContext stamps CreatedByUserId on every AuditableEntity from the
+    /// request's own identity. A parameter for it here would be a second, hand-passed answer to a
+    /// question already answered — and the kind that goes stale silently when a caller passes 0.
+    /// </summary>
     Task<IReadOnlyList<SackMovementDto>> CreateMovementAsync(
-        ContainerDirection direction, CreateSackMovementRequest request, int recordedByUserId);
+        ContainerDirection direction, CreateSackMovementRequest request);
 
     Task DeleteMovementAsync(int movementId);
 
@@ -96,7 +102,7 @@ public class SackService : ISackService
     }
 
     public async Task<IReadOnlyList<SackMovementDto>> CreateMovementAsync(
-        ContainerDirection direction, CreateSackMovementRequest request, int recordedByUserId)
+        ContainerDirection direction, CreateSackMovementRequest request)
     {
         var partner = await _db.Partners.FindAsync(request.PartnerId)
             ?? throw new NotFoundAppException("Partner", request.PartnerId);

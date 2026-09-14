@@ -59,6 +59,7 @@ public class BackupService : IBackupService
             await AddAsync(archive, "employees", _db.Employees.IgnoreQueryFilters(), cancellationToken);
             await AddAsync(archive, "farmer_goods_entries", _db.FarmerGoodsEntries.IgnoreQueryFilters(), cancellationToken);
             await AddAsync(archive, "container_movements", _db.ContainerMovements.IgnoreQueryFilters(), cancellationToken);
+            await AddAsync(archive, "sack_kinds", _db.SackKinds.IgnoreQueryFilters(), cancellationToken);
             await AddAsync(archive, "settings", _db.Settings, cancellationToken);
             await AddAsync(archive, "users", _db.Users.IgnoreQueryFilters(), cancellationToken);
             await AddAsync(archive, "roles", _db.Roles, cancellationToken);

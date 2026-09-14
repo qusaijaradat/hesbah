@@ -13,9 +13,11 @@ namespace GreenMarket.Api.Controllers;
 ///
 /// No [RequirePermission] on the action itself, on purpose: this endpoint spans two areas, and a
 /// single blanket permission would either hide checks from someone allowed to see invoices or the
-/// reverse. Instead each alert kind is gated individually below, from the caller's own permission
-/// claims, so the banner shows exactly the subset of things that person could have navigated to
-/// anyway — and an empty list, never a 403, when they can see none of it.
+/// reverse. Instead the caller's own permission claims are handed to AlertVisibility, which decides
+/// per kind — and an empty list comes back, never a 403, when they may be told none of it.
+///
+/// The same claims, the same rule, and the same answer as the morning push notification: see
+/// AlertVisibility for why a person must be able to FIX a thing before being told it is wrong.
 /// </summary>
 [ApiController]
 [Authorize]
@@ -30,9 +32,6 @@ public class AlertsController : ControllerBase
     public async Task<ActionResult<IReadOnlyList<AlertDto>>> Get()
     {
         var permissions = User.FindAll(ClaimTypesExtra.Permission).Select(c => c.Value).ToHashSet();
-        return Ok(await _alertService.GetAsync(
-            includeChecks: permissions.Contains(PermissionKeys.PaymentsView),
-            includeInvoices: permissions.Contains(PermissionKeys.InvoicesView),
-            includeSacks: permissions.Contains(PermissionKeys.SacksView)));
+        return Ok(await _alertService.GetAsync(permissions));
     }
 }

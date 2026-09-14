@@ -554,5 +554,63 @@ Console.WriteLine("== AccountStatementBuilder ==");
 }
 
 Console.WriteLine();
+Console.WriteLine("== who may be told what needs attention (AlertVisibility) ==");
+{
+    // The rule behind BOTH the on-screen banner and the morning phone notification. Pinned here
+    // because it is the kind of rule that is quietly loosened by somebody adding a permission to a
+    // role and never noticing what else it switched on.
+    string[] all = PermissionKeys.All;
+
+    var admin = AlertVisibility.For(all);
+    Check("someone with everything is told everything",
+          admin.Checks && admin.Invoices && admin.Sacks);
+
+    Check("no permissions at all means nothing, and None says so",
+          AlertVisibility.For(Array.Empty<string>()).None);
+    Check("a null permission set is nothing, not everything",
+          AlertVisibility.For(null).None);
+
+    // The market's own example: an account that may LOOK at invoices but not price one.
+    var readOnlyInvoices = AlertVisibility.For(new[] { PermissionKeys.InvoicesView });
+    Check("may view invoices but not edit => NOT told an invoice is unpriced",
+          !readOnlyInvoices.Invoices);
+    var canPrice = AlertVisibility.For(new[] { PermissionKeys.InvoicesView, PermissionKeys.InvoicesEdit });
+    Check("may view AND price => told",
+          canPrice.Invoices);
+
+    // And the other way round: able to fix it, not allowed on the page it links to.
+    var editNoView = AlertVisibility.For(new[] { PermissionKeys.InvoicesEdit });
+    Check("may edit but not view => NOT told (the alert links to a page they cannot open)",
+          !editNoView.Invoices);
+
+    var checksOnly = AlertVisibility.For(new[] { PermissionKeys.PaymentsView, PermissionKeys.PaymentsEdit });
+    Check("checks-and-payments only => told about checks",
+          checksOnly.Checks);
+    Check("...and NOT about invoices",
+          !checksOnly.Invoices);
+    Check("...and NOT about sacks",
+          !checksOnly.Sacks);
+
+    var sacksOnly = AlertVisibility.For(new[] { PermissionKeys.SacksView, PermissionKeys.SacksCreate });
+    Check("a sacks-only account is told about sacks",
+          sacksOnly.Sacks);
+    Check("...and nothing else at all",
+          !sacksOnly.Checks && !sacksOnly.Invoices);
+    Check("sacks.view alone (may look, may not record a return) => not told",
+          !AlertVisibility.For(new[] { PermissionKeys.SacksView }).Sacks);
+
+    Check("payments.view alone (may look, may not settle a check) => not told",
+          !AlertVisibility.For(new[] { PermissionKeys.PaymentsView }).Checks);
+
+    // Permissions from a DIFFERENT area must not open any of these by accident.
+    var unrelated = AlertVisibility.For(new[]
+    {
+        PermissionKeys.PartnersView, PermissionKeys.PartnersEdit,
+        PermissionKeys.ReportsView, PermissionKeys.AuditView, PermissionKeys.BackupDownload
+    });
+    Check("unrelated permissions switch nothing on", unrelated.None);
+}
+
+Console.WriteLine();
 Console.WriteLine($"RESULT: {passed} passed, {failed} failed");
 return failed == 0 ? 0 : 1;

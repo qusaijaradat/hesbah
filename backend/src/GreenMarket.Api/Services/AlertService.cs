@@ -32,11 +32,12 @@ namespace GreenMarket.Api.Services;
 public interface IAlertService
 {
     /// <summary>
-    /// <paramref name="includeChecks"/>/<paramref name="includeInvoices"/> come from the caller's
-    /// own permissions — a role without payments.view must not learn about checks through a
-    /// banner it was never allowed to see the page for.
+    /// Takes the caller's permission keys and asks <see cref="AlertVisibility"/> what they may be
+    /// told — never booleans worked out by the caller. Two callers build these alerts (the banner
+    /// and the morning push) and each used to compute the same flags from its own copy of the
+    /// rule; the rule now has one home and they both ask it.
     /// </summary>
-    Task<IReadOnlyList<AlertDto>> GetAsync(bool includeChecks, bool includeInvoices, bool includeSacks);
+    Task<IReadOnlyList<AlertDto>> GetAsync(IEnumerable<string> permissions);
 }
 
 public class AlertService : IAlertService
@@ -58,11 +59,14 @@ public class AlertService : IAlertService
     /// </summary>
     private const int StaleSackDays = 30;
 
-    public async Task<IReadOnlyList<AlertDto>> GetAsync(bool includeChecks, bool includeInvoices, bool includeSacks)
+    public async Task<IReadOnlyList<AlertDto>> GetAsync(IEnumerable<string> permissions)
     {
+        var visible = AlertVisibility.For(permissions);
         var alerts = new List<AlertDto>();
+        // Nothing this person may be told, and therefore nothing worth querying for.
+        if (visible.None) return alerts;
 
-        if (includeChecks)
+        if (visible.Checks)
         {
             var todayUtc = CheckUrgency.TodayUtc();
             var pending = await _db.Payments
@@ -85,7 +89,7 @@ public class AlertService : IAlertService
                     Names(dueToday.Select(c => c.Name))));
         }
 
-        if (includeInvoices)
+        if (visible.Invoices)
         {
             // Same condition the invoices list filters by, so this count and the list the banner
             // links to can never disagree.
@@ -99,7 +103,7 @@ public class AlertService : IAlertService
                     unpriced.Count, 0m, Names(unpriced)));
         }
 
-        if (includeSacks)
+        if (visible.Sacks)
         {
             // Out minus in, per PERSON rather than per kind: the question a banner answers is who
             // to call, and somebody square overall is nobody to call even if one colour is off.

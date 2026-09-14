@@ -13,12 +13,12 @@ namespace GreenMarket.Api.Services;
 /// not opened the app. A check whose date passed a week ago only ever got noticed by whoever
 /// happened to look. This is that banner, delivered.
 ///
-/// EVERY notification is built per user, from that user's own permissions — the same three flags
-/// AlertsController reads off the caller's claims, read here off their role instead. Somebody whose
-/// role reaches checks and payments is told about checks and nothing else; they are not told how
-/// many invoices are unpriced, because they cannot open that page and being told would be handing
-/// them a fact the system otherwise refuses them. A user whose permissions cover none of it is
-/// skipped entirely rather than sent an empty notification.
+/// EVERY notification is built per user, from that user's own permissions — handed to the same
+/// AlertVisibility the banner asks, so a phone and a laptop can never disagree about what somebody
+/// may be told. Somebody who may not price an invoice is never told one is unpriced: not because
+/// the fact is secret, but because an alert is a job, and handing somebody a job they cannot
+/// discharge is how a person learns to ignore every alert after it. A user whose permissions reach
+/// none of it is skipped entirely rather than sent an empty notification.
 ///
 /// It is a plain BackgroundService on a quarter-hour tick rather than a scheduler: one thing, once
 /// a day, in an app that has no other background work. What keeps it honest is not the timer but
@@ -106,10 +106,9 @@ public class AlertPushSender : BackgroundService
             // this. Either way there is nothing this person may be told.
             if (permissions.Count == 0) continue;
 
-            var mine = await alerts.GetAsync(
-                includeChecks: permissions.Contains(PermissionKeys.PaymentsView),
-                includeInvoices: permissions.Contains(PermissionKeys.InvoicesView),
-                includeSacks: permissions.Contains(PermissionKeys.SacksView));
+            // The same call the banner makes, with this user's role permissions in place of the
+            // request's claims. AlertVisibility decides; nothing is worked out here.
+            var mine = await alerts.GetAsync(permissions);
 
             var devices = await db.PushSubscriptions
                 .Where(s => s.UserId == userId && (s.LastDailyOn == null || s.LastDailyOn != today))

@@ -173,6 +173,7 @@ public class SackService : ISackService
                 m.Id,
                 m.PartnerId,
                 PartnerName = m.Partner.Name,
+                PartnerWhatsApp = m.Partner.WhatsAppNumber,
                 m.SackKindId,
                 KindName = m.SackKind != null ? m.SackKind.Name : null,
                 m.Direction,
@@ -181,6 +182,12 @@ public class SackService : ISackService
                 m.Notes,
             })
             .ToListAsync();
+
+        // Kept beside the movements rather than on them: a movement does not need a phone number,
+        // and putting one on every row would carry the same string a hundred times.
+        var whatsAppByPartner = rows
+            .GroupBy(r => r.PartnerId)
+            .ToDictionary(g => g.Key, g => g.Select(x => x.PartnerWhatsApp).FirstOrDefault(x => x != null));
 
         var movements = rows.Select(r => new SackMovementDto(
             r.Id, r.PartnerId, r.PartnerName, r.SackKindId, r.KindName ?? NoKind,
@@ -208,7 +215,8 @@ public class SackService : ISackService
                 var outQty = g.Where(x => x.Direction == nameof(ContainerDirection.Out)).Sum(x => x.Quantity);
                 var inQty = g.Where(x => x.Direction == nameof(ContainerDirection.In)).Sum(x => x.Quantity);
                 return new SackPartnerKindDto(
-                    g.Key.PartnerId, g.Key.PartnerName, g.Key.SackKindId, g.Key.SackKindName,
+                    g.Key.PartnerId, g.Key.PartnerName, whatsAppByPartner.GetValueOrDefault(g.Key.PartnerId),
+                    g.Key.SackKindId, g.Key.SackKindName,
                     outQty, inQty, outQty - inQty);
             })
             // Whoever is holding the most comes first — that is who the question is usually about.

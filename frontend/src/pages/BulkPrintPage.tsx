@@ -7,21 +7,11 @@ import { listSettings } from "../api/settings";
 import { PartnerAutocomplete } from "../components/PartnerAutocomplete";
 import { usePagination } from "../lib/usePagination";
 import { TablePagination } from "../components/TablePagination";
-import { buildStatementMessage, buildWhatsAppLink, formatCount, formatCurrency, formatDate, formatWeight, todayLocalDateString } from "../lib/format";
+import { buildStatementMessage, buildWhatsAppLink, endOfDay, formatCount, formatCurrency, formatDate, formatWeight, startOfDay, todayLocalDateString } from "../lib/format";
 import type { DriverItemBreakdownRow, FarmerItemBreakdownRow, InvoiceFilter, InvoiceListItemDto, MerchantItemBreakdownRow, PartnerType } from "../types";
 import { InvoiceLink, PartnerLink } from "../components/RecordLinks";
 import { PdfActions } from "../components/PdfActions";
 
-function startOfDay(d: Date) {
-  const x = new Date(d);
-  x.setHours(0, 0, 0, 0);
-  return x;
-}
-function endOfDay(d: Date) {
-  const x = new Date(d);
-  x.setHours(23, 59, 59, 999);
-  return x;
-}
 
 type QuickRange = "today" | "week" | "month" | "year" | "custom";
 

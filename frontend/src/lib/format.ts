@@ -234,3 +234,23 @@ export function buildStatementMessage(
   }
   return lines.join("\n");
 }
+
+/**
+ * The first and last instant of a LOCAL day.
+ *
+ * Every date filter in the app is a pair of these: a person picking "من 9 إلى 9" means that whole
+ * day in the market's own time, not 00:00 UTC. Written out in two pages before this and a third
+ * was about to copy them — and a date window that differs by a few hours between two screens is
+ * the kind of disagreement nobody attributes to a helper function.
+ */
+export function startOfDay(d: Date): Date {
+  const x = new Date(d);
+  x.setHours(0, 0, 0, 0);
+  return x;
+}
+
+export function endOfDay(d: Date): Date {
+  const x = new Date(d);
+  x.setHours(23, 59, 59, 999);
+  return x;
+}

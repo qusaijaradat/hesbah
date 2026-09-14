@@ -812,3 +812,64 @@ export interface AlertDto {
   /** A capped sample of who is involved, so the banner can say who without copying the page. */
   names: string[];
 }
+
+// ---------------------------------------------------------------------------- المخالات
+
+/** A kind of sack the market distinguishes — a colour, a shape. Created from the picker. */
+export interface SackKindDto {
+  id: number;
+  name: string;
+  isActive: boolean;
+}
+
+/** One kind and how many of it, inside a single handover or return. */
+export interface SackLineInput {
+  /** null = "بدون نوع", which is also what every movement recorded before kinds existed reads as. */
+  sackKindId: number | null;
+  quantity: number;
+}
+
+export interface SackMovementDto {
+  id: number;
+  partnerId: number;
+  partnerName: string;
+  sackKindId: number | null;
+  sackKindName: string;
+  /** "Out" = سحب, "In" = ارتجاع. */
+  direction: "Out" | "In";
+  date: string;
+  quantity: number;
+  notes?: string | null;
+}
+
+/** The market's own position in one kind: out, back, and the difference now in other hands. */
+export interface SackKindTotalDto {
+  sackKindId: number | null;
+  sackKindName: string;
+  out: number;
+  in: number;
+  /** Out − In. Negative is a real state — more came back than went out — and is shown, not clamped. */
+  outstanding: number;
+}
+
+/** One person's position in one kind. */
+export interface SackPartnerKindDto {
+  partnerId: number;
+  partnerName: string;
+  /** On the row so it can send them what they owe without a second lookup per person. */
+  partnerWhatsApp?: string | null;
+  sackKindId: number | null;
+  sackKindName: string;
+  out: number;
+  in: number;
+  outstanding: number;
+}
+
+/** The three views the sacks screen shows, from one query so they cannot disagree. */
+export interface SacksOverviewDto {
+  dateFrom?: string | null;
+  dateTo?: string | null;
+  totals: SackKindTotalDto[];
+  byPartner: SackPartnerKindDto[];
+  movements: SackMovementDto[];
+}

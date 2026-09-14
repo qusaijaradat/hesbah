@@ -325,7 +325,7 @@ var sackTotals = sackMovements
 var sackByPartner = sackMovements
     .GroupBy(m => (m.PartnerId, m.PartnerName, m.SackKindId, m.SackKindName))
     .Select(g => new SackPartnerKindDto(
-        g.Key.PartnerId, g.Key.PartnerName, g.Key.SackKindId, g.Key.SackKindName,
+        g.Key.PartnerId, g.Key.PartnerName, null, g.Key.SackKindId, g.Key.SackKindName,
         g.Where(x => x.Direction == "Out").Sum(x => x.Quantity),
         g.Where(x => x.Direction == "In").Sum(x => x.Quantity),
         g.Where(x => x.Direction == "Out").Sum(x => x.Quantity) - g.Where(x => x.Direction == "In").Sum(x => x.Quantity)))

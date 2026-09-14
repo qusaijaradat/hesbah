@@ -48,8 +48,11 @@ public record SackMovementDto(
 /// </summary>
 public record SackKindTotalDto(int? SackKindId, string SackKindName, decimal Out, decimal In, decimal Outstanding);
 
-/// <summary>One person's position in one kind. Same three figures, scoped to them.</summary>
-public record SackPartnerKindDto(int PartnerId, string PartnerName, int? SackKindId, string SackKindName, decimal Out, decimal In, decimal Outstanding);
+/// <summary>One person's position in one kind. Carries their WhatsApp number so the row itself can
+/// send them what they owe — looking it up separately would be a second round trip per row.</summary>
+public record SackPartnerKindDto(
+    int PartnerId, string PartnerName, string? PartnerWhatsApp,
+    int? SackKindId, string SackKindName, decimal Out, decimal In, decimal Outstanding);
 
 /// <summary>
 /// Everything the sacks section shows, for one period.

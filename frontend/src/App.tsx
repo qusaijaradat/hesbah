@@ -26,6 +26,7 @@ import { AskPage } from "./pages/AskPage";
 import { ReportsPage } from "./pages/ReportsPage";
 import { DailyClosingPage } from "./pages/DailyClosingPage";
 import { ContainersPage } from "./pages/ContainersPage";
+import { SacksPage } from "./pages/SacksPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { UsersPage } from "./pages/UsersPage";
 import { RolesPage } from "./pages/RolesPage";
@@ -78,6 +79,9 @@ export default function App() {
           <Route path="/ask" element={<Protected permission="reports.view"><AskPage /></Protected>} />
           <Route path="/daily-closing" element={<Protected permission="reports.view"><DailyClosingPage /></Protected>} />
           <Route path="/containers" element={<Protected permission="boxes.view"><ContainersPage /></Protected>} />
+          {/* Sacks have their own section: they come in colours and shapes, and a balance that
+              does not name the kind cannot be argued from. See SacksPage. */}
+          <Route path="/sacks" element={<Protected permission="boxes.view"><SacksPage /></Protected>} />
           <Route path="/settings" element={<Protected permission="settings.view"><SettingsPage /></Protected>} />
           <Route path="/users" element={<Protected permission="users.view"><UsersPage /></Protected>} />
           <Route path="/roles" element={<Protected permission="roles.view"><RolesPage /></Protected>} />

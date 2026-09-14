@@ -6,6 +6,7 @@ import type { SettingDto } from "../types";
 import { apiErrorMessage } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { toMonochromePng } from "../lib/monochrome";
+import { PushNotificationsCard } from "../components/PushNotificationsCard";
 
 const KEY_LABELS: Record<string, string> = {
   "commission.default_rate": "نسبة العمولة الافتراضية (مثال: 0.10 = 10%)",
@@ -158,6 +159,10 @@ export function SettingsPage() {
   return (
     <div className="max-w-xl">
       <h1 className="text-2xl font-bold mb-6">الإعدادات</h1>
+
+      {/* No permission gate: this is somebody choosing to be told about what they can already see,
+          and the server decides what that is. A role that reaches nothing gets a silent phone. */}
+      <PushNotificationsCard />
 
       {hasPermission("backup.download") && (
         <div className="card p-4 mb-4">

@@ -66,6 +66,12 @@ public class BackupService : IBackupService
             await AddAsync(archive, "permissions", _db.Permissions, cancellationToken);
             await AddAsync(archive, "role_permissions", _db.RolePermissions, cancellationToken);
             await AddAsync(archive, "audit_logs", _db.AuditLogs, cancellationToken);
+            // push_subscriptions is deliberately NOT here, and the omission is not an oversight of
+            // the kind this file exists to prevent. It holds no business fact — no money, no name,
+            // nothing any report reads — only which browsers agreed to be notified, each with the
+            // encryption keys for that one device. Restoring them somewhere else would export
+            // per-device secrets into a file people pass around on a flash drive, and would restore
+            // subscriptions that the push services have long since forgotten.
             await AddLogoAsync(archive, cancellationToken);
         }
         return buffer.ToArray();

@@ -59,6 +59,20 @@ services:
       Jwt__Issuer: ${JWT_ISSUER:-GreenMarket}
       Jwt__Audience: ${JWT_AUDIENCE:-GreenMarketClients}
       Cors__AllowedOrigins__0: https://${ENV_HOST:?}
+      # Phone notifications. All four are optional and empty is the OFF switch:
+      # with no keys the API says so once at startup, the settings screen
+      # offers nothing, and every other screen is unaffected. Generate a pair
+      # once with `dotnet run --project backend/tools/VapidKeys` and keep it —
+      # a new pair does not re-key the phones already subscribed, it orphans
+      # them, and every device would have to be turned on again by hand.
+      Push__PublicKey: ${VAPID_PUBLIC_KEY:-}
+      Push__PrivateKey: ${VAPID_PRIVATE_KEY:-}
+      Push__Subject: ${VAPID_SUBJECT:-}
+      # The market's clock, not the container's. A container runs on UTC and
+      # Palestine is two or three hours ahead, so without this "seven in the
+      # morning" arrives at four or five.
+      Push__TimeZone: ${PUSH_TIMEZONE:-Asia/Hebron}
+      Push__DailyHour: ${PUSH_DAILY_HOUR:-7}
       # Production, not Development: Development turns the CORS policy into
       # "allow any origin" and exposes Swagger. See Program.cs.
       ASPNETCORE_ENVIRONMENT: Production

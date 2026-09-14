@@ -34,6 +34,7 @@ public class AppDbContext : DbContext
     public DbSet<Setting> Settings => Set<Setting>();
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
     public DbSet<CompanyLogo> CompanyLogos => Set<CompanyLogo>();
+    public DbSet<PushSubscription> PushSubscriptions => Set<PushSubscription>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

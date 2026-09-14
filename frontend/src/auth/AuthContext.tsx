@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { disablePush } from "../lib/push";
 import { login as loginApi } from "../api/auth";
 import { AUTH_STORAGE_KEY } from "../api/client";
 import type { LoginResponse, UserDto } from "../types";
@@ -55,6 +56,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   function logout() {
+    // Signing out takes this device off notifications with it. A counter phone that two people
+    // share must not keep telling the next person what the last one was allowed to see — and the
+    // subscription is per user, so leaving it behind would do exactly that. Fire-and-forget: the
+    // sign-out itself must not wait on, or be blocked by, a push service.
+    void disablePush().catch(() => undefined);
     localStorage.removeItem(AUTH_STORAGE_KEY);
     setUser(null);
     setToken(null);

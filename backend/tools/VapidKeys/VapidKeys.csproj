@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The same library the API sends with, so the pair this prints is guaranteed to be the
+         shape that library expects. Generating one by hand from raw crypto is where a key that
+         looks right and can never decrypt anything comes from. -->
+    <PackageReference Include="WebPush" Version="1.0.12" />
+  </ItemGroup>
+
+</Project>

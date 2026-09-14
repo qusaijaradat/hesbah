@@ -28,6 +28,7 @@
          companies under ~$1M USD annual revenue, which fits a single local market; re-check
          https://questpdf.com/pricing if this business grows past that. -->
     <PackageReference Include="QuestPDF" Version="2024.10.2" />
+    <PackageReference Include="WebPush" Version="1.0.12" />
   </ItemGroup>
 
   <ItemGroup>

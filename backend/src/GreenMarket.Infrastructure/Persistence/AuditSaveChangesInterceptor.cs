@@ -58,6 +58,11 @@ public class AuditSaveChangesInterceptor : SaveChangesInterceptor
         foreach (var entry in context.ChangeTracker.Entries())
         {
             if (entry.Entity is AuditLog) continue; // never audit the audit table itself
+            // Nor a browser registering itself for notifications. It is not an edit anybody needs
+            // to investigate, it happens again every time a phone re-subscribes, and the row holds
+            // that device's encryption keys — which have no business being copied into a second
+            // table that a different set of people can read.
+            if (entry.Entity is PushSubscription) continue;
             if (entry.State is not (EntityState.Added or EntityState.Modified or EntityState.Deleted)) continue;
 
             var action = entry.State switch

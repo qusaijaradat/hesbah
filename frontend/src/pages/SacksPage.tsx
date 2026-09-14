@@ -41,6 +41,10 @@ export function SacksPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  // Which form is open, if either. Two forms sitting open side by side pushed the reports — the
+  // part being read all day — below the fold, and gave a blank pair of forms to everyone who came
+  // to look something up rather than record anything.
+  const [openForm, setOpenForm] = useState<"withdraw" | "return" | null>(null);
 
   // The report's own filter, separate from either form's date.
   const [filterFrom, setFilterFrom] = useState("");
@@ -83,19 +87,25 @@ export function SacksPage() {
       {notice && <div className="text-sm text-brand-800 bg-brand-50 border border-brand-200 rounded-md p-3 mb-4">{notice}</div>}
 
       {canCreate && (
-        <div className="grid gap-4 lg:grid-cols-2 mb-6">
-          <MovementForm
-            title="سحب مخالات" action="withdraw" kinds={kinds}
-            onKinds={setKinds}
-            onDone={(message) => { setNotice(message); setError(null); refresh(); }}
-            onError={(message) => { setError(message); setNotice(null); }}
-          />
-          <MovementForm
-            title="ارتجاع مخالات" action="return" kinds={kinds}
-            onKinds={setKinds}
-            onDone={(message) => { setNotice(message); setError(null); refresh(); }}
-            onError={(message) => { setError(message); setNotice(null); }}
-          />
+        <div className="flex items-center gap-2 flex-wrap mb-4">
+          <button className="btn-primary" onClick={() => setOpenForm("withdraw")}>➕ سحب مخالات</button>
+          <button className="btn-secondary" onClick={() => setOpenForm("return")}>↩️ ارتجاع مخالات</button>
+        </div>
+      )}
+
+      {canCreate && openForm && (
+        <div className="fixed inset-0 bg-black/40 flex items-start justify-center p-4 z-50 overflow-y-auto" onClick={() => setOpenForm(null)}>
+          <div className="w-full max-w-2xl my-8" onClick={(e) => e.stopPropagation()}>
+            <MovementForm
+              title={openForm === "withdraw" ? "سحب مخالات" : "ارتجاع مخالات"}
+              action={openForm}
+              kinds={kinds}
+              onKinds={setKinds}
+              onClose={() => setOpenForm(null)}
+              onDone={(message) => { setNotice(message); setError(null); setOpenForm(null); refresh(); }}
+              onError={(message) => { setError(message); setNotice(null); }}
+            />
+          </div>
         </div>
       )}
 
@@ -146,11 +156,12 @@ export function SacksPage() {
 
 // ---------------------------------------------------------------------------- the two forms
 
-function MovementForm({ title, action, kinds, onKinds, onDone, onError }: {
+function MovementForm({ title, action, kinds, onKinds, onClose, onDone, onError }: {
   title: string;
   action: "withdraw" | "return";
   kinds: SackKindDto[];
   onKinds: (kinds: SackKindDto[]) => void;
+  onClose: () => void;
   onDone: (message: string) => void;
   onError: (message: string) => void;
 }) {
@@ -216,7 +227,10 @@ function MovementForm({ title, action, kinds, onKinds, onDone, onError }: {
 
   return (
     <div className="card p-4">
-      <h2 className="font-semibold mb-3">{title}</h2>
+      <div className="flex items-center justify-between mb-3">
+        <h2 className="font-semibold">{title}</h2>
+        <button className="text-sm text-gray-500 hover:underline" onClick={onClose}>إغلاق</button>
+      </div>
 
       <div className="grid gap-3 sm:grid-cols-2 mb-3">
         <PartnerAutocomplete
@@ -272,6 +286,7 @@ function MovementForm({ title, action, kinds, onKinds, onDone, onError }: {
         <button className="btn-primary" onClick={submit} disabled={busy}>
           {busy ? "جاري الحفظ..." : `حفظ (${total} مخلاة)`}
         </button>
+        <button className="btn-secondary" onClick={onClose} disabled={busy}>إلغاء</button>
         <span className="text-xs text-gray-500">كل نوع بينحفظ بسطره، والكل بعملية وحدة.</span>
       </div>
     </div>

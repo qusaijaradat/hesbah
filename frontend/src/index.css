@@ -87,6 +87,55 @@ body {
   @apply px-3 py-2 border-b border-gray-100;
 }
 
+/*
+ * Tables on a phone.
+ *
+ * These tables are wide by nature — an invoice line has ten columns — and they scroll inside their
+ * own card rather than being restacked as cards, because the reason someone opens one on a phone
+ * is to compare a column DOWN the page, which stacking destroys.
+ *
+ * What was actually wrong was that they wrapped. A name broke across three lines, the row grew to
+ * match, and the numbers beside it floated in the middle of it — which reads as a broken table
+ * rather than a wide one. Cells stay on one line now and the card scrolls sideways instead.
+ */
+@media (max-width: 640px) {
+  .table-base th,
+  .table-base td {
+    @apply px-2 py-2 whitespace-nowrap;
+  }
+
+  /* The header stays put while the body scrolls sideways under it, so the column you are reading
+     is still labelled by the time you have scrolled to it. */
+  .table-base thead th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+  }
+}
+
+/*
+ * A dialog on a phone.
+ *
+ * Centred with a max width is a desktop shape: on a 375px screen it left a strip of backdrop down
+ * each side, and once the keyboard opened, the top of a long form — its title and first fields —
+ * was pushed off the screen with no way back to it.
+ *
+ * So: full width and anchored to the top on a phone, capped in height with its own scroll, and
+ * clear of the notch and the home bar. From the first breakpoint up it is the centred card it was.
+ */
+.modal-backdrop {
+  @apply fixed inset-0 bg-black/40 z-50 overflow-y-auto;
+  @apply flex items-start justify-center p-0 sm:items-center sm:p-4;
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.modal-card {
+  @apply card w-full sm:max-w-lg;
+  @apply rounded-none sm:rounded-lg;
+  @apply max-h-[100dvh] sm:max-h-[90vh] overflow-y-auto;
+}
+
 /* Global request loading bar (components/GlobalLoadingBar.tsx) — an indeterminate strip that
    sweeps left-to-right while at least one API request is in flight, anywhere in the app. */
 @keyframes global-loading-bar {

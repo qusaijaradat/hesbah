@@ -274,8 +274,8 @@ function RoleFormModal({ role, allPermissions, onClose, onSaved }: {
   }
 
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-      <div className="card w-full max-w-2xl p-6 max-h-[90vh] overflow-y-auto">
+    <div className="modal-backdrop">
+      <div className="modal-card sm:max-w-2xl p-6">
         <h2 className="text-lg font-bold mb-4">{role ? "تعديل دور" : "إضافة دور جديد"}</h2>
         <div className="space-y-3 mb-4">
           <div>

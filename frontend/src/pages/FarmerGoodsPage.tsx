@@ -474,7 +474,7 @@ export function FarmerGoodsPage() {
           {searched && !loading && (
             <div className="card overflow-x-auto">
               {farmerName && <div className="px-4 pt-4 pb-1 text-sm font-semibold text-gray-700">البائع: {farmerName}</div>}
-              <table className="table-base">
+            <table className="table-base">
                 <thead>
                   <tr>
                     <th>التاريخ</th>

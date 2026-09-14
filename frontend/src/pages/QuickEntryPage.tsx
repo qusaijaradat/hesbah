@@ -335,8 +335,8 @@ export function QuickEntryPage() {
       )}
 
       {pasting && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50" onClick={() => setPasting(false)}>
-          <div className="card p-5 w-full max-w-2xl" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-backdrop" onClick={() => setPasting(false)}>
+          <div className="modal-card sm:max-w-2xl p-5" onClick={(e) => e.stopPropagation()}>
             <h2 className="text-lg font-bold mb-1">لصق صفحة من سكان</h2>
             <p className="text-xs text-gray-500 mb-3">
               سطر لكل بيع، والخانات مفصولة بـ Tab أو فاصلة. الترتيب: المشتري، الصنف، العدد، الوزن، السعر،

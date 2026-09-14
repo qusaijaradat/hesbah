@@ -105,8 +105,8 @@ function UserFormModal({ user, roles, onClose, onSaved }: {
   }
 
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-      <div className="card w-full max-w-md p-6 max-h-[90vh] overflow-y-auto">
+    <div className="modal-backdrop">
+      <div className="modal-card sm:max-w-md p-6">
         <h2 className="text-lg font-bold mb-4">{user ? "تعديل مستخدم" : "إضافة مستخدم"}</h2>
         <div className="space-y-3">
           <div><label className="label">الاسم الكامل</label><input ref={nameRef} className="input" value={fullName} onChange={(e) => setFullName(e.target.value)} autoFocus /></div>

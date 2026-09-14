@@ -94,8 +94,8 @@ export function BulkEditDialog<T>({ rows, fields, label, onClose, onDone }: Prop
   }
 
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50" onClick={onClose}>
-      <div className="card p-5 w-full max-w-lg max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal-card p-5" onClick={(e) => e.stopPropagation()}>
         <h2 className="text-lg font-bold mb-1">تعديل {rows.length} سجل دفعة وحدة</h2>
         <p className="text-xs text-gray-500 mb-4">
           الحقول هون محدودة بالقصد — التعديل بالجملة ما بلمس أي حقل بيعيد حساب مبالغ.

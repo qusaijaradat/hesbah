@@ -177,7 +177,7 @@ export function DashboardPage() {
             )}
           </div>
           <div className="overflow-x-auto">
-            <table className="table-base">
+      <table className="table-base">
               <thead>
                 {/* العدد/الوزن فيلدين منفصلين (مش "الكمية" واحدة مدموجة) — نفس الأسلوب المتّبع
                     بكل جدول أصناف تاني بالتطبيق: الصف دايمًا إما عدد (صندوق) أو وزن (كغم)، مش الاثنين
@@ -239,6 +239,7 @@ function TopDebtList({ title, rows, accountPath }: {
   return (
     <div className="card p-4">
       <h2 className="font-semibold mb-3">{title}</h2>
+      <div className="overflow-x-auto">
       <table className="table-base">
         <tbody>
           {rows.map((row) => (
@@ -253,6 +254,7 @@ function TopDebtList({ title, rows, accountPath }: {
           ))}
         </tbody>
       </table>
+      </div>
     </div>
   );
 }

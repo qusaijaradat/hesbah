@@ -94,8 +94,8 @@ export function SacksPage() {
       )}
 
       {canCreate && openForm && (
-        <div className="fixed inset-0 bg-black/40 flex items-start justify-center p-4 z-50 overflow-y-auto" onClick={() => setOpenForm(null)}>
-          <div className="w-full max-w-2xl my-8" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-backdrop" onClick={() => setOpenForm(null)}>
+          <div className="w-full sm:max-w-2xl sm:my-8" onClick={(e) => e.stopPropagation()}>
             <MovementForm
               title={openForm === "withdraw" ? "سحب مخالات" : "ارتجاع مخالات"}
               action={openForm}

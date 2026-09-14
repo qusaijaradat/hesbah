@@ -128,6 +128,7 @@ export function AskPage() {
           )}
 
           {answer.rows.length > 0 && (
+            <div className="overflow-x-auto">
             <table className="table-base">
               <tbody>
                 {answer.rows.map((r, i) => (
@@ -141,6 +142,7 @@ export function AskPage() {
                 ))}
               </tbody>
             </table>
+            </div>
           )}
         </div>
       )}

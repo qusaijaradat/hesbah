@@ -9,6 +9,7 @@ import { useAuth } from "../auth/AuthContext";
 import { PartnerAutocomplete } from "../components/PartnerAutocomplete";
 import { PdfActions } from "../components/PdfActions";
 import { PartnerLink } from "../components/RecordLinks";
+import { StatCard } from "../components/StatCard";
 import { formatDate, todayLocalDateString, buildWhatsAppLink } from "../lib/format";
 import { startOfDay, endOfDay } from "../lib/format";
 
@@ -45,6 +46,9 @@ export function SacksPage() {
   // part being read all day — below the fold, and gave a blank pair of forms to everyone who came
   // to look something up rather than record anything.
   const [openForm, setOpenForm] = useState<"withdraw" | "return" | null>(null);
+  // Three answers to three different questions, one at a time. Stacked, they were a single
+  // scroll of three tables where finding the one you came for meant reading past the other two.
+  const [tab, setTab] = useState<"overall" | "people" | "log">("overall");
 
   // The report's own filter, separate from either form's date.
   const [filterFrom, setFilterFrom] = useState("");
@@ -77,11 +81,7 @@ export function SacksPage() {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold mb-1">المخالات</h1>
-      <p className="text-sm text-gray-500 mb-6">
-        سحب وارتجاع المخالات حسب النوع — كل نوع بحسابه، لأن مين سحب ٣٠ حمرا و٢٠ صفرا ورجّع ٥٠ صفرا
-        <span className="font-semibold"> مش مخالص</span>.
-      </p>
+      <h1 className="text-2xl font-bold mb-4">المخالات</h1>
 
       {error && <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-md p-3 mb-4 whitespace-pre-line">{error}</div>}
       {notice && <div className="text-sm text-brand-800 bg-brand-50 border border-brand-200 rounded-md p-3 mb-4">{notice}</div>}
@@ -141,13 +141,31 @@ export function SacksPage() {
         </div>
       </div>
 
+      <div className="flex gap-2 mb-4 border-b border-gray-200 overflow-x-auto">
+        {([
+          ["overall", "الوضع العام"],
+          ["people", "عند مين"],
+          ["log", "سجل الحركات"],
+        ] as const).map(([key, label]) => (
+          <button
+            key={key}
+            className={`px-4 py-2 font-semibold rounded-t-md whitespace-nowrap shrink-0 ${
+              tab === key ? "bg-brand-50 text-brand-700 border-b-2 border-brand-600" : "text-gray-500 hover:text-gray-700"
+            }`}
+            onClick={() => setTab(key)}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
       {loading ? (
         <div className="card p-6 text-center text-gray-400">جاري التحميل...</div>
       ) : !data ? null : (
         <>
-          <Totals data={data} />
-          <ByPartner data={data} />
-          <Movements data={data} />
+          {tab === "overall" && <Totals data={data} />}
+          {tab === "people" && <ByPartner data={data} />}
+          {tab === "log" && <Movements data={data} />}
         </>
       )}
     </div>
@@ -298,9 +316,22 @@ function MovementForm({ title, action, kinds, onKinds, onClose, onDone, onError 
 function Totals({ data }: { data: SacksOverviewDto }) {
   const out = data.totals.reduce((s, t) => s + t.out, 0);
   const back = data.totals.reduce((s, t) => s + t.in, 0);
+  // How many kinds are not square — the number that says whether there is anything to chase at
+  // all, which the per-kind table below can only answer by being read line by line.
+  const openKinds = data.totals.filter((t) => t.outstanding !== 0).length;
   return (
+    <>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
+        <StatCard label="طلع" value={String(out)} />
+        <StatCard label="رجع" value={String(back)} />
+        <StatCard
+          label="برا (عند الناس)" value={String(out - back)}
+          tone={out - back > 0 ? "negative" : "positive"}
+          hint={openKinds > 0 ? `${openKinds} نوع مش مخالص` : "كل الأنواع مخالصة"}
+        />
+      </div>
     <div className="card mb-4">
-      <div className="px-4 pt-4 pb-1 font-semibold">الوضع العام حسب النوع</div>
+      <div className="px-4 pt-4 pb-1 font-semibold">حسب النوع</div>
       <div className="overflow-x-auto">
         <table className="table-base">
           <thead>
@@ -333,6 +364,7 @@ function Totals({ data }: { data: SacksOverviewDto }) {
         </table>
       </div>
     </div>
+    </>
   );
 }
 
@@ -346,7 +378,6 @@ function ByPartner({ data }: { data: SacksOverviewDto }) {
 
   return (
     <div className="card mb-4">
-      <div className="px-4 pt-4 pb-1 font-semibold">عند مين، وأي نوع</div>
       <div className="overflow-x-auto">
         <table className="table-base">
           <thead>
@@ -387,7 +418,6 @@ function ByPartner({ data }: { data: SacksOverviewDto }) {
 function Movements({ data }: { data: SacksOverviewDto }) {
   return (
     <div className="card">
-      <div className="px-4 pt-4 pb-1 font-semibold">سجل الحركات</div>
       <div className="overflow-x-auto">
         <table className="table-base">
           <thead>

@@ -205,14 +205,21 @@ function MovementForm({ title, action, kinds, onKinds, onClose, onDone, onError 
   const total = lines.reduce((sum, l) => sum + (parseFloat(l.quantity) || 0), 0);
 
   /**
-   * A name nobody has recorded yet becomes a person, from here. Saved as "مشتري" because that is
-   * the closest of the three roles the system has — there is no "تاجر" type — and because the roles
-   * only ever ADD (see PartnerRoles): the day he buys something, that is what he becomes, and
-   * nothing recorded here is taken away.
+   * A name nobody has recorded yet becomes a person, from here — WITH NO ROLE.
+   *
+   * Calling him a buyer would be inventing a fact: he has bought nothing, and the market may never
+   * sell him anything. A role is what someone has DONE here, and taking fifty sacks is not one of
+   * the three. So Type stays null, which the system already supports everywhere (PartnerRoles reads
+   * null as "no role recorded", and PartnerService.SuggestAsync's restricted pickers require
+   * Type != null) — the practical effect being that he can take and return sacks and does not turn
+   * up in the بائع/مشتري/سائق field of any invoice.
+   *
+   * The day he does buy something, the invoice's own find-or-create gives him مشتري then, for the
+   * reason that it happened. Roles only ever add; nothing here is in its way.
    */
-  async function createTrader(name: string) {
+  async function createSackHolder(name: string) {
     try {
-      const created = await createPartner({ name, type: "Merchant" });
+      const created = await createPartner({ name, type: null });
       return { id: created.id, name: created.name };
     } catch (err) {
       throw new Error(apiErrorMessage(err, "فشلت إضافة الشخص"));
@@ -283,13 +290,13 @@ function MovementForm({ title, action, kinds, onKinds, onClose, onDone, onError 
             there, and an outside trader who has never been on an invoice is the common case. The
             picker was already unrestricted; what it could not do was accept a name it had never
             seen, which sent staff off to the partners page and back for a person whose only
-            business with the market is fifty sacks. */}
+            business with the market is fifty sacks. He is added with no role at all — see
+            createSackHolder. */}
         <PartnerAutocomplete
           label="الشخص" value={partner} onChange={setPartner}
           placeholder="اكتب الاسم واختره من القائمة..."
           allowNew={canCreatePartners}
-          newTypeLabel="مشتري"
-          onCreateNew={canCreatePartners ? createTrader : undefined}
+          onCreateNew={canCreatePartners ? createSackHolder : undefined}
         />
         <div>
           <label className="label">التاريخ</label>

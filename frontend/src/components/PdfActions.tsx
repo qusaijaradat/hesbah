@@ -58,11 +58,21 @@ export function PdfActions({
     setBusy(mode);
     setError(null);
     setNotice(null);
+    // Opened here, inside the click, and filled in below — see the note above this function.
+    const tab = mode === "print" && printMode === "tab" ? window.open("", "_blank") : null;
     try {
       const blob = await fetchPdf();
       if (mode === "print") {
-        if (printMode === "tab") window.open(URL.createObjectURL(blob), "_blank");
-        else triggerBlobDownload(blob, fileName);
+        if (printMode === "tab") {
+          const url = URL.createObjectURL(blob);
+          // A blocked popup (null) is not a dead end: the file still has to reach the person.
+          if (tab) tab.location.href = url;
+          else triggerBlobDownload(blob, fileName);
+          // Long enough for the viewer to have loaded it; holding it forever leaks the blob.
+          setTimeout(() => URL.revokeObjectURL(url), 60_000);
+        } else {
+          triggerBlobDownload(blob, fileName);
+        }
         return;
       }
       const result = await shareFile(blob, fileName, "application/pdf", shareTitle ?? fileName);
@@ -72,6 +82,8 @@ export function PdfActions({
         setNotice("جهازك ما بيدعم المشاركة — نزّلنا الملف، ارفقه بنفسك.");
       }
     } catch (err) {
+      // An opened-but-never-filled tab is a blank window the person has to close themselves.
+      tab?.close();
       setError(apiErrorMessage(err, "فشل إنشاء الملف"));
     } finally {
       setBusy(null);

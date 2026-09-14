@@ -36,6 +36,13 @@ body {
   input, select, textarea {
     font-size: 16px;
   }
+
+  /* A button 34px tall is a mouse target. Both platforms ask for ~44px for a finger, and these
+     are pressed all day by someone standing in a market holding a phone in one hand. */
+  .btn {
+    @apply py-2.5;
+    min-height: 2.75rem;
+  }
 }
 
 /* RTL-aware focus ring so keyboard users can see where they are on every input/button */
@@ -90,13 +97,13 @@ body {
 /*
  * Tables on a phone.
  *
- * These tables are wide by nature — an invoice line has ten columns — and they scroll inside their
- * own card rather than being restacked as cards, because the reason someone opens one on a phone
- * is to compare a column DOWN the page, which stacking destroys.
+ * Below 640px the tables themselves are not shown at all — every one of them now has a card or a
+ * stacked-list half beside it (see components/CollapsibleRows), because sideways scrolling hid the
+ * columns that mattered behind a gesture nobody made.
  *
- * What was actually wrong was that they wrapped. A name broke across three lines, the row grew to
- * match, and the numbers beside it floated in the middle of it — which reads as a broken table
- * rather than a wide one. Cells stay on one line now and the card scrolls sideways instead.
+ * These rules are what keeps the few tables that DO still appear at that width readable: the ones
+ * inside a printed document preview, and any table rendered on a tablet held narrow. Cells stay on
+ * one line rather than wrapping a name across three of them.
  */
 @media (max-width: 640px) {
   .table-base th,

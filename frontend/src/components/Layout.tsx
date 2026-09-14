@@ -107,8 +107,10 @@ export function Layout({ children }: { children: ReactNode }) {
       )}
 
       <div className="flex-1 flex flex-col min-w-0">
-        {/* Mobile top bar with hamburger — hidden on md+ where the sidebar is always visible */}
-        <header className="md:hidden flex items-center gap-3 bg-brand-900 text-white px-4 py-3">
+        {/* Mobile top bar with hamburger — hidden on md+ where the sidebar is always visible.
+            Sticky, because the pages it sits above are long lists: scrolling to the bottom of the
+            invoices used to mean scrolling all the way back up to reach the menu. */}
+        <header className="md:hidden sticky top-0 z-30 flex items-center gap-3 bg-brand-900 text-white px-4 py-3">
           <button
             aria-label="فتح القائمة"
             className="rounded-md p-1.5 hover:bg-brand-800"

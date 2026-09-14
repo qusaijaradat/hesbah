@@ -3,6 +3,7 @@ import { createInvoiceReturn, deleteInvoiceReturn } from "../api/invoices";
 import { apiErrorMessage } from "../api/client";
 import { formatCount, formatCurrency, formatDate, formatWeight, todayLocalDateString } from "../lib/format";
 import type { GoodsReturnDto, InvoiceDto } from "../types";
+import { CollapsibleRows } from "./CollapsibleRows";
 
 /**
  * "مرتجع بضاعة" on one invoice — produce spoils, and a buyer sending back 10 boxes out of 100 used
@@ -169,7 +170,43 @@ export function InvoiceReturnsCard({ invoice, canManage, onChanged }: {
               </div>
             </div>
 
-            <div className="overflow-x-auto">
+            <div>
+              {/* هون الكرت بيحمل حقول إدخال، مش أرقام للقراءة — فالكرت المسكّر بيقول شو القابل للإرجاع،
+                  ولما تفتحه بتعبّي العدد والوزن. */}
+              <div className="sm:hidden">
+                <CollapsibleRows
+                  rows={returnableLines}
+                  rowKey={(l) => l.key}
+                  title={(l) => l.item.itemName}
+                  value={(l) => (
+                    <span className={l.returnable <= 0 && l.returnableWeight <= 0 ? "text-gray-400" : ""}>
+                      {formatCount(l.returnable)}
+                    </span>
+                  )}
+                  details={(l) => [
+                    { label: "المباع (عدد)", value: formatCount(l.item.quantity) },
+                    { label: "القابل للإرجاع", value: l.weighed ? `${formatCount(l.returnable)} — ${formatWeight(l.returnableWeight)}` : formatCount(l.returnable) },
+                    { label: "العدد المرتجع", value: (
+                      <input
+                        className="input w-28" type="number" min="0" step="0.001" max={l.returnable}
+                        disabled={l.returnable <= 0 && l.returnableWeight <= 0}
+                        value={quantities[l.key] ?? ""}
+                        onChange={(e) => setQuantities((prev) => ({ ...prev, [l.key]: e.target.value }))}
+                      />
+                    ) },
+                    ...(l.weighed ? [{ label: "الوزن المرتجع", value: (
+                      <input
+                        className="input w-28" type="number" min="0" step="0.001" max={l.returnableWeight}
+                        disabled={l.returnableWeight <= 0}
+                        value={weights[l.key] ?? ""}
+                        onChange={(e) => setWeights((prev) => ({ ...prev, [l.key]: e.target.value }))}
+                      />
+                    ) }] : []),
+                    { label: "السعر", value: l.item.pricePerUnit > 0 ? formatCurrency(l.item.pricePerUnit) : "غير مسعّر" },
+                  ]}
+                />
+              </div>
+              <div className="hidden sm:block overflow-x-auto">
               <table className="table-base">
                 <thead>
                   <tr><th>الصنف</th><th>المباع (عدد)</th><th>القابل للإرجاع</th><th>العدد المرتجع</th><th>الوزن المرتجع</th><th>السعر</th></tr>
@@ -210,6 +247,7 @@ export function InvoiceReturnsCard({ invoice, canManage, onChanged }: {
                   ))}
                 </tbody>
               </table>
+              </div>
             </div>
 
             <p className="text-xs text-gray-500">

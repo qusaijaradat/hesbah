@@ -15,6 +15,7 @@ import type { FarmerGoodsRow, FarmerGoodsStockDto, GoodsEntryDto, GoodsStockRow,
 import { useSelection } from "../lib/useSelection";
 import { runBulkDelete, summarizeBulkDelete } from "../lib/bulkDelete";
 import { PdfActions } from "../components/PdfActions";
+import { CollapsibleRows } from "../components/CollapsibleRows";
 
 
 /// <summary>
@@ -340,7 +341,7 @@ export function FarmerGoodsPage() {
             </div>
           )}
 
-          <div className="card overflow-x-auto mb-4">
+          <div className="card mb-4">
             <div className="flex items-center justify-between flex-wrap gap-2 px-4 pt-4 pb-1">
               <div className="text-sm font-semibold text-gray-700">المخزون المتوفر حاليًا — {stockData?.farmerName ?? farmerPick.name}</div>
               <div className="flex items-center gap-2 flex-wrap">
@@ -352,6 +353,25 @@ export function FarmerGoodsPage() {
               </div>
             </div>
             {stockError && <div className="text-sm text-red-600 bg-red-50 rounded-md p-2 mx-4">{stockError}</div>}
+            <div className="sm:hidden">
+              <CollapsibleRows
+                rows={stockLoading ? [] : stockPager.pageRows}
+                rowKey={(r) => r.itemName}
+                title={(r) => r.itemName}
+                value={(r) => (
+                  <span className={r.available < 0 ? "text-red-600" : ""}>{formatCount(r.available)}</span>
+                )}
+                details={(r) => [
+                  { label: "الوارد (عدد)", value: formatCount(r.totalReceived) },
+                  { label: "المباع (عدد)", value: formatCount(r.totalSold) },
+                  { label: "المتوفر (وزن)", value: formatWeight(r.weightAvailable) },
+                  { label: "صناديق خشب", value: r.woodReceived > 0 ? formatCount(r.woodReceived) : "—" },
+                  { label: "مخالات", value: r.sackReceived > 0 ? r.sackReceived.toLocaleString("en-US") : "—" },
+                ]}
+                empty={stockLoading ? "جاري التحميل..." : "لا توجد بضاعة مسجلة لهذا البائع بعد"}
+              />
+            </div>
+            <div className="hidden sm:block overflow-x-auto">
             <table className="table-base">
               <thead>
                 {/* صناديق خشب ومخالات فيلدات مستقلة تمامًا عن الوارد/المباع/المتوفر — هدول عدد
@@ -378,6 +398,7 @@ export function FarmerGoodsPage() {
                 )}
               </tbody>
             </table>
+            </div>
             <TablePagination
               page={stockPager.page} pageSize={stockPager.pageSize} totalCount={stockPager.totalCount}
               itemLabel="سطر" onPageChange={stockPager.setPage} onPageSizeChange={stockPager.setPageSize}
@@ -396,6 +417,36 @@ export function FarmerGoodsPage() {
                 </div>
               )}
             </div>
+            <div className="sm:hidden">
+              <CollapsibleRows
+                rows={entriesPager.pageRows}
+                rowKey={(e) => e.id}
+                title={(e) => e.itemName}
+                value={(e) => formatCount(e.quantity)}
+                leading={canDelete ? (e) => (
+                  <input type="checkbox" checked={entriesSelection.selected.has(e.id)} onChange={() => entriesSelection.toggleOne(e.id)} />
+                ) : undefined}
+                details={(e) => [
+                  { label: "التاريخ", value: formatDate(e.date) },
+                  { label: "الوزن", value: e.weightKg != null && e.weightKg > 0 ? formatWeight(e.weightKg) : "—" },
+                  { label: "صناديق خشب", value: e.woodQuantity > 0 ? formatCount(e.woodQuantity) : "—" },
+                  { label: "مخالات", value: e.sackQuantity > 0 ? e.sackQuantity.toLocaleString("en-US") : "—" },
+                  { label: "ملاحظات", value: e.notes ?? "—" },
+                  ...(canEdit || canDelete ? [{ label: "", value: (
+                    <span className="whitespace-nowrap">
+                      {canEdit && <button className="text-brand-700 text-sm hover:underline me-2" onClick={() => startEdit(e)}>تعديل</button>}
+                      {canDelete && (
+                        <button className="text-red-600 text-sm hover:underline" disabled={deletingId === e.id} onClick={() => handleDeleteEntry(e)}>
+                          {deletingId === e.id ? "جاري الحذف..." : "حذف"}
+                        </button>
+                      )}
+                    </span>
+                  ) }] : []),
+                ]}
+                empty="لا توجد إضافات مسجلة بعد"
+              />
+            </div>
+            <div className="hidden sm:block overflow-x-auto">
             <table className="table-base">
               <thead>
                 <tr>
@@ -446,6 +497,7 @@ export function FarmerGoodsPage() {
                 )}
               </tbody>
             </table>
+            </div>
             <TablePagination
               page={entriesPager.page} pageSize={entriesPager.pageSize} totalCount={entriesPager.totalCount}
               itemLabel="إدخال" onPageChange={entriesPager.setPage} onPageSizeChange={entriesPager.setPageSize}
@@ -472,8 +524,23 @@ export function FarmerGoodsPage() {
           </div>
 
           {searched && !loading && (
-            <div className="card overflow-x-auto">
+            <div className="card">
               {farmerName && <div className="px-4 pt-4 pb-1 text-sm font-semibold text-gray-700">البائع: {farmerName}</div>}
+            <div className="sm:hidden">
+              <CollapsibleRows
+                rows={rows}
+                rowKey={(r) => `${r.date}-${r.itemName}`}
+                title={(r) => r.itemName}
+                value={(r) => formatCount(r.totalQuantity)}
+                details={(r) => [
+                  { label: "التاريخ", value: formatDate(r.date) },
+                  { label: "الوزن", value: formatWeight(r.totalWeightKg) },
+                  { label: "منها صندوق خشب", value: r.woodQuantity > 0 ? formatCount(r.woodQuantity) : "—" },
+                ]}
+                empty="لا توجد بضاعة مباعة مسجلة لهذا البائع ضمن الفترة المحددة"
+              />
+            </div>
+            <div className="hidden sm:block overflow-x-auto">
             <table className="table-base">
                 <thead>
                   <tr>
@@ -508,6 +575,7 @@ export function FarmerGoodsPage() {
                   </tfoot>
                 )}
               </table>
+            </div>
             </div>
           )}
         </>

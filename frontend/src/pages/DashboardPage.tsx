@@ -7,6 +7,7 @@ import { useAuth } from "../auth/AuthContext";
 import type { DashboardSummaryDto, MerchantItemBreakdownRow, PartnerDebtRow } from "../types";
 import { PartnerLink } from "../components/RecordLinks";
 import { PdfActions } from "../components/PdfActions";
+import { CollapsibleRows } from "../components/CollapsibleRows";
 
 export function DashboardPage() {
   const { hasPermission } = useAuth();
@@ -176,7 +177,27 @@ export function DashboardPage() {
               />
             )}
           </div>
-          <div className="overflow-x-auto">
+          <div>
+      <div className="sm:hidden">
+        <CollapsibleRows
+          rows={buyerPeriodChosen && !buyerLoading ? buyerMerchantGroups : []}
+          rowKey={(g) => g.merchantId}
+          title={(g) => <PartnerLink partnerId={g.merchantId} name={g.merchantName} side="merchant" />}
+          value={(g) => formatCurrency(g.subtotal)}
+          details={(g) => g.items.map((item) => ({
+            label: item.itemName,
+            value: `${formatCount(item.totalQuantity)} / ${formatWeight(item.totalWeightKg)} — ${formatCurrency(item.totalValue)}`,
+          }))}
+          empty={!buyerPeriodChosen ? "اختر تاريخًا (من و/أو إلى) لعرض كشف المشترين" : buyerLoading ? "جاري التحميل..." : "لا توجد بيانات لهذه الفترة"}
+        />
+        {buyerPeriodChosen && !buyerLoading && buyerMerchantGroups.length > 0 && (
+          <div className="px-3 py-3 border-t flex justify-between font-semibold">
+            <span>الإجمالي الكلي</span>
+            <span>{formatCurrency(buyerValueTotal)}</span>
+          </div>
+        )}
+      </div>
+      <div className="hidden sm:block overflow-x-auto">
       <table className="table-base">
               <thead>
                 {/* العدد/الوزن فيلدين منفصلين (مش "الكمية" واحدة مدموجة) — نفس الأسلوب المتّبع
@@ -220,6 +241,7 @@ export function DashboardPage() {
                 </tfoot>
               )}
             </table>
+      </div>
           </div>
         </div>
       )}

@@ -11,6 +11,7 @@ import { buildStatementMessage, buildWhatsAppLink, endOfDay, formatCount, format
 import type { DriverItemBreakdownRow, FarmerItemBreakdownRow, InvoiceFilter, InvoiceListItemDto, MerchantItemBreakdownRow, PartnerType } from "../types";
 import { InvoiceLink, PartnerLink } from "../components/RecordLinks";
 import { PdfActions } from "../components/PdfActions";
+import { CollapsibleRows } from "../components/CollapsibleRows";
 
 
 type QuickRange = "today" | "week" | "month" | "year" | "custom";
@@ -477,7 +478,43 @@ function SectionTable({ section }: { section: RoleSection }) {
       <div className="text-xs text-gray-500 px-3 pt-3">
         الفواتير غير المسعّرة ما بتظهر هون ولا بتنطبع — سعّرها أول وبتبيّن.
       </div>
-      <div className="overflow-x-auto">
+      <div>
+      <div className="sm:hidden">
+        <CollapsibleRows
+          rows={section.loading ? [] : pager.pageRows}
+          rowKey={(inv) => inv.id}
+          title={(inv) => (
+            <span>
+              <InvoiceLink invoiceId={inv.id} invoiceNumber={inv.invoiceNumber} />
+              <span className="block text-xs text-gray-500">{formatDate(inv.date)} — {partyOf(inv)}</span>
+            </span>
+          )}
+          value={(inv) => {
+            const remaining = remainingOf(inv);
+            return (
+              <span className={remaining != null && remaining < 0 ? "text-red-600" : ""}>
+                {remaining != null ? formatCurrency(remaining) : "—"}
+              </span>
+            );
+          }}
+          leading={(inv) => (
+            <input type="checkbox" checked={section.selected.has(inv.id)} onChange={() => section.toggleOne(inv.id)} />
+          )}
+          details={(inv) => [
+            { label: "الأصناف", value: inv.itemsSummary || "—" },
+            { label: "الكمية", value: [
+              inv.totalWeightKg > 0 ? formatWeight(inv.totalWeightKg) : null,
+              inv.totalBoxes > 0 ? formatCount(inv.totalBoxes) : null,
+            ].filter(Boolean).join(" / ") || "—" },
+            ...moneyColumns.map((column) => ({
+              label: column.label,
+              value: column.value(inv) > 0 ? formatCurrency(column.value(inv)) : "—",
+            })),
+          ]}
+          empty={section.loading ? "جاري التحميل..." : "لا توجد فواتير مطابقة (الفواتير غير المسعّرة مستثناة)"}
+        />
+      </div>
+      <div className="hidden sm:block overflow-x-auto">
       <table className="table-base">
         <thead>
           <tr>
@@ -530,6 +567,7 @@ function SectionTable({ section }: { section: RoleSection }) {
           )}
         </tbody>
       </table>
+      </div>
       </div>
       <TablePagination
         page={pager.page} pageSize={pager.pageSize} totalCount={pager.totalCount}
@@ -623,7 +661,27 @@ function ItemValueBreakdownCard({
           <PdfActions fetchPdf={fetchPdf} fileName={fileName} shareTitle="كشف سائق حسب الفترة" />
         )}
       </div>
-      <div className="overflow-x-auto">
+      <div>
+        <div className="sm:hidden">
+          <CollapsibleRows
+            rows={loading ? [] : groups}
+            rowKey={(group) => group.id}
+            title={(group) => group.name}
+            value={(group) => formatCurrency(group.subtotal)}
+            details={(group) => group.items.map((item) => ({
+              label: item.itemName,
+              value: `${formatCount(item.totalQuantity)} / ${formatWeight(item.totalWeightKg)} — ${formatCurrency(item.totalValue)}`,
+            }))}
+            empty={loading ? "جاري التحميل..." : "لا توجد بيانات لهذه الفترة"}
+          />
+          {!loading && groups.length > 0 && (
+            <div className="px-3 py-3 border-t flex justify-between font-semibold">
+              <span>الإجمالي الكلي</span>
+              <span>{formatCurrency(grandTotal)}</span>
+            </div>
+          )}
+        </div>
+        <div className="hidden sm:block overflow-x-auto">
         <table className="table-base">
           <thead>
             <tr><th>{nameLabel}</th><th>الصنف</th><th>العدد</th><th>الوزن</th><th>السعر</th></tr>
@@ -662,6 +720,7 @@ function ItemValueBreakdownCard({
             </tfoot>
           )}
         </table>
+        </div>
       </div>
       {error && <div className="text-sm text-red-600 bg-red-50 rounded-md p-2 mt-3">{error}</div>}
     </div>
@@ -692,7 +751,27 @@ function DriverItemBreakdownCard({
           <PdfActions fetchPdf={fetchPdf} fileName={fileName} shareTitle="كشف سائق حسب الفترة" />
         )}
       </div>
-      <div className="overflow-x-auto">
+      <div>
+        <div className="sm:hidden">
+          <CollapsibleRows
+            rows={loading ? [] : groups}
+            rowKey={(group) => group.id}
+            title={(group) => group.name}
+            value={(group) => formatCurrency(group.transportFee)}
+            details={(group) => group.items.map((item) => ({
+              label: item.itemName,
+              value: `${formatCount(item.totalQuantity)} / ${formatWeight(item.totalWeightKg)}`,
+            }))}
+            empty={loading ? "جاري التحميل..." : "لا توجد بيانات لهذه الفترة"}
+          />
+          {!loading && groups.length > 0 && (
+            <div className="px-3 py-3 border-t flex justify-between font-semibold">
+              <span>الإجمالي الكلي</span>
+              <span>{formatCurrency(grandTotal)}</span>
+            </div>
+          )}
+        </div>
+        <div className="hidden sm:block overflow-x-auto">
         <table className="table-base">
           <thead>
             <tr><th>السائق</th><th>الصنف</th><th>العدد</th><th>الوزن</th><th>أجرة النقل</th></tr>
@@ -731,6 +810,7 @@ function DriverItemBreakdownCard({
             </tfoot>
           )}
         </table>
+        </div>
       </div>
       {error && <div className="text-sm text-red-600 bg-red-50 rounded-md p-2 mt-3">{error}</div>}
     </div>
@@ -1158,8 +1238,34 @@ export function BulkPrintPage() {
 
 
       {activeTab === "Merchant" && traderGroups.length > 0 && whatsAppReady && (
-        <div className="card overflow-x-auto mb-4">
+        <div className="card mb-4">
           <div className="px-4 pt-4 pb-1 text-sm font-semibold text-gray-700">تجميع حسب المشتري واليوم — كل يوم برسالة واتساب منفصلة</div>
+          <div className="sm:hidden">
+            <CollapsibleRows
+              rows={traderGroups}
+              rowKey={(g) => g.key}
+              title={(g) => (
+                <span>
+                  <PartnerLink partnerId={g.merchantId} name={g.merchantName} side="merchant" />
+                  <span className="block text-xs text-gray-500">{g.day}</span>
+                </span>
+              )}
+              value={(g) => formatCurrency(g.total)}
+              details={(g) => [
+                { label: "عدد الفواتير", value: g.invoiceIds.length },
+                { label: "", value: (
+                  <button
+                    className="btn-secondary"
+                    disabled={sendingTraderKey === g.key}
+                    onClick={() => handleSendTraderWhatsApp(g.key, g.merchantId, g.merchantWhatsApp!, g.merchantName, g.invoiceIds)}
+                  >
+                    {sendingTraderKey === g.key ? "جاري التجهيز..." : "📤 إرسال واتساب"}
+                  </button>
+                ) },
+              ]}
+            />
+          </div>
+          <div className="hidden sm:block overflow-x-auto">
           <table className="table-base">
             <thead>
               <tr>
@@ -1190,12 +1296,34 @@ export function BulkPrintPage() {
               ))}
             </tbody>
           </table>
+          </div>
         </div>
       )}
 
       {activeTab === "Farmer" && farmerGroups.length > 0 && whatsAppReady && (
-        <div className="card overflow-x-auto mb-4">
+        <div className="card mb-4">
           <div className="px-4 pt-4 pb-1 text-sm font-semibold text-gray-700">تجميع حسب البائع — إرسال كشف واتساب مفصّل (يشمل الرصيد السابق وسعر الخشب)</div>
+          <div className="sm:hidden">
+            <CollapsibleRows
+              rows={farmerGroups}
+              rowKey={(g) => g.farmerId}
+              title={(g) => <PartnerLink partnerId={g.farmerId} name={g.farmerName} side="seller" />}
+              value={(g) => formatCurrency(g.total)}
+              details={(g) => [
+                { label: "عدد الفواتير", value: g.invoiceIds.length },
+                { label: "", value: (
+                  <button
+                    className="btn-secondary"
+                    disabled={sendingFarmerId === g.farmerId}
+                    onClick={() => handleSendFarmerWhatsApp(g.farmerId, g.farmerWhatsApp!, g.farmerName, g.invoiceIds)}
+                  >
+                    {sendingFarmerId === g.farmerId ? "جاري التجهيز..." : "📤 إرسال واتساب"}
+                  </button>
+                ) },
+              ]}
+            />
+          </div>
+          <div className="hidden sm:block overflow-x-auto">
           <table className="table-base">
             <thead>
               <tr>
@@ -1224,14 +1352,44 @@ export function BulkPrintPage() {
               ))}
             </tbody>
           </table>
+          </div>
         </div>
       )}
 
       <SectionPrintBar section={active} />
 
       {activeTab === "Driver" && driverGroups.length > 0 && whatsAppReady && (
-        <div className="card overflow-x-auto">
+        <div className="card">
           <div className="px-4 pt-4 pb-1 text-sm font-semibold text-gray-700">تجميع حسب السائق — كشف أجرة نقل مجمّع لكل سائق</div>
+          <div className="sm:hidden">
+            <CollapsibleRows
+              rows={driverGroups}
+              rowKey={(g) => g.key}
+              title={(g) => <PartnerLink partnerId={g.driverId} name={g.driverName} side="seller" />}
+              value={(g) => formatCurrency(g.totalDriverDue)}
+              details={(g) => [
+                { label: "عدد الفواتير", value: g.invoiceIds.length },
+                { label: "", value: (
+                  <div className="flex flex-wrap gap-2">
+                    <PdfActions
+                      fetchPdf={() => printDriverManifestPdf(g.invoiceIds)}
+                      fileName={`driver-manifest-${g.driverName}.pdf`}
+                      shareTitle={`كشف السائق ${g.driverName}`}
+                      printLabel="🖨️ طباعة كشف السائق"
+                    />
+                    <button
+                      className="btn-secondary"
+                      disabled={sendingDriverKey === g.key}
+                      onClick={() => handleSendDriverWhatsApp(g.key, g.driverId!, g.driverWhatsApp!, g.driverName, g.invoiceIds)}
+                    >
+                      {sendingDriverKey === g.key ? "جاري التجهيز..." : "📤 إرسال واتساب"}
+                    </button>
+                  </div>
+                ) },
+              ]}
+            />
+          </div>
+          <div className="hidden sm:block overflow-x-auto">
           <table className="table-base">
             <thead>
               <tr>
@@ -1268,6 +1426,7 @@ export function BulkPrintPage() {
               ))}
             </tbody>
           </table>
+          </div>
         </div>
       )}
     </div>

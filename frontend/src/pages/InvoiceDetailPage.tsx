@@ -9,6 +9,7 @@ import { InvoiceReturnsCard } from "../components/InvoiceReturnsCard";
 import { buildStatementMessage, buildWhatsAppLink, formatCount, formatCurrency, formatDate, formatWeight } from "../lib/format";
 import { useAuth } from "../auth/AuthContext";
 import { apiErrorMessage } from "../api/client";
+import { CollapsibleRows } from "../components/CollapsibleRows";
 
 const PAYMENT_STATUS_LABELS: Record<InvoicePaymentStatus, string> = {
   Unpaid: "غير مدفوعة", Partial: "مدفوعة جزئياً", Paid: "مدفوعة",
@@ -142,7 +143,30 @@ export function InvoiceDetailPage() {
         {/* العدد/الوزن يحلّان محل عمود "الكمية" المدمج — مشتقّان مباشرة من الكمية/الوحدة (نفس
             منطق الفاتورة المطبوعة A4، انظر ExportService.GenerateInvoicePdf): العدد دايمًا معبّى،
             والوزن بس إذا انوزن الصنف — ووجود الوزن هو اللي بحدد كيف انحسب السطر. */}
-        <div className="overflow-x-auto mb-4">
+        <div className="mb-4">
+          {/* غير المسعّر لازم يضل ظاهر على الجوال متل ما هو ظاهر على الجدول — فالسعر هو الرقم
+              اللي على الكرت المسكّر، مش الإجمالي. */}
+          <div className="sm:hidden">
+            <CollapsibleRows
+              rows={invoice.items}
+              rowKey={(item) => item.id}
+              title={(item) => item.itemName}
+              value={(item) => (
+                <span className={item.pricePerUnit === 0 ? "text-amber-700" : ""}>
+                  {item.pricePerUnit === 0 ? "غير مسعّر" : formatCurrency(item.lineTotal)}
+                </span>
+              )}
+              details={(item) => [
+                { label: "العدد", value: formatCount(item.quantity) },
+                { label: "الوزن", value: formatWeight(item.weightKg ?? 0) },
+                { label: "السعر", value: item.pricePerUnit === 0 ? "غير مسعّر" : formatCurrency(item.pricePerUnit) },
+                { label: "صناديق", value: item.boxQuantity > 0 ? formatCount(item.boxQuantity) : "—" },
+                { label: "كرتون", value: item.cartonQuantity > 0 ? formatCount(item.cartonQuantity) : "—" },
+                { label: "سعر الخشب", value: item.woodPrice > 0 ? formatCurrency(item.woodPrice) : "—" },
+              ]}
+            />
+          </div>
+          <div className="hidden sm:block overflow-x-auto">
           <table className="table-base">
             <thead>
               <tr><th>الصنف</th><th>العدد</th><th>الوزن</th><th>السعر</th><th>صناديق</th><th>كرتون</th><th>سعر الخشب</th><th>الإجمالي</th></tr>
@@ -173,6 +197,7 @@ export function InvoiceDetailPage() {
               })}
             </tbody>
           </table>
+          </div>
         </div>
 
         <div className="flex flex-wrap justify-between gap-2 border-t pt-3 text-sm">

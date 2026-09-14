@@ -10,6 +10,7 @@ import { formatCount, formatCurrency, formatDate, formatWeight } from "../lib/fo
 import type { PartnerInvoiceDetailDto, PartnerInvoiceItemLineDto } from "../types";
 import { InvoiceLink } from "../components/RecordLinks";
 import { PdfActions } from "../components/PdfActions";
+import { CollapsibleRows } from "../components/CollapsibleRows";
 
 /// <summary>
 /// "قيمة الديون" drill-down — a standalone page (opened in a new tab from the debts overview, per
@@ -82,7 +83,34 @@ function InvoiceDetailView({ title, fetcher, printer }: {
       ) : groups.length === 0 ? (
         <div className="text-gray-400">لا توجد فواتير مسجّلة لهذا الشخص بعد</div>
       ) : (
-        <div className="card overflow-x-auto">
+        <div className="card">
+          {/* على الجوال الكرت هو الفاتورة نفسها — إجمالي الفاتورة هو الرقم اللي بندور عليه،
+              والأصناف بتنفتح تحته. */}
+          <div className="sm:hidden">
+            <CollapsibleRows
+              rows={groups}
+              rowKey={(g) => g.invoiceId}
+              title={(g) => (
+                <span>
+                  <InvoiceLink invoiceId={g.invoiceId} invoiceNumber={g.invoiceNumber} className="font-mono text-sm" />
+                  <span className="block text-xs text-gray-500">{formatDate(g.date)}</span>
+                </span>
+              )}
+              value={(g) => formatCurrency(g.grandTotal)}
+              details={(g) => [
+                ...g.items.map((line) => ({
+                  label: line.itemName,
+                  value: `${formatCount(line.quantity)} × ${formatCurrency(line.pricePerUnit)}`,
+                })),
+                ...(g.transportFee > 0 ? [{ label: "أجرة النقل", value: formatCurrency(g.transportFee) }] : []),
+              ]}
+            />
+            <div className="px-3 py-3 border-t flex justify-between font-semibold">
+              <span>الإجمالي الكلي</span>
+              <span>{formatCurrency(grandTotalSum)}</span>
+            </div>
+          </div>
+          <div className="hidden sm:block overflow-x-auto">
           <table className="table-base">
             <thead>
               <tr>
@@ -123,6 +151,7 @@ function InvoiceDetailView({ title, fetcher, printer }: {
               </tr>
             </tfoot>
           </table>
+          </div>
         </div>
       )}
     </div>

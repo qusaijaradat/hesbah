@@ -3,6 +3,7 @@ import { usePagination } from "../lib/usePagination";
 import { TablePagination } from "./TablePagination";
 import type { GoodsStockRow } from "../types";
 import { PartnerLink } from "./RecordLinks";
+import { CollapsibleRows } from "./CollapsibleRows";
 
 /**
  * "البضاعة المتوفرة حاليًا" across ALL farmers — one row per (farmer, item, unit): الوارد/المباع/
@@ -27,9 +28,35 @@ export function GoodsGlobalStockCard({
 }) {
   const pager = usePagination(rows);
   return (
-    <div className="card overflow-x-auto mt-4 mb-4">
+    <div className="card mt-4 mb-4">
       <div className="px-4 pt-4 pb-1 text-sm font-semibold text-gray-700">البضاعة المتوفرة حاليًا — كل الباعة</div>
       {error && <div className="text-sm text-red-600 bg-red-50 rounded-md p-2 mx-4">{error}</div>}
+      <div className="sm:hidden">
+        <CollapsibleRows
+          rows={loading ? [] : pager.pageRows}
+          rowKey={(r) => `${r.farmerId}-${r.itemName}`}
+          title={(r) => (
+            <span>
+              {r.itemName}
+              <span className="block text-xs text-gray-500">
+                <PartnerLink partnerId={r.farmerId} name={r.farmerName} side="seller" />
+              </span>
+            </span>
+          )}
+          value={(r) => (
+            <span className={r.available < 0 ? "text-red-600" : ""}>{formatCount(r.available)}</span>
+          )}
+          details={(r) => [
+            { label: "الوارد (عدد)", value: formatCount(r.totalReceived) },
+            { label: "المباع (عدد)", value: formatCount(r.totalSold) },
+            { label: "المتوفر (وزن)", value: formatWeight(r.weightAvailable) },
+            { label: "صناديق خشب", value: r.woodReceived > 0 ? formatCount(r.woodReceived) : "—" },
+            { label: "مخالات", value: r.sackReceived > 0 ? r.sackReceived.toLocaleString("en-US") : "—" },
+          ]}
+          empty={loading ? "جاري التحميل..." : "لا توجد بضاعة متوفرة حاليًا"}
+        />
+      </div>
+      <div className="hidden sm:block overflow-x-auto">
       <table className="table-base">
         <thead>
           <tr><th>البائع</th><th>الصنف</th><th>الوارد (عدد)</th><th>المباع (عدد)</th><th>المتوفر (عدد)</th><th>المتوفر (وزن)</th><th>صناديق خشب</th><th>مخالات</th></tr>
@@ -62,6 +89,7 @@ export function GoodsGlobalStockCard({
           )}
         </tbody>
       </table>
+      </div>
       <TablePagination
         page={pager.page} pageSize={pager.pageSize} totalCount={pager.totalCount}
         itemLabel="سطر" onPageChange={pager.setPage} onPageSizeChange={pager.setPageSize}

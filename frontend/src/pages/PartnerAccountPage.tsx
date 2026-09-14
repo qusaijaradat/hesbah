@@ -13,6 +13,7 @@ import { StatCard } from "../components/StatCard";
 import { CREDIT_LIMIT_UI_ENABLED } from "../lib/featureFlags";
 import { useAuth } from "../auth/AuthContext";
 import { PdfActions } from "../components/PdfActions";
+import { CollapsibleRows } from "../components/CollapsibleRows";
 
 
 
@@ -216,7 +217,24 @@ function StatementTable({ statement }: { statement: StatementLineDto[] }) {
   // A running account statement only ever grows — page it like every other table.
   const pager = usePagination(statement);
   return (
-    <div className="card overflow-x-auto">
+    <div className="card">
+      {/* A statement is read down the running balance, which is the one figure kept on the closed
+          card — the line that changed it opens underneath. */}
+      <div className="sm:hidden">
+        <CollapsibleRows
+          rows={statement}
+          rowKey={(l) => `${l.date}-${l.description}-${l.amount}-${l.runningBalance}`}
+          title={(l) => l.description}
+          value={(l) => formatCurrency(l.runningBalance)}
+          details={(l) => [
+            { label: "التاريخ", value: formatDate(l.date) },
+            { label: "المبلغ", value: formatCurrency(l.amount) },
+            { label: "الفاتورة", value: l.invoiceNumber || "—" },
+          ]}
+          empty="لا توجد حركات"
+        />
+      </div>
+      <div className="hidden sm:block overflow-x-auto">
       <table className="table-base">
         <thead>
           <tr>
@@ -253,6 +271,7 @@ function StatementTable({ statement }: { statement: StatementLineDto[] }) {
           )}
         </tbody>
       </table>
+      </div>
       <TablePagination
         page={pager.page} pageSize={pager.pageSize} totalCount={pager.totalCount}
         itemLabel="حركة" onPageChange={pager.setPage} onPageSizeChange={pager.setPageSize}

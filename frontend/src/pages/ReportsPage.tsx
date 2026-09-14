@@ -8,6 +8,7 @@ import { triggerBlobDownload } from "../api/invoices";
 import { useAuth } from "../auth/AuthContext";
 import { PartnerLink } from "../components/RecordLinks";
 import { PdfActions } from "../components/PdfActions";
+import { CollapsibleRows } from "../components/CollapsibleRows";
 
 type Tab = "farmers" | "merchants" | "drivers" | "market" | "aging";
 
@@ -117,7 +118,24 @@ export function ReportsPage() {
 function FarmersTable({ rows }: { rows: FarmerReportRow[] }) {
   const pager = usePagination(rows);
   return (
-    <div className="card overflow-x-auto">
+    <div className="card">
+      <div className="sm:hidden">
+        <CollapsibleRows
+          rows={pager.pageRows}
+          rowKey={(r) => r.farmerId}
+          title={(r) => r.farmerName}
+          value={(r) => formatCurrency(r.remaining)}
+          details={(r) => [
+            { label: "عدد الفواتير", value: r.invoiceCount },
+            { label: "المبيعات", value: formatCurrency(r.totalSalesValue) },
+            { label: "العمولة", value: formatCurrency(r.totalCommission) },
+            { label: "صافي المستحق", value: formatCurrency(r.netDue) },
+            { label: "المدفوع", value: formatCurrency(r.totalPaid) },
+          ]}
+          empty="لا توجد بيانات"
+        />
+      </div>
+      <div className="hidden sm:block overflow-x-auto">
       <table className="table-base">
         <thead>
           <tr>
@@ -146,6 +164,7 @@ function FarmersTable({ rows }: { rows: FarmerReportRow[] }) {
           ))}
         </tbody>
       </table>
+      </div>
       <TablePagination
         page={pager.page} pageSize={pager.pageSize} totalCount={pager.totalCount}
         itemLabel="بائع" onPageChange={pager.setPage} onPageSizeChange={pager.setPageSize}
@@ -157,7 +176,25 @@ function FarmersTable({ rows }: { rows: FarmerReportRow[] }) {
 function MerchantsTable({ rows }: { rows: MerchantReportRow[] }) {
   const pager = usePagination(rows);
   return (
-    <div className="card overflow-x-auto">
+    <div className="card">
+      <div className="sm:hidden">
+        <CollapsibleRows
+          rows={pager.pageRows}
+          rowKey={(r) => r.merchantId}
+          title={(r) => r.merchantName}
+          value={(r) => formatCurrency(r.remaining)}
+          details={(r) => [
+            { label: "عدد الفواتير", value: r.invoiceCount },
+            { label: "المشتريات", value: formatCurrency(r.totalPurchases) },
+            { label: "سعر الخشب", value: formatCurrency(r.totalWoodTotal) },
+            { label: "رسوم الصناديق", value: formatCurrency(r.totalBoxFee) },
+            { label: "الإجمالي الكلي", value: formatCurrency(r.grandTotal) },
+            { label: "المدفوع", value: formatCurrency(r.totalPaid) },
+          ]}
+          empty="لا توجد بيانات"
+        />
+      </div>
+      <div className="hidden sm:block overflow-x-auto">
       <table className="table-base">
         <thead>
           <tr>
@@ -187,6 +224,7 @@ function MerchantsTable({ rows }: { rows: MerchantReportRow[] }) {
           ))}
         </tbody>
       </table>
+      </div>
       <TablePagination
         page={pager.page} pageSize={pager.pageSize} totalCount={pager.totalCount}
         itemLabel="مشتري" onPageChange={pager.setPage} onPageSizeChange={pager.setPageSize}
@@ -198,7 +236,24 @@ function MerchantsTable({ rows }: { rows: MerchantReportRow[] }) {
 function DriversTable({ rows }: { rows: DriverReportRow[] }) {
   const pager = usePagination(rows);
   return (
-    <div className="card overflow-x-auto">
+    <div className="card">
+      <div className="sm:hidden">
+        <CollapsibleRows
+          rows={pager.pageRows}
+          rowKey={(r) => r.driverId}
+          title={(r) => r.driverName}
+          value={(r) => formatCurrency(r.totalTransportFee)}
+          details={(r) => [
+            { label: "عدد الفواتير", value: r.invoiceCount },
+            { label: "الصناديق", value: r.totalBoxes },
+            { label: "الكرتون", value: r.totalCartons },
+            { label: "المدفوع", value: formatCurrency(r.totalPaid) },
+            { label: "المتبقي", value: formatCurrency(r.remaining) },
+          ]}
+          empty="لا توجد بيانات"
+        />
+      </div>
+      <div className="hidden sm:block overflow-x-auto">
       <table className="table-base">
         <thead>
           <tr>
@@ -223,6 +278,7 @@ function DriversTable({ rows }: { rows: DriverReportRow[] }) {
           ))}
         </tbody>
       </table>
+      </div>
       <TablePagination
         page={pager.page} pageSize={pager.pageSize} totalCount={pager.totalCount}
         itemLabel="سائق" onPageChange={pager.setPage} onPageSizeChange={pager.setPageSize}
@@ -234,7 +290,23 @@ function DriversTable({ rows }: { rows: DriverReportRow[] }) {
 function AgingTable({ rows }: { rows: AgingReportRow[] }) {
   const pager = usePagination(rows);
   return (
-    <div className="card overflow-x-auto">
+    <div className="card">
+      <div className="sm:hidden">
+        <CollapsibleRows
+          rows={pager.pageRows}
+          rowKey={(r) => r.merchantId}
+          title={(r) => r.merchantName}
+          value={(r) => formatCurrency(r.total)}
+          details={(r) => [
+            { label: "حالي (أقل من 30 يوم)", value: formatCurrency(r.current) },
+            { label: "30-59 يوم", value: formatCurrency(r.days30To59) },
+            { label: "60-89 يوم", value: formatCurrency(r.days60To89) },
+            { label: "90 يوم فأكثر", value: formatCurrency(r.days90Plus) },
+          ]}
+          empty="لا توجد بيانات"
+        />
+      </div>
+      <div className="hidden sm:block overflow-x-auto">
       <table className="table-base">
         <thead>
           <tr><th>المشتري</th><th>حالي (أقل من 30 يوم)</th><th>30-59 يوم</th><th>60-89 يوم</th><th>90 يوم فأكثر</th><th>الإجمالي</th></tr>
@@ -254,6 +326,7 @@ function AgingTable({ rows }: { rows: AgingReportRow[] }) {
           ))}
         </tbody>
       </table>
+      </div>
       <TablePagination
         page={pager.page} pageSize={pager.pageSize} totalCount={pager.totalCount}
         itemLabel="فاتورة" onPageChange={pager.setPage} onPageSizeChange={pager.setPageSize}
@@ -265,7 +338,24 @@ function AgingTable({ rows }: { rows: AgingReportRow[] }) {
 function MarketTable({ rows }: { rows: MarketReportRow[] }) {
   const pager = usePagination(rows);
   return (
-    <div className="card overflow-x-auto">
+    <div className="card">
+      <div className="sm:hidden">
+        <CollapsibleRows
+          rows={pager.pageRows}
+          rowKey={(r) => r.period}
+          title={(r) => r.period}
+          value={(r) => formatCurrency(r.netProfit)}
+          details={(r) => [
+            { label: "المبيعات", value: formatCurrency(r.totalSalesValue) },
+            { label: "العمولة", value: formatCurrency(r.totalCommission) },
+            { label: "رسوم الصناديق", value: formatCurrency(r.boxFeeIncome) },
+            { label: "سعر الخشب", value: formatCurrency(r.woodIncome) },
+            { label: "المصاريف", value: formatCurrency(r.totalExpenses) },
+          ]}
+          empty="لا توجد بيانات"
+        />
+      </div>
+      <div className="hidden sm:block overflow-x-auto">
       <table className="table-base">
         {/* Every term of the profit, not just commission and expenses — the crate fees are real
             margin and used to be missing from it (see the backend MarketEarnings). */}
@@ -291,6 +381,7 @@ function MarketTable({ rows }: { rows: MarketReportRow[] }) {
           ))}
         </tbody>
       </table>
+      </div>
       <TablePagination
         page={pager.page} pageSize={pager.pageSize} totalCount={pager.totalCount}
         itemLabel="يوم" onPageChange={pager.setPage} onPageSizeChange={pager.setPageSize}

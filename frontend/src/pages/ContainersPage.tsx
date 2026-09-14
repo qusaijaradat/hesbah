@@ -8,6 +8,7 @@ import { apiErrorMessage } from "../api/client";
 import { formatCount, formatDate, todayLocalDateString } from "../lib/format";
 import { useAuth } from "../auth/AuthContext";
 import type { ContainerBalanceDto, ContainerDirection, ContainerHolderDto, ContainerType, PartnerContainersDto } from "../types";
+import { CollapsibleRows } from "../components/CollapsibleRows";
 
 /**
  * "الصناديق" — the crates the market lends out and expects back.
@@ -162,7 +163,25 @@ function HoldersTable({ holders, onPick }: { holders: ContainerHolderDto[] | nul
   const crates = (holders ?? []).filter((h) => h.type !== "Sack");
   const pager = usePagination(crates);
   return (
-    <div className="card overflow-x-auto mt-6">
+    <div className="card mt-6">
+      <div className="sm:hidden">
+        <CollapsibleRows
+          rows={pager.pageRows}
+          rowKey={(h) => `${h.partnerId}-${h.type}`}
+          title={(h) => h.partnerName}
+          value={(h) => (
+            <span className={h.remaining > 0 ? "" : "text-brand-700"}>
+              {formatCount(Math.abs(h.remaining))} {TYPE_UNIT[h.type]}
+            </span>
+          )}
+          details={(h) => [
+            { label: "النوع", value: TYPE_LABEL[h.type] },
+            { label: h.remaining > 0 ? "عليه" : "عندنا إله", value: formatCount(Math.abs(h.remaining)) },
+          ]}
+          empty="كل الحسابات مظبوطة — ما في حدا ماسك صناديق"
+        />
+      </div>
+      <div className="hidden sm:block overflow-x-auto">
       <div className="px-4 pt-4 pb-1 text-sm font-semibold text-gray-700">مين ماسك صناديقي</div>
       <table className="table-base">
         <thead>
@@ -194,6 +213,7 @@ function HoldersTable({ holders, onPick }: { holders: ContainerHolderDto[] | nul
           ))}
         </tbody>
       </table>
+      </div>
       <TablePagination
         page={pager.page} pageSize={pager.pageSize} totalCount={pager.totalCount}
         itemLabel="سطر" onPageChange={pager.setPage} onPageSizeChange={pager.setPageSize}
@@ -342,7 +362,25 @@ function MovementsTable({
   }
 
   return (
-    <div className="card overflow-x-auto">
+    <div className="card">
+      <div className="sm:hidden">
+        <CollapsibleRows
+          rows={pager.pageRows}
+          rowKey={(m) => m.id}
+          title={(m) => TYPE_LABEL[m.type]}
+          value={(m) => (
+            <span className={m.direction === "Out" ? "text-red-700" : "text-brand-700"}>
+              {m.direction === "Out" ? "أعطيناه" : "رجّع"} {m.quantity.toLocaleString("en-US")}
+            </span>
+          )}
+          details={(m) => [
+            { label: "التاريخ", value: formatDate(m.date) },
+            { label: "ملاحظات", value: m.notes || "—" },
+          ]}
+          empty="لا توجد حركات مسجّلة"
+        />
+      </div>
+      <div className="hidden sm:block overflow-x-auto">
       <div className="px-4 pt-4 pb-1 text-sm font-semibold text-gray-700">سجل الحركات</div>
       {error && <div className="text-sm text-red-600 mx-4">{error}</div>}
       <table className="table-base">
@@ -370,6 +408,7 @@ function MovementsTable({
           ))}
         </tbody>
       </table>
+      </div>
       <TablePagination
         page={pager.page} pageSize={pager.pageSize} totalCount={pager.totalCount}
         itemLabel="حركة" onPageChange={pager.setPage} onPageSizeChange={pager.setPageSize}

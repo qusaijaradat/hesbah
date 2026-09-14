@@ -10,6 +10,7 @@ import { PartnerAutocomplete } from "../components/PartnerAutocomplete";
 import { PdfActions } from "../components/PdfActions";
 import { PartnerLink } from "../components/RecordLinks";
 import { StatCard } from "../components/StatCard";
+import { CollapsibleRows } from "../components/CollapsibleRows";
 import { formatDate, todayLocalDateString, buildWhatsAppLink } from "../lib/format";
 import { startOfDay, endOfDay } from "../lib/format";
 
@@ -348,7 +349,25 @@ function Totals({ data }: { data: SacksOverviewDto }) {
       </div>
     <div className="card mb-4">
       <div className="px-4 pt-4 pb-1 font-semibold">حسب النوع</div>
-      <div className="overflow-x-auto">
+      {/* Cards on a phone, the real table above it — see components/CollapsibleRows. */}
+      <div className="sm:hidden">
+        <CollapsibleRows
+          rows={data.totals}
+          rowKey={(t) => t.sackKindId ?? "none"}
+          title={(t) => t.sackKindName}
+          value={(t) => (
+            <span className={t.remaining < 0 ? "text-red-600" : ""}>بالمخزن {t.remaining}</span>
+          )}
+          details={(t) => [
+            { label: "عندي", value: t.owned || "—" },
+            { label: "طلع", value: t.out },
+            { label: "رجع", value: t.in },
+            { label: "برا", value: <span className={t.outstanding < 0 ? "text-red-600" : ""}>{t.outstanding}</span> },
+          ]}
+          empty="لا توجد أنواع ولا حركات"
+        />
+      </div>
+      <div className="hidden sm:block overflow-x-auto">
         <table className="table-base">
           <thead>
             <tr><th>النوع</th><th>عندي</th><th>طلع</th><th>رجع</th><th>برا</th><th>بالمخزن</th></tr>
@@ -398,7 +417,32 @@ function ByPartner({ data }: { data: SacksOverviewDto }) {
 
   return (
     <div className="card mb-4">
-      <div className="overflow-x-auto">
+      <div className="sm:hidden">
+        <CollapsibleRows
+          rows={data.byPartner}
+          rowKey={(p) => `${p.partnerId}-${p.sackKindId ?? "none"}`}
+          title={(p) => `${p.partnerName} — ${p.sackKindName}`}
+          value={(p) => <span className={p.outstanding < 0 ? "text-red-600" : ""}>{p.outstanding}</span>}
+          details={(p) => [
+            { label: "سحب", value: p.out },
+            { label: "رجّع", value: p.in },
+            {
+              label: "واتساب",
+              value: p.partnerWhatsApp ? (
+                <a
+                  className="text-green-700 hover:underline"
+                  href={buildWhatsAppLink(p.partnerWhatsApp, message(p.partnerName))}
+                  target="_blank" rel="noreferrer"
+                >
+                  📤 إرسال
+                </a>
+              ) : <span className="text-gray-400">لا يوجد رقم</span>,
+            },
+          ]}
+          empty="لا توجد حركات"
+        />
+      </div>
+      <div className="hidden sm:block overflow-x-auto">
         <table className="table-base">
           <thead>
             <tr><th>الشخص</th><th>النوع</th><th>سحب</th><th>رجّع</th><th>عليه</th><th></th></tr>
@@ -545,7 +589,24 @@ function StockTable({ kinds, canEdit, onSaved, onError }: {
 function Movements({ data }: { data: SacksOverviewDto }) {
   return (
     <div className="card">
-      <div className="overflow-x-auto">
+      <div className="sm:hidden">
+        <CollapsibleRows
+          rows={data.movements}
+          rowKey={(m) => m.id}
+          title={(m) => `${m.partnerName} — ${m.sackKindName}`}
+          value={(m) => (
+            <span className={m.direction === "Out" ? "text-amber-700" : "text-brand-700"}>
+              {m.direction === "Out" ? "سحب" : "ارتجاع"} {m.quantity}
+            </span>
+          )}
+          details={(m) => [
+            { label: "التاريخ", value: formatDate(m.date) },
+            { label: "ملاحظات", value: m.notes || "—" },
+          ]}
+          empty="لا توجد حركات"
+        />
+      </div>
+      <div className="hidden sm:block overflow-x-auto">
         <table className="table-base">
           <thead>
             <tr><th>التاريخ</th><th>الشخص</th><th>النوع</th><th>الحركة</th><th>العدد</th><th>ملاحظات</th></tr>

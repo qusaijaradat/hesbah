@@ -133,6 +133,10 @@ body {
 .modal-card {
   @apply card w-full sm:max-w-lg;
   @apply rounded-none sm:rounded-lg;
+  /* Fills the phone rather than floating in the middle of it. A form covering half the screen with
+     a dimmed page around it reads as something that half-opened; covering the screen reads as the
+     thing you are now doing. On a desktop it goes back to being a card. */
+  @apply min-h-[100dvh] sm:min-h-0;
   @apply max-h-[100dvh] sm:max-h-[90vh] overflow-y-auto;
 }
 

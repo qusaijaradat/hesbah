@@ -104,6 +104,19 @@ export function DailyClosingPage() {
             />
           </div>
 
+          {/* Their own section, deliberately below the profit block and not inside it: sacks earn
+              the market nothing, and a count sitting among figures that do reads as if it did. */}
+          <h2 className="text-sm font-semibold text-gray-500 mb-2">حركة المخالات اليوم</h2>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 mb-6">
+            <StatCard label="مخالات طلعت" value={closing.sacksOut.toLocaleString("en-US", { maximumFractionDigits: 3 })} />
+            <StatCard label="مخالات رجعت" value={closing.sacksIn.toLocaleString("en-US", { maximumFractionDigits: 3 })} />
+            <StatCard
+              label="الفرق" value={(closing.sacksOut - closing.sacksIn).toLocaleString("en-US", { maximumFractionDigits: 3 })}
+              tone={closing.sacksOut - closing.sacksIn > 0 ? "negative" : "positive"}
+              hint="موجب = طلع أكثر مما رجع"
+            />
+          </div>
+
           <h2 className="text-sm font-semibold text-gray-500 mb-2">حركة النقد الفعلية (لإغلاق الصندوق)</h2>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <StatCard label="دفعات مستلمة من المشترين" value={formatCurrency(closing.paymentsReceivedFromMerchants)} tone="positive" />

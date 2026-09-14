@@ -610,9 +610,17 @@ public class ReportService : IReportService
         var totalBoxes = invoicesToday.Sum(i => i.Boxes);
         var totalCartons = invoicesToday.Sum(i => i.Cartons);
 
+        // Sacks move on their own ledger, not with an invoice, so they are counted from there.
+        var sacksToday = await _db.ContainerMovements
+            .Where(m => m.Type == ContainerType.Sack && m.Date >= dayStart && m.Date < dayEnd)
+            .Select(m => new { m.Direction, m.Quantity })
+            .ToListAsync();
+        var sacksOut = sacksToday.Where(m => m.Direction == ContainerDirection.Out).Sum(m => m.Quantity);
+        var sacksIn = sacksToday.Where(m => m.Direction == ContainerDirection.In).Sum(m => m.Quantity);
+
         return new DailyClosingDto(
             dayStart, invoiceCount, totalSalesValue, totalCommission,
-            totalBoxes, totalCartons,
+            totalBoxes, totalCartons, sacksOut, sacksIn,
             boxFeeIncome, woodIncome, driverBoxFeeCost, keptPassThrough, returnsCommissionCredit,
             totalExpenses,
             earnedToday - returnsCommissionCredit - totalExpenses,

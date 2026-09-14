@@ -594,6 +594,9 @@ export interface DailyClosingDto {
   totalBoxes: number;
   /** Cartons that went out. Counted, charged to nobody. */
   totalCartons: number;
+  /** مخالات handed out and taken back on the day — from the sacks ledger, not from any invoice. */
+  sacksOut: number;
+  sacksIn: number;
   /** رسوم الصناديق charged to buyers — the market keeps it. */
   boxFeeIncome: number;
   /** سعر الخشب charged to buyers — the market keeps this too. */

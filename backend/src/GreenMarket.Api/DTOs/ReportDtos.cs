@@ -162,6 +162,16 @@ public record DailyClosingDto(
     /// <summary>عدد الكرتون that went out. Counted, and charged to nobody — it is here so the day's
     /// containers are all visible in one place, not because any money hangs on it.</summary>
     decimal TotalCartons,
+    /// <summary>
+    /// مخالات handed out and taken back on the day, from the sacks ledger rather than from any
+    /// invoice — they move on their own, not with produce.
+    ///
+    /// Here for the same reason the carton count is: the day's containers belong in one place, and
+    /// a closing that counted crates and cartons but not sacks left whoever reads it to remember
+    /// that a third kind exists and go looking for it on another screen.
+    /// </summary>
+    decimal SacksOut,
+    decimal SacksIn,
     /// <summary>رسوم الصناديق charged to buyers on the day's invoices — the market keeps this.</summary>
     decimal BoxFeeIncome,
     /// <summary>سعر الخشب charged to buyers — the market keeps this too; neither the seller nor

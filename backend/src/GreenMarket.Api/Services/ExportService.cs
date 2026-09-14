@@ -1930,6 +1930,10 @@ public class ExportService : IExportService
             ("Payments received from merchants", $"₪ {closing.PaymentsReceivedFromMerchants:0.##}"),
             ("Payments paid to farmers", $"₪ {closing.PaymentsPaidToFarmers:0.##}"),
             ("Net cash flow today", $"₪ {netCashFlow:0.##}"),
+            // Last, and away from the money: sacks earn the market nothing, and a count printed
+            // among figures that do would read as if it did.
+            ("Sacks handed out", closing.SacksOut.ToString("0.###")),
+            ("Sacks returned", closing.SacksIn.ToString("0.###")),
         };
 
         var document = Document.Create(container =>

@@ -29,6 +29,17 @@ public class ContainerMovement : AuditableEntity
     /// <summary>Crates and sacks are tracked apart — see ContainerType.</summary>
     public ContainerType Type { get; set; }
 
+    /// <summary>
+    /// Which kind of sack — a colour, a shape. Only ever set when <see cref="Type"/> is Sack;
+    /// crates are not distinguished this way.
+    ///
+    /// Nullable, and it has to stay nullable: every sack movement recorded before kinds existed
+    /// has none, and those rows are still sacks somebody is still holding. They are counted under
+    /// "بدون نوع" rather than dropped or assigned to a colour nobody chose.
+    /// </summary>
+    public int? SackKindId { get; set; }
+    public SackKind? SackKind { get; set; }
+
     /// <summary>Out = the market handed them over; In = they came back.</summary>
     public ContainerDirection Direction { get; set; }
 

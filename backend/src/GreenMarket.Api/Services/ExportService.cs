@@ -99,6 +99,9 @@ public interface IExportService
     /// <summary>"قيمة الديون" print button — see GenerateDebtsOverviewPdf's own doc comment.</summary>
     byte[] GenerateDebtsOverviewPdf(DebtsOverviewDto data, CompanyInfo company);
 
+    /// <summary>"المخالات" — the whole position on one page; see GenerateSacksOverviewPdf.</summary>
+    byte[] GenerateSacksOverviewPdf(SacksOverviewDto data, CompanyInfo company);
+
     /// <summary>"كشف حساب" print button on a partner's own farmer/driver/merchant account page —
     /// see GenerateAccountStatementPdf's own doc comment.</summary>
     byte[] GenerateAccountStatementPdf(string partnerName, string title, IReadOnlyList<StatementLineDto> lines, decimal remaining, CompanyInfo company);
@@ -1978,6 +1981,141 @@ public class ExportService : IExportService
     /// company-header PDFs (GenerateFarmerItemsStatementPdf etc.), not the plain English
     /// SimpleReportToPdf used for the Reports page's internal Excel/PDF exports.
     /// </summary>
+    /// <summary>
+    /// The sacks position on one page: the market's own total per kind, then every person who is
+    /// not square, then the movement log behind both.
+    ///
+    /// All three, because the argument this document settles is never just "how many" — it is
+    /// "how many of WHICH, with WHOM, and since WHEN". A total on its own is the version of this
+    /// nobody can act on.
+    /// </summary>
+    public byte[] GenerateSacksOverviewPdf(SacksOverviewDto data, CompanyInfo company)
+    {
+        var document = Document.Create(container =>
+        {
+            container.Page(page =>
+            {
+                page.Size(PageSizes.A4);
+                page.Margin(30);
+                page.DefaultTextStyle(x => x.FontSize(10).FontFamily(PdfFontFamily));
+
+                page.Header().ContentFromRightToLeft().Column(col =>
+                {
+                    CompanyHeaderBlock(col, company, 50f, textCol =>
+                    {
+                        textCol.Item().AlignCenter().Text(company.Name).Bold().FontSize(15);
+                        if (!string.IsNullOrWhiteSpace(company.Phone))
+                            textCol.Item().AlignCenter().Text($"هاتف: {company.Phone}").FontSize(9);
+                    });
+                    col.Item().PaddingTop(6).LineHorizontal(1).LineColor(PrintInk.Text);
+                    col.Item().PaddingTop(6).AlignCenter().Text("كشف المخالات").Bold().FontSize(14);
+                    if (data.DateFrom is not null || data.DateTo is not null)
+                    {
+                        var from = data.DateFrom is not null ? data.DateFrom.Value.ToString("yyyy-MM-dd") : "البداية";
+                        var to = data.DateTo is not null ? data.DateTo.Value.ToString("yyyy-MM-dd") : "اليوم";
+                        col.Item().AlignCenter().Text($"الفترة: من {from} إلى {to}").FontSize(10);
+                    }
+                    col.Item().AlignCenter().Text($"تاريخ الطباعة: {DateTimeOffset.Now:yyyy-MM-dd}").FontSize(9).FontColor(PrintInk.Secondary);
+                });
+
+                page.Content().ContentFromRightToLeft().PaddingVertical(10).Column(main =>
+                {
+                    main.Spacing(14);
+
+                    main.Item().Text("الإجمالي حسب النوع").Bold().FontSize(12);
+                    main.Item().Table(table =>
+                    {
+                        table.ColumnsDefinition(c => { c.RelativeColumn(3); c.RelativeColumn(2); c.RelativeColumn(2); c.RelativeColumn(2); });
+                        table.Header(h =>
+                        {
+                            h.Cell().Element(HeaderCell).AlignRight().Text("النوع");
+                            h.Cell().Element(HeaderCell).AlignRight().Text("طلع");
+                            h.Cell().Element(HeaderCell).AlignRight().Text("رجع");
+                            h.Cell().Element(HeaderCell).AlignRight().Text("برا (عند الناس)");
+                        });
+                        for (var i = 0; i < data.Totals.Count; i++)
+                        {
+                            var t = data.Totals[i];
+                            var shaded = i % 2 == 1;
+                            table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(t.SackKindName);
+                            table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(t.Out.ToString("0.###"));
+                            table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(t.In.ToString("0.###"));
+                            table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(t.Outstanding.ToString("0.###")).Bold();
+                        }
+                        if (data.Totals.Count > 0)
+                        {
+                            table.Cell().Element(c => DataCell(c, true)).AlignRight().Text("الإجمالي").Bold();
+                            table.Cell().Element(c => DataCell(c, true)).AlignRight().Text(data.Totals.Sum(t => t.Out).ToString("0.###")).Bold();
+                            table.Cell().Element(c => DataCell(c, true)).AlignRight().Text(data.Totals.Sum(t => t.In).ToString("0.###")).Bold();
+                            table.Cell().Element(c => DataCell(c, true)).AlignRight().Text(data.Totals.Sum(t => t.Outstanding).ToString("0.###")).Bold();
+                        }
+                    });
+
+                    main.Item().Text("عند مين، وأي نوع").Bold().FontSize(12);
+                    main.Item().Table(table =>
+                    {
+                        table.ColumnsDefinition(c => { c.RelativeColumn(4); c.RelativeColumn(3); c.RelativeColumn(2); c.RelativeColumn(2); c.RelativeColumn(2); });
+                        table.Header(h =>
+                        {
+                            h.Cell().Element(HeaderCell).AlignRight().Text("الشخص");
+                            h.Cell().Element(HeaderCell).AlignRight().Text("النوع");
+                            h.Cell().Element(HeaderCell).AlignRight().Text("سحب");
+                            h.Cell().Element(HeaderCell).AlignRight().Text("رجّع");
+                            h.Cell().Element(HeaderCell).AlignRight().Text("عليه");
+                        });
+                        for (var i = 0; i < data.ByPartner.Count; i++)
+                        {
+                            var p = data.ByPartner[i];
+                            var shaded = i % 2 == 1;
+                            table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(p.PartnerName);
+                            table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(p.SackKindName);
+                            table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(p.Out.ToString("0.###"));
+                            table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(p.In.ToString("0.###"));
+                            table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(p.Outstanding.ToString("0.###")).Bold();
+                        }
+                        if (data.ByPartner.Count == 0)
+                            table.Cell().ColumnSpan(5).Element(c => DataCell(c, false)).AlignCenter().Text("لا توجد حركات بهذه الفترة").FontColor(PrintInk.Secondary);
+                    });
+
+                    main.Item().Text("سجل الحركات").Bold().FontSize(12);
+                    main.Item().Table(table =>
+                    {
+                        table.ColumnsDefinition(c => { c.RelativeColumn(2); c.RelativeColumn(4); c.RelativeColumn(3); c.RelativeColumn(2); c.RelativeColumn(2); });
+                        table.Header(h =>
+                        {
+                            h.Cell().Element(HeaderCell).AlignRight().Text("التاريخ");
+                            h.Cell().Element(HeaderCell).AlignRight().Text("الشخص");
+                            h.Cell().Element(HeaderCell).AlignRight().Text("النوع");
+                            h.Cell().Element(HeaderCell).AlignRight().Text("الحركة");
+                            h.Cell().Element(HeaderCell).AlignRight().Text("العدد");
+                        });
+                        for (var i = 0; i < data.Movements.Count; i++)
+                        {
+                            var m = data.Movements[i];
+                            var shaded = i % 2 == 1;
+                            table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text($"{m.Date:yyyy-MM-dd}");
+                            table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(m.PartnerName);
+                            table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(m.SackKindName);
+                            table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(m.Direction == "Out" ? "سحب" : "ارتجاع");
+                            table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(m.Quantity.ToString("0.###"));
+                        }
+                    });
+                });
+
+                page.Footer().ContentFromRightToLeft().AlignCenter()
+                    .DefaultTextStyle(x => x.FontSize(8).FontColor(PrintInk.Secondary)).Text(x =>
+                {
+                    x.Span("صفحة ");
+                    x.CurrentPageNumber();
+                    x.Span(" من ");
+                    x.TotalPages();
+                });
+            });
+        });
+
+        return document.GeneratePdf();
+    }
+
     public byte[] GenerateDebtsOverviewPdf(DebtsOverviewDto data, CompanyInfo company)
     {
         var document = Document.Create(container =>

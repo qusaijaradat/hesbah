@@ -298,6 +298,50 @@ Write("10-farmer-statement-no-transport.pdf",
             new FarmerStatementDriverSide(0m, 0m), farmerStatementLines),
         DateTimeOffset.Now.AddDays(-7), DateTimeOffset.Now, company, previousBalance: 0m));
 
+
+// المخالات — the market's total per kind, who is holding what, and the log behind both.
+//
+// The fixture is the case the whole feature exists for: fifty sacks out and fifty back, and NOT
+// square. Thirty red are still with the buyer and thirty yellow are now the market's to give back.
+// A single count of sacks says they are even, which is the answer this report has to disagree with.
+var sackMovements = new List<SackMovementDto>
+{
+    new(1, 7, "محل أبو عمار للخضار", 1, "أحمر", "Out", DateTimeOffset.Now.AddDays(-5), 30m, null),
+    new(2, 7, "محل أبو عمار للخضار", 2, "أصفر", "Out", DateTimeOffset.Now.AddDays(-5), 20m, null),
+    new(3, 7, "محل أبو عمار للخضار", 2, "أصفر", "In", DateTimeOffset.Now.AddDays(-1), 50m, "رجّع الخمسين كلهم أصفر"),
+    // A row from before kinds existed: still sacks somebody is holding, counted under "بدون نوع".
+    new(4, 9, "المزارع سامي حسن", null, "بدون نوع", "Out", DateTimeOffset.Now.AddDays(-9), 12m, null),
+};
+
+var sackTotals = sackMovements
+    .GroupBy(m => (m.SackKindId, m.SackKindName))
+    .Select(g => new SackKindTotalDto(
+        g.Key.SackKindId, g.Key.SackKindName,
+        g.Where(x => x.Direction == "Out").Sum(x => x.Quantity),
+        g.Where(x => x.Direction == "In").Sum(x => x.Quantity),
+        g.Where(x => x.Direction == "Out").Sum(x => x.Quantity) - g.Where(x => x.Direction == "In").Sum(x => x.Quantity)))
+    .ToList();
+
+var sackByPartner = sackMovements
+    .GroupBy(m => (m.PartnerId, m.PartnerName, m.SackKindId, m.SackKindName))
+    .Select(g => new SackPartnerKindDto(
+        g.Key.PartnerId, g.Key.PartnerName, g.Key.SackKindId, g.Key.SackKindName,
+        g.Where(x => x.Direction == "Out").Sum(x => x.Quantity),
+        g.Where(x => x.Direction == "In").Sum(x => x.Quantity),
+        g.Where(x => x.Direction == "Out").Sum(x => x.Quantity) - g.Where(x => x.Direction == "In").Sum(x => x.Quantity)))
+    .OrderByDescending(p => p.Outstanding)
+    .ToList();
+
+// Derived from the movements above rather than typed out beside them, so the three tables on the
+// page cannot disagree with each other the way three hand-written lists eventually would.
+Same("red is still out", sackTotals.Single(t => t.SackKindName == "أحمر").Outstanding, 30m);
+Same("yellow came back over", sackTotals.Single(t => t.SackKindName == "أصفر").Outstanding, -30m);
+Same("fifty out and fifty back nets to zero across kinds", sackTotals.Sum(t => t.Outstanding), 12m);
+
+Write("15-sacks-overview.pdf", export.GenerateSacksOverviewPdf(
+    new SacksOverviewDto(DateTimeOffset.Now.AddDays(-30), DateTimeOffset.Now, sackTotals, sackByPartner, sackMovements),
+    company));
+
 Console.WriteLine($"\n{outDir}");
 
 void Write(string name, byte[] bytes)

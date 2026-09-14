@@ -21,6 +21,13 @@ public class ContainerMovementConfiguration : IEntityTypeConfiguration<Container
             .HasForeignKey(x => x.PartnerId)
             .OnDelete(DeleteBehavior.Restrict);
 
+        // Restrict, not Cascade: deleting a kind must never take movements with it. A kind is
+        // deactivated instead — see SackKind.IsActive.
+        builder.HasOne(x => x.SackKind)
+            .WithMany()
+            .HasForeignKey(x => x.SackKindId)
+            .OnDelete(DeleteBehavior.Restrict);
+
         builder.HasIndex(x => x.PartnerId);
         builder.HasIndex(x => x.Date);
         // Every balance query filters by both at once.

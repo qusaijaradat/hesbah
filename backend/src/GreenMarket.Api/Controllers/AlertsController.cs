@@ -32,6 +32,7 @@ public class AlertsController : ControllerBase
         var permissions = User.FindAll(ClaimTypesExtra.Permission).Select(c => c.Value).ToHashSet();
         return Ok(await _alertService.GetAsync(
             includeChecks: permissions.Contains(PermissionKeys.PaymentsView),
-            includeInvoices: permissions.Contains(PermissionKeys.InvoicesView)));
+            includeInvoices: permissions.Contains(PermissionKeys.InvoicesView),
+            includeSacks: permissions.Contains(PermissionKeys.SacksView)));
     }
 }

@@ -46,6 +46,14 @@ const ALERT_TEXT: Record<AlertKind, {
     linkLabel: "عرض الفواتير",
     title: (a) => `${a.count === 1 ? "فاتورة" : `${a.count} فواتير`} فيها أصناف لسا غير مسعّرة`,
   },
+  StaleSacks: {
+    icon: "🧺",
+    link: "/sacks",
+    linkLabel: "عرض المخالات",
+    // The count is people, the amount is sacks — a banner that said only one of them would send
+    // somebody to the screen to find out which.
+    title: (a) => `${a.count === 1 ? "شخص" : `${a.count} أشخاص`} ماسكين ${a.amount} مخلاة من أكثر من شهر`,
+  },
 };
 
 /** Critical reads as a problem, warning as a reminder — the two are visually distinct on purpose,

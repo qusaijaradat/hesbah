@@ -36,7 +36,7 @@ public interface IAlertService
     /// own permissions — a role without payments.view must not learn about checks through a
     /// banner it was never allowed to see the page for.
     /// </summary>
-    Task<IReadOnlyList<AlertDto>> GetAsync(bool includeChecks, bool includeInvoices);
+    Task<IReadOnlyList<AlertDto>> GetAsync(bool includeChecks, bool includeInvoices, bool includeSacks);
 }
 
 public class AlertService : IAlertService
@@ -48,7 +48,17 @@ public class AlertService : IAlertService
     /// <summary>How many names an alert carries before it just says how many there are.</summary>
     private const int MaxNames = 4;
 
-    public async Task<IReadOnlyList<AlertDto>> GetAsync(bool includeChecks, bool includeInvoices)
+    /// <summary>
+    /// How long a person can hold the market's sacks before it is worth saying so out loud.
+    ///
+    /// Thirty days, chosen by the market. Sacks go out and come back within days, so this is long
+    /// enough that nobody is nagged about this morning's handover and short enough to still be
+    /// worth chasing. A banner that fires too easily stops being read, which costs more than
+    /// having no banner.
+    /// </summary>
+    private const int StaleSackDays = 30;
+
+    public async Task<IReadOnlyList<AlertDto>> GetAsync(bool includeChecks, bool includeInvoices, bool includeSacks)
     {
         var alerts = new List<AlertDto>();
 
@@ -87,6 +97,45 @@ public class AlertService : IAlertService
                 alerts.Add(new AlertDto(
                     AlertKind.UnpricedInvoices, AlertSeverity.Warning,
                     unpriced.Count, 0m, Names(unpriced)));
+        }
+
+        if (includeSacks)
+        {
+            // Out minus in, per PERSON rather than per kind: the question a banner answers is who
+            // to call, and somebody square overall is nobody to call even if one colour is off.
+            var byPartner = await _db.ContainerMovements
+                .Where(m => m.Type == ContainerType.Sack)
+                .GroupBy(m => new { m.PartnerId, m.Partner.Name })
+                .Select(g => new
+                {
+                    g.Key.Name,
+                    Held = g.Sum(m => m.Direction == ContainerDirection.Out ? m.Quantity : -m.Quantity),
+                    LastMoved = g.Max(m => m.Date),
+                })
+                .ToListAsync();
+
+            // Sacks a seller brought in with his produce are the market holding HIS — they reduce
+            // what he owes, exactly as they do on the sacks screen, so the two can never disagree
+            // about whether somebody is square.
+            var brought = await _db.FarmerGoodsEntries
+                .Where(e => e.SackQuantity > 0)
+                .GroupBy(e => e.Farmer.Name)
+                .Select(g => new { Name = g.Key, Qty = g.Sum(e => e.SackQuantity) })
+                .ToDictionaryAsync(x => x.Name, x => x.Qty);
+
+            var cutoff = DateTimeOffset.UtcNow.AddDays(-StaleSackDays);
+            var stale = byPartner
+                .Select(p => new { p.Name, Held = p.Held - brought.GetValueOrDefault(p.Name), p.LastMoved })
+                // Held > 0 only: somebody the market owes sacks to is not somebody to chase.
+                .Where(p => p.Held > 0 && p.LastMoved < cutoff)
+                .OrderByDescending(p => p.Held)
+                .ToList();
+
+            if (stale.Count > 0)
+                alerts.Add(new AlertDto(
+                    AlertKind.StaleSacks, AlertSeverity.Warning,
+                    stale.Count, stale.Sum(p => p.Held),
+                    Names(stale.Select(p => p.Name))));
         }
 
         // Worst first, so the row that matters most is the one read first.

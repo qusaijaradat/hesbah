@@ -2,6 +2,7 @@ using GreenMarket.Api.Common;
 using GreenMarket.Api.DTOs;
 using GreenMarket.Domain.Entities;
 using GreenMarket.Domain.Enums;
+using GreenMarket.Domain.Services;
 using GreenMarket.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
@@ -141,6 +142,17 @@ public class RoleService : IRoleService
         return ToDto(role);
     }
 
-    private static RoleDto ToDto(Role r) =>
-        new(r.Id, r.Name, r.Description, r.RolePermissions.Select(rp => rp.Permission.Key).ToList());
+    /// <summary>Shared with UserService, which lists the same roles for the user form: the
+    /// AlertFamilies half has a rule behind it, and a second copy of this mapping would be a
+    /// second place for that rule to go stale.</summary>
+    internal static RoleDto ToDto(Role r)
+    {
+        var keys = r.RolePermissions.Select(rp => rp.Permission.Key).ToList();
+        var visible = AlertVisibility.For(keys);
+        var families = new List<string>(3);
+        if (visible.Checks) families.Add("Checks");
+        if (visible.Invoices) families.Add("Invoices");
+        if (visible.Sacks) families.Add("Sacks");
+        return new RoleDto(r.Id, r.Name, r.Description, keys, families);
+    }
 }

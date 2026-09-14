@@ -113,6 +113,22 @@ function groupPermissions(permissions: PermissionDto[]) {
   return Array.from(groups.entries()).map(([prefix, perms]) => [prefix, sortGroupPermissions(perms)] as const);
 }
 
+/**
+ * The server decides WHICH families a role receives (RoleDto.alertFamilies); this only names
+ * them in Arabic — the same split the alerts banner uses, where the backend returns the facts
+ * and the screen decides how to say them.
+ */
+const ALERT_FAMILY_LABEL: Record<string, string> = {
+  Checks: "شيكات",
+  Invoices: "فواتير غير مسعّرة",
+  Sacks: "مخالات",
+};
+
+function alertsSummary(role: { alertFamilies?: string[] }): string {
+  if (!role.alertFamilies || role.alertFamilies.length === 0) return "ما بيوصلو ولا تنبيه";
+  return role.alertFamilies.map((f) => ALERT_FAMILY_LABEL[f] ?? f).join("، ");
+}
+
 export function RolesPage() {
   const [roles, setRoles] = useState<RoleDto[]>([]);
   const [permissions, setPermissions] = useState<PermissionDto[]>([]);
@@ -184,6 +200,7 @@ export function RolesPage() {
             value={(r) => `${r.permissions.length} صلاحية`}
             details={(r) => [
               { label: "الوصف", value: r.description || "—" },
+              { label: "التنبيهات", value: alertsSummary(r) },
             ]}
             empty="لا توجد أدوار"
           />
@@ -199,7 +216,7 @@ export function RolesPage() {
                   onChange={() => selection.toggleAll(roles.map((r) => r.id))}
                 />
               </th>
-              <th>الدور</th><th>الوصف</th><th>عدد الصلاحيات</th><th></th>
+              <th>الدور</th><th>الوصف</th><th>عدد الصلاحيات</th><th>التنبيهات الي بتوصلو</th><th></th>
             </tr>
           </thead>
           <tbody>
@@ -211,6 +228,9 @@ export function RolesPage() {
                 <td className="font-medium">{r.name}</td>
                 <td className="text-gray-500">{r.description || "—"}</td>
                 <td>{r.permissions.length}</td>
+                <td className={r.alertFamilies?.length ? "text-sm" : "text-sm text-gray-400"}>
+                  {alertsSummary(r)}
+                </td>
                 <td className="whitespace-nowrap">
                   <button className="text-brand-700 text-sm hover:underline ms-2" onClick={() => setEditing(r)}>تعديل</button>
                   <button className="text-red-500 text-sm hover:underline ms-2" disabled={deletingId === r.id} onClick={() => handleDelete(r)}>

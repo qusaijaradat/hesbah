@@ -38,6 +38,17 @@ export interface RoleDto {
   name: string;
   description?: string;
   permissions: string[];
+  /**
+   * Which alerts this role actually receives — "Checks" | "Invoices" | "Sacks", decided by the
+   * server (Domain.Services.AlertVisibility) and never recomputed here.
+   *
+   * Not derivable from the permission list by eye, which is the whole reason it is sent: an alert
+   * needs both the permission that OPENS the page and the one that FIXES the thing, so a role
+   * holding invoices.view without invoices.edit receives nothing about invoices while looking as
+   * though it should. Working that out again in TypeScript would be a second copy of a rule that
+   * has to stay identical on a phone, on a laptop, and in the morning's notification.
+   */
+  alertFamilies: string[];
 }
 
 export interface PartnerDto {

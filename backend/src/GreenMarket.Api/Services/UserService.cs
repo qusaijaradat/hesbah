@@ -126,7 +126,7 @@ public class UserService : IUserService
     public async Task<IReadOnlyList<RoleDto>> ListRolesAsync()
     {
         var roles = await _db.Roles.Include(r => r.RolePermissions).ThenInclude(rp => rp.Permission).ToListAsync();
-        return roles.Select(r => new RoleDto(r.Id, r.Name, r.Description, r.RolePermissions.Select(rp => rp.Permission.Key).ToList())).ToList();
+        return roles.Select(RoleService.ToDto).ToList();
     }
 
     private static UserDto ToDto(User u, List<string> permissions) =>

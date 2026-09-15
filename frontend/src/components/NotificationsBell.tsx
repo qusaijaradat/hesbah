@@ -40,11 +40,38 @@ export function NotificationsBell() {
       .catch(() => { if (!cancelled) setAlerts([]); });
 
     load();
+
     // The books move while somebody has the app open all day — a check falls overdue at midnight,
-    // an invoice gets priced. Cheap enough at this interval, and it is the same endpoint the page
-    // already calls once.
-    const timer = window.setInterval(load, REFRESH_MS);
-    return () => { cancelled = true; window.clearInterval(timer); };
+    // an invoice gets priced — so this polls. But only while somebody is LOOKING at it.
+    //
+    // A market phone lives in a pocket with this app open behind whatever else is on screen. A
+    // timer that keeps firing there is a request every five minutes, all day, to refresh a bell
+    // nobody can see — paid for in battery on the phone and in queries on the server, by every
+    // staff member at once. Hidden tabs stop; coming back re-reads immediately, which is also when
+    // the answer matters most, because it is the moment somebody is about to look at it.
+    let timer = 0;
+    function start() {
+      if (timer) return;
+      timer = window.setInterval(load, REFRESH_MS);
+    }
+    function stop() {
+      if (!timer) return;
+      window.clearInterval(timer);
+      timer = 0;
+    }
+    function onVisibility() {
+      if (document.hidden) { stop(); return; }
+      load();
+      start();
+    }
+
+    if (!document.hidden) start();
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      cancelled = true;
+      stop();
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
   }, []);
 
   // Clicking anywhere else closes it, the way every menu like this behaves.

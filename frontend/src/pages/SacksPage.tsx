@@ -268,7 +268,7 @@ function MovementForm({ title, action, kinds, onKinds, onClose, onDone, onError 
       };
       const saved = action === "withdraw" ? await withdrawSacks(payload) : await returnSacks(payload);
       const count = saved.reduce((sum, m) => sum + m.quantity, 0);
-      onDone(`${action === "withdraw" ? "انسحب" : "انرجع"} ${count} مخلاة على ${partner.name} (${saved.length} نوع).`);
+      onDone(`${action === "withdraw" ? "انسحب" : "انرجع"} ${count} مخال على ${partner.name} (${saved.length} نوع).`);
       setLines([emptyLine()]);
       setNotes("");
     } catch (err) {
@@ -350,7 +350,7 @@ function MovementForm({ title, action, kinds, onKinds, onClose, onDone, onError 
 
       <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:flex-wrap">
         <button className="btn-primary w-full sm:w-auto" onClick={submit} disabled={busy}>
-          {busy ? "جاري الحفظ..." : `حفظ (${total} مخلاة)`}
+          {busy ? "جاري الحفظ..." : `حفظ (${total} مخال)`}
         </button>
         <button className="btn-secondary w-full sm:w-auto" onClick={onClose} disabled={busy}>إلغاء</button>
         <span className="text-xs text-gray-500">كل نوع بينحفظ بسطره، والكل بعملية وحدة.</span>
@@ -568,7 +568,7 @@ function StockTable({ kinds, canEdit, onSaved, onError }: {
   return (
     <div className="card">
       <div className="px-4 pt-4 text-xs text-gray-500">
-        اكتب كم مخلاة عندك من كل نوع — الكل، سواء بالمخزن أو برا عند الناس. الي بالمخزن بينحسب لحاله:
+        اكتب كم مخال عندك من كل نوع — الكل، سواء بالمخزن أو برا عند الناس. الي بالمخزن بينحسب لحاله:
         <span className="font-semibold"> عندي − برا</span>.
       </div>
 

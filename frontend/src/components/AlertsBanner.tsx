@@ -52,7 +52,7 @@ const ALERT_TEXT: Record<AlertKind, {
     linkLabel: "عرض المخالات",
     // The count is people, the amount is sacks — a banner that said only one of them would send
     // somebody to the screen to find out which.
-    title: (a) => `${a.count === 1 ? "شخص" : `${a.count} أشخاص`} ماسكين ${a.amount} مخلاة من أكثر من شهر`,
+    title: (a) => `${a.count === 1 ? "شخص" : `${a.count} أشخاص`} ماسكين ${a.amount} مخال من أكثر من شهر`,
   },
 };
 

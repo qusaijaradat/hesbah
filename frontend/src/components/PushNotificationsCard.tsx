@@ -35,7 +35,7 @@ export function PushNotificationsCard() {
       } catch {
         // A status call that fails is not worth a red box on the settings page — the switch simply
         // does not appear, which is the same outcome as the feature being off.
-        if (alive) setStatus({ enabled: false, publicKey: null, deviceCount: 0 });
+        if (alive) setStatus({ enabled: false, publicKey: null, deviceCount: 0, receivesAny: false });
       }
     })();
     return () => { alive = false; };
@@ -92,6 +92,13 @@ export function PushNotificationsCard() {
         عند الناس من زمان. <span className="font-medium">وبتوصلك بس الأشياء الي صلاحيتك بتوصلها</span>:
         إذا عندك صلاحية الدفعات والشيكات بس، ما بيوصلك إشي عن الفواتير.
       </p>
+
+      {!status.receivesAny && (
+        <div className="text-sm bg-gray-50 text-gray-600 rounded-md p-3 mb-3">
+          صلاحياتك حاليًا ما بتوصل لأي تنبيه، فحتى لو فعّلتها ما رح يوصلك إشي. التنبيه بيوصل
+          لمين بيقدر يصلّح الإشي — راجع صفحة «الأدوار والصلاحيات».
+        </div>
+      )}
 
       {blocker ? (
         <div className={`text-sm rounded-md p-3 ${blocker === "needs-install" ? "bg-amber-50 text-amber-800" : "bg-gray-50 text-gray-600"}`}>

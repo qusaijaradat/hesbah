@@ -1,3 +1,4 @@
+using GreenMarket.Api.Auth;
 using GreenMarket.Api.DTOs;
 using GreenMarket.Api.Services;
 using GreenMarket.Infrastructure.Persistence;
@@ -35,7 +36,8 @@ public class PushController : ControllerBase
     /// many devices this person already has registered.</summary>
     [HttpGet("status")]
     public async Task<ActionResult<PushStatusDto>> Status(CancellationToken ct) =>
-        Ok(await _push.GetStatusAsync(UserId, ct));
+        Ok(await _push.GetStatusAsync(
+            UserId, User.FindAll(ClaimTypesExtra.Permission).Select(c => c.Value), ct));
 
     [HttpPost("subscribe")]
     public async Task<ActionResult> Subscribe([FromBody] PushSubscribeRequest request, CancellationToken ct)

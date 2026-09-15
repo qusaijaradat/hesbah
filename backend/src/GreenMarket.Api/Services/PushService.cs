@@ -2,6 +2,7 @@ using System.Net;
 using System.Text.Json;
 using GreenMarket.Api.Common;
 using GreenMarket.Api.DTOs;
+using GreenMarket.Domain.Services;
 using GreenMarket.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
@@ -26,7 +27,7 @@ namespace GreenMarket.Api.Services;
 /// </summary>
 public interface IPushService
 {
-    Task<PushStatusDto> GetStatusAsync(int userId, CancellationToken ct = default);
+    Task<PushStatusDto> GetStatusAsync(int userId, IEnumerable<string> permissions, CancellationToken ct = default);
     Task SubscribeAsync(int userId, PushSubscribeRequest request, CancellationToken ct = default);
 
     /// <summary>By endpoint, and only this user's — one device signing out must not silence another.</summary>
@@ -56,11 +57,12 @@ public class PushService : IPushService
         _logger = logger;
     }
 
-    public async Task<PushStatusDto> GetStatusAsync(int userId, CancellationToken ct = default)
+    public async Task<PushStatusDto> GetStatusAsync(
+        int userId, IEnumerable<string> permissions, CancellationToken ct = default)
     {
-        if (!_settings.IsConfigured) return new PushStatusDto(false, null, 0);
+        if (!_settings.IsConfigured) return new PushStatusDto(false, null, 0, false);
         var count = await _db.PushSubscriptions.CountAsync(s => s.UserId == userId, ct);
-        return new PushStatusDto(true, _settings.PublicKey, count);
+        return new PushStatusDto(true, _settings.PublicKey, count, !AlertVisibility.For(permissions).None);
     }
 
     public async Task SubscribeAsync(int userId, PushSubscribeRequest request, CancellationToken ct = default)

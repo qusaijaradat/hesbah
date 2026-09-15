@@ -35,7 +35,7 @@ import { CollapsibleRows } from "../components/CollapsibleRows";
 // Carton is still named here even though it can no longer be chosen: a movement recorded against
 // it before cartons stopped being tracked still has to render as a word rather than a blank.
 const TYPE_LABEL: Record<ContainerType, string> = { Box: "صناديق", Carton: "كرتون", Sack: "مخالات" };
-const TYPE_UNIT: Record<ContainerType, string> = { Box: "صندوق", Carton: "كرتونة", Sack: "مخلاة" };
+const TYPE_UNIT: Record<ContainerType, string> = { Box: "صندوق", Carton: "كرتونة", Sack: "مخال" };
 
 export function ContainersPage() {
   const { hasPermission } = useAuth();

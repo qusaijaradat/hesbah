@@ -2,6 +2,7 @@ import { useState, type ReactNode } from "react";
 import { Link, NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { AlertsBanner } from "./AlertsBanner";
+import { PushPrompt } from "./PushPrompt";
 
 /**
  * Exported so the landing redirect can be derived from the SAME list the sidebar renders. A user
@@ -127,6 +128,10 @@ export function Layout({ children }: { children: ReactNode }) {
             check here: the endpoint gates each alert kind on the caller's own permissions and
             returns an empty list when they can see none, so the banner renders nothing on its
             own rather than needing the layout to guess which permissions its contents need. */}
+        {/* Above the alerts it is offering to deliver. Asks once, stays quiet for two weeks
+            after "مش هلأ", and never comes back once this device is subscribed. */}
+        <PushPrompt />
+
         <AlertsBanner />
 
         <main className="flex-1 p-4 sm:p-6 bg-gray-50 min-w-0">{children}</main>

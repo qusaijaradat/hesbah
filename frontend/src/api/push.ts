@@ -6,6 +6,12 @@ export interface PushStatusDto {
   publicKey: string | null;
   /** How many devices THIS user has registered — a phone and a tablet count as two. */
   deviceCount: number;
+  /**
+   * Whether this user's permissions reach ANY alert at all, decided by the server. False means
+   * the app must not ASK — agreeing and then never hearing anything teaches somebody to refuse
+   * the next thing this app asks for. The settings switch stays available to them either way.
+   */
+  receivesAny: boolean;
 }
 
 export async function pushStatus() {

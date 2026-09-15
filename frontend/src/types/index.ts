@@ -101,7 +101,7 @@ export interface StatementLineDto {
   notes?: string | null;
 }
 
-/** Crates ("صندوق") and sacks ("مخلاة") are counted apart — one balance each per person.
+/** Crates ("صندوق") and sacks ("مخال") are counted apart — one balance each per person.
  *
  *  "Carton" is retired from tracking and kept only so a movement recorded against it before that
  *  still reads back. Cartons are counted on an invoice line and reported beside the crates, but

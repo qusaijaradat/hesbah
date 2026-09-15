@@ -3,7 +3,7 @@ using GreenMarket.Domain.Common;
 namespace GreenMarket.Domain.Entities;
 
 /// <summary>
-/// One kind of sack ("مخلاة") — a colour, a shape, a size. "أحمر", "أصفر", "كبير", whatever the
+/// One kind of sack ("مخال") — a colour, a shape, a size. "أحمر", "أصفر", "كبير", whatever the
 /// market actually distinguishes between when handing them out and getting them back.
 ///
 /// A table rather than an enum, because the market invents these and the market is not going to

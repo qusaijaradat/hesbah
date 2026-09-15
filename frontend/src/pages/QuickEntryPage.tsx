@@ -452,14 +452,14 @@ export function QuickEntryPage() {
                 <div className="flex gap-4 mt-3">
                   {hasSpeechRecognition() && (
                     <button
-                      className={`text-xs ${listening === idx ? "text-red-600 font-semibold" : "text-brand-700 hover:underline"}`}
+                      className={`btn-link text-xs ${listening === idx ? "text-red-600 font-semibold" : "text-brand-700 hover:underline"}`}
                       onClick={() => listen(idx)}
                     >
                       {listening === idx ? "● عم يسمع..." : "🎤 صوت"}
                     </button>
                   )}
                   {idx > 0 && (
-                    <button className="text-xs text-brand-700 hover:underline" onClick={() => copyDown(idx)}>
+                    <button className="btn-link text-xs text-brand-700 hover:underline" onClick={() => copyDown(idx)}>
                       ↑ زي فوق
                     </button>
                   )}
@@ -576,7 +576,7 @@ export function QuickEntryPage() {
                           being the way — which it is, and which works on both. */}
                       {hasSpeechRecognition() && (
                       <button
-                        className={`text-xs whitespace-nowrap ${listening === idx ? "text-red-600 font-semibold" : "text-brand-700 hover:underline"}`}
+                        className={`btn-link text-xs whitespace-nowrap ${listening === idx ? "text-red-600 font-semibold" : "text-brand-700 hover:underline"}`}
                         onClick={() => listen(idx)}
                         title="تسجيل مباشر — Chrome فقط. على الآيفون استعمل خانة الكلام فوق مع مايك لوحة المفاتيح."
                       >
@@ -585,7 +585,7 @@ export function QuickEntryPage() {
                       )}
                       {idx > 0 && (
                         <button
-                          className="text-xs text-brand-700 hover:underline whitespace-nowrap"
+                          className="btn-link text-xs text-brand-700 hover:underline whitespace-nowrap"
                           onClick={() => copyDown(idx)}
                           title="ينسخ البائع والسائق والصنف من السطر اللي فوق — المشتري بتعبيه انت"
                         >

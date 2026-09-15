@@ -308,7 +308,7 @@ function ExcludedPartnersPicker({ section }: { section: RoleSection }) {
             </span>
           ))}
           <button
-            type="button" className="text-xs text-gray-500 hover:underline self-center"
+            type="button" className="btn-link text-xs text-gray-500 hover:underline self-center"
             onClick={() => section.setExcluded([])}
           >
             مسح كل الاستثناءات

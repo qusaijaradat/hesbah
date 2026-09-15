@@ -123,7 +123,7 @@ export function ColumnFilterSummary<T>({ filters }: { filters: ReturnType<typeof
       <span className="text-gray-600">
         ظاهر <span className="font-semibold text-gray-900">{filters.rows.length}</span> من {filters.totalCount}
       </span>
-      <button className="text-brand-700 hover:underline" onClick={filters.clear}>
+      <button className="btn-link text-brand-700 hover:underline" onClick={filters.clear}>
         مسح الفلاتر ({filters.activeCount})
       </button>
     </div>

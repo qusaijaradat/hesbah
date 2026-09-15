@@ -252,11 +252,11 @@ export function InvoicePaymentsEditor({
                 </span>
                 {canDelete && (
                   row.deleted ? (
-                    <button type="button" className="text-xs text-brand-700 hover:underline" onClick={() => updateRow(row.id, { deleted: false })}>
+                    <button type="button" className="btn-link text-xs text-brand-700 hover:underline" onClick={() => updateRow(row.id, { deleted: false })}>
                       تراجع عن الحذف
                     </button>
                   ) : (
-                    <button type="button" className="text-xs text-red-500 hover:underline" onClick={() => updateRow(row.id, { deleted: true })}>
+                    <button type="button" className="btn-link text-xs text-red-500 hover:underline" onClick={() => updateRow(row.id, { deleted: true })}>
                       حذف
                     </button>
                   )
@@ -341,7 +341,7 @@ export function InvoicePaymentsEditor({
               onRemove={() => setNewLines((prev) => prev.filter((_, index) => index !== i))} showRemove
             />
           ))}
-          <button type="button" className="text-sm text-brand-700 hover:underline"
+          <button type="button" className="btn-link text-sm text-brand-700 hover:underline"
             onClick={() => setNewLines((prev) => [...prev, emptyLine()])}>
             + إضافة دفعة (نقدي أو شيكات)
           </button>

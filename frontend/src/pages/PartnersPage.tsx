@@ -301,10 +301,10 @@ export function PartnersPage() {
                       <Link to={`/partners/${p.id}/merchant-account`} className="text-brand-700 text-sm hover:underline ms-2">كشف حساب (مشتري)</Link>
                     )}
                     {canEdit && (
-                      <button className="text-gray-500 text-sm hover:underline ms-2" onClick={() => setEditing(p)}>تعديل</button>
+                      <button className="btn-link text-gray-500 text-sm hover:underline ms-2" onClick={() => setEditing(p)}>تعديل</button>
                     )}
                     {canDelete && (
-                      <button className="text-red-500 text-sm hover:underline ms-2" disabled={deletingId === p.id} onClick={() => handleDelete(p)}>
+                      <button className="btn-link text-red-500 text-sm hover:underline ms-2" disabled={deletingId === p.id} onClick={() => handleDelete(p)}>
                         {deletingId === p.id ? "جاري الحذف..." : "حذف"}
                       </button>
                     )}

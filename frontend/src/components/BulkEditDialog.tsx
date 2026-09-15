@@ -126,7 +126,7 @@ export function BulkEditDialog<T>({ rows, fields, label, onClose, onDone }: Prop
                 />
                 {field.emptyLabel && (
                   <button
-                    className="text-xs text-brand-700 hover:underline mt-1"
+                    className="btn-link text-xs text-brand-700 hover:underline mt-1"
                     onClick={() => { setPartner(null); setValue("none"); }}
                   >
                     {field.emptyLabel}

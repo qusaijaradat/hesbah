@@ -99,12 +99,12 @@ export function CaptureBar({ onSentence, placeholder, hint }: Props) {
         <div className="mt-3">
           <div className="flex items-center gap-3 flex-wrap mb-2 text-xs">
             <span className="font-semibold text-sm">الصفحة المصوّرة</span>
-            <button className="text-brand-700 hover:underline" onClick={() => setBig((v) => !v)}>
+            <button className="btn-link text-brand-700 hover:underline" onClick={() => setBig((v) => !v)}>
               {big ? "تصغير" : "تكبير"}
             </button>
-            <button className="text-brand-700 hover:underline" onClick={share}>مشاركة الصورة</button>
+            <button className="btn-link text-brand-700 hover:underline" onClick={share}>مشاركة الصورة</button>
             <button
-              className="text-red-600 hover:underline ms-auto"
+              className="btn-link text-red-600 hover:underline ms-auto"
               onClick={() => { setPage(null); setBig(false); }}
             >
               شيل الصورة

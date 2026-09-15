@@ -272,8 +272,8 @@ function PaymentsTab({ canCreate, canEdit, canDelete }: { canCreate: boolean; ca
                 <td className="text-gray-500">{p.notes || "—"}</td>
                 {showActionsColumn && (
                   <td className="whitespace-nowrap">
-                    {canEdit && <button className="text-brand-700 text-sm hover:underline ms-2" onClick={() => setEditing(p)}>تعديل</button>}
-                    {canDelete && <button className="text-red-500 text-sm hover:underline ms-2" onClick={() => handleDelete(p)}>حذف</button>}
+                    {canEdit && <button className="btn-link text-brand-700 text-sm hover:underline ms-2" onClick={() => setEditing(p)}>تعديل</button>}
+                    {canDelete && <button className="btn-link text-red-500 text-sm hover:underline ms-2" onClick={() => handleDelete(p)}>حذف</button>}
                   </td>
                 )}
               </tr>
@@ -458,7 +458,7 @@ function PaymentFormModal({ onClose, onSaved }: { onClose: () => void; onSaved: 
             {lines.map((line, i) => (
               <PaymentLineFields key={i} line={line} onChange={(patch) => updateLine(i, patch)} onRemove={() => removeLine(i)} showRemove={lines.length > 1} />
             ))}
-            <button type="button" className="text-sm text-brand-700 hover:underline" onClick={addLine}>
+            <button type="button" className="btn-link text-sm text-brand-700 hover:underline" onClick={addLine}>
               + إضافة طريقة دفع أخرى لنفس الدفعة (مثلاً: جزء نقدي وجزء شيكات)
             </button>
           </div>
@@ -623,7 +623,7 @@ function PaymentEditModal({ payment, onClose, onSaved }: { payment: PaymentDto; 
                 onRemove={() => setExtraLines((prev) => prev.filter((_, index) => index !== i))} showRemove
               />
             ))}
-            <button type="button" className="text-sm text-brand-700 hover:underline"
+            <button type="button" className="btn-link text-sm text-brand-700 hover:underline"
               onClick={() => setExtraLines((prev) => [...prev, emptyLine()])}>
               + إضافة شيكات أو طريقة دفع أخرى على نفس الدفعة
             </button>
@@ -845,8 +845,8 @@ function ExpensesTab({ canCreate, canEdit, canDelete }: { canCreate: boolean; ca
                 <td className="font-medium">{formatCurrency(e.amount)}</td>
                 {showActionsColumn && (
                   <td className="whitespace-nowrap">
-                    {canEdit && <button className="text-brand-700 text-sm hover:underline ms-2" onClick={() => setEditing(e)}>تعديل</button>}
-                    {canDelete && <button className="text-red-500 text-sm hover:underline ms-2" onClick={() => handleDelete(e)}>حذف</button>}
+                    {canEdit && <button className="btn-link text-brand-700 text-sm hover:underline ms-2" onClick={() => setEditing(e)}>تعديل</button>}
+                    {canDelete && <button className="btn-link text-red-500 text-sm hover:underline ms-2" onClick={() => handleDelete(e)}>حذف</button>}
                   </td>
                 )}
               </tr>

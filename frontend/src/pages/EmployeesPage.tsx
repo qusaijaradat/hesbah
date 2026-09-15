@@ -200,10 +200,10 @@ export function EmployeesPage() {
                   <td className="font-semibold">{formatCurrency(e.totalExpenses)}</td>
                   <td className="whitespace-nowrap">
                     {canEdit && (
-                      <button className="text-gray-500 text-sm hover:underline ms-2" onClick={() => setEditing(e)}>تعديل</button>
+                      <button className="btn-link text-gray-500 text-sm hover:underline ms-2" onClick={() => setEditing(e)}>تعديل</button>
                     )}
                     {canDelete && (
-                      <button className="text-red-500 text-sm hover:underline ms-2" disabled={deletingId === e.id} onClick={() => handleDelete(e)}>
+                      <button className="btn-link text-red-500 text-sm hover:underline ms-2" disabled={deletingId === e.id} onClick={() => handleDelete(e)}>
                         {deletingId === e.id ? "جاري الحذف..." : "حذف"}
                       </button>
                     )}

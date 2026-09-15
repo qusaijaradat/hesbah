@@ -132,7 +132,7 @@ export function AuditLogPage() {
                   <td className="font-mono text-xs text-gray-500">{log.entityId}</td>
                   <td>
                     {log.changesJson && log.changesJson !== "{}" && (
-                      <button className="text-brand-700 text-sm hover:underline" onClick={() => setExpanded(expanded === log.id ? null : log.id)}>
+                      <button className="btn-link text-brand-700 text-sm hover:underline" onClick={() => setExpanded(expanded === log.id ? null : log.id)}>
                         {expanded === log.id ? "إخفاء" : "التفاصيل"}
                       </button>
                     )}

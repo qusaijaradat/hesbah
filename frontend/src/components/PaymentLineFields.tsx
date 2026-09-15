@@ -182,7 +182,7 @@ export function PaymentLineFields({ line, onChange, onRemove, showRemove }: {
                 title="حذف هذا الشيك" onClick={() => removeCheck(index)}>✕</button>
             </div>
           ))}
-          <button type="button" className="text-sm text-brand-700 hover:underline" onClick={addCheck}>
+          <button type="button" className="btn-link text-sm text-brand-700 hover:underline" onClick={addCheck}>
             + إضافة شيك آخر
           </button>
         </div>

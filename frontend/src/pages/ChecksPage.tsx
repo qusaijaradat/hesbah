@@ -252,17 +252,17 @@ export function ChecksPage() {
                   {canEdit && (
                     <td className="whitespace-nowrap">
                       {c.checkStatus !== "Cleared" && (
-                        <button className="text-brand-700 text-sm hover:underline ms-2" disabled={busyId === c.id} onClick={() => setStatus(c, "Cleared")}>
+                        <button className="btn-link text-brand-700 text-sm hover:underline ms-2" disabled={busyId === c.id} onClick={() => setStatus(c, "Cleared")}>
                           تحديد كمصروف
                         </button>
                       )}
                       {c.checkStatus !== "Bounced" && (
-                        <button className="text-red-600 text-sm hover:underline ms-2" disabled={busyId === c.id} onClick={() => setStatus(c, "Bounced")}>
+                        <button className="btn-link text-red-600 text-sm hover:underline ms-2" disabled={busyId === c.id} onClick={() => setStatus(c, "Bounced")}>
                           تحديد كمرتجع
                         </button>
                       )}
                       {c.checkStatus !== "Pending" && (
-                        <button className="text-gray-500 text-sm hover:underline ms-2" disabled={busyId === c.id} onClick={() => setStatus(c, "Pending")}>
+                        <button className="btn-link text-gray-500 text-sm hover:underline ms-2" disabled={busyId === c.id} onClick={() => setStatus(c, "Pending")}>
                           إعادة لقيد التحصيل
                         </button>
                       )}

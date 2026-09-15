@@ -195,7 +195,7 @@ function HoldersTable({ holders, onPick }: { holders: ContainerHolderDto[] | nul
           ) : pager.pageRows.map((h) => (
             <tr key={`${h.partnerId}-${h.type}`}>
               <td>
-                <button className="text-brand-700 hover:underline" onClick={() => onPick(h.partnerId, h.partnerName)}>
+                <button className="btn-link text-brand-700 hover:underline" onClick={() => onPick(h.partnerId, h.partnerName)}>
                   {h.partnerName}
                 </button>
               </td>
@@ -401,7 +401,7 @@ function MovementsTable({
               <td className="text-gray-600">{m.notes || "—"}</td>
               {canDelete && (
                 <td>
-                  <button className="text-sm text-red-600 hover:underline" onClick={() => handleDelete(m.id)}>حذف</button>
+                  <button className="btn-link text-sm text-red-600 hover:underline" onClick={() => handleDelete(m.id)}>حذف</button>
                 </td>
               )}
             </tr>

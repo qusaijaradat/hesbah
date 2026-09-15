@@ -434,9 +434,9 @@ export function FarmerGoodsPage() {
                   { label: "ملاحظات", value: e.notes ?? "—" },
                   ...(canEdit || canDelete ? [{ label: "", value: (
                     <span className="whitespace-nowrap">
-                      {canEdit && <button className="text-brand-700 text-sm hover:underline me-2" onClick={() => startEdit(e)}>تعديل</button>}
+                      {canEdit && <button className="btn-link text-brand-700 text-sm hover:underline me-2" onClick={() => startEdit(e)}>تعديل</button>}
                       {canDelete && (
-                        <button className="text-red-600 text-sm hover:underline" disabled={deletingId === e.id} onClick={() => handleDeleteEntry(e)}>
+                        <button className="btn-link text-red-600 text-sm hover:underline" disabled={deletingId === e.id} onClick={() => handleDeleteEntry(e)}>
                           {deletingId === e.id ? "جاري الحذف..." : "حذف"}
                         </button>
                       )}
@@ -484,9 +484,9 @@ export function FarmerGoodsPage() {
                       <td className="text-gray-500 text-sm">{e.notes ?? "—"}</td>
                       {(canEdit || canDelete) && (
                         <td className="whitespace-nowrap">
-                          {canEdit && <button className="text-brand-700 text-sm hover:underline me-2" onClick={() => startEdit(e)}>تعديل</button>}
+                          {canEdit && <button className="btn-link text-brand-700 text-sm hover:underline me-2" onClick={() => startEdit(e)}>تعديل</button>}
                           {canDelete && (
-                            <button className="text-red-600 text-sm hover:underline" disabled={deletingId === e.id} onClick={() => handleDeleteEntry(e)}>
+                            <button className="btn-link text-red-600 text-sm hover:underline" disabled={deletingId === e.id} onClick={() => handleDeleteEntry(e)}>
                               {deletingId === e.id ? "جاري الحذف..." : "حذف"}
                             </button>
                           )}

@@ -141,7 +141,7 @@ export function InvoiceReturnsCard({ invoice, canManage, onChanged }: {
                   {ret.reason && <span className="text-gray-500 ms-3">{ret.reason}</span>}
                 </div>
                 {canManage && (
-                  <button type="button" className="text-xs text-red-500 hover:underline" onClick={() => handleDelete(ret)}>حذف</button>
+                  <button type="button" className="btn-link text-xs text-red-500 hover:underline" onClick={() => handleDelete(ret)}>حذف</button>
                 )}
               </div>
               <div className="text-xs text-gray-600 mt-2 flex flex-wrap gap-x-4 gap-y-1">

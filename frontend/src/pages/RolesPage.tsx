@@ -232,8 +232,8 @@ export function RolesPage() {
                   {alertsSummary(r)}
                 </td>
                 <td className="whitespace-nowrap">
-                  <button className="text-brand-700 text-sm hover:underline ms-2" onClick={() => setEditing(r)}>تعديل</button>
-                  <button className="text-red-500 text-sm hover:underline ms-2" disabled={deletingId === r.id} onClick={() => handleDelete(r)}>
+                  <button className="btn-link text-brand-700 text-sm hover:underline ms-2" onClick={() => setEditing(r)}>تعديل</button>
+                  <button className="btn-link text-red-500 text-sm hover:underline ms-2" disabled={deletingId === r.id} onClick={() => handleDelete(r)}>
                     {deletingId === r.id ? "جاري الحذف..." : "حذف"}
                   </button>
                 </td>

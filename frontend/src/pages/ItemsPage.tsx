@@ -105,10 +105,10 @@ export function ItemsPage() {
                 )}
                 <span className="flex-1 font-medium">{item.name}</span>
                 {canEdit && (
-                  <button className="text-gray-500 text-sm hover:underline" onClick={() => setEditing(item)}>تعديل</button>
+                  <button className="btn-link text-gray-500 text-sm hover:underline" onClick={() => setEditing(item)}>تعديل</button>
                 )}
                 {canDelete && (
-                  <button className="text-red-500 text-sm hover:underline" onClick={() => handleDelete(item)}>حذف</button>
+                  <button className="btn-link text-red-500 text-sm hover:underline" onClick={() => handleDelete(item)}>حذف</button>
                 )}
               </div>
             ))
@@ -147,10 +147,10 @@ export function ItemsPage() {
                   <td className="font-medium">{item.name}</td>
                   <td className="whitespace-nowrap">
                     {canEdit && (
-                      <button className="text-gray-500 text-sm hover:underline ms-2" onClick={() => setEditing(item)}>تعديل</button>
+                      <button className="btn-link text-gray-500 text-sm hover:underline ms-2" onClick={() => setEditing(item)}>تعديل</button>
                     )}
                     {canDelete && (
-                      <button className="text-red-500 text-sm hover:underline ms-2" onClick={() => handleDelete(item)}>حذف</button>
+                      <button className="btn-link text-red-500 text-sm hover:underline ms-2" onClick={() => handleDelete(item)}>حذف</button>
                     )}
                   </td>
                 </tr>

@@ -43,6 +43,21 @@ body {
     @apply py-2.5;
     min-height: 2.75rem;
   }
+
+  /*
+   * The same problem, worn by the other half of this app's controls: تعديل / حذف / + نوع جديد
+   * and the rest are plain text, and plain text at 12px is a target about a third the size of
+   * the finger aiming at it. On a phone every one of them sits on a card with its neighbour a
+   * few pixels away, which is where a mis-tap costs something — حذف is next to تعديل.
+   *
+   * The class does NOTHING above 640px, deliberately: on a desktop these are correct as they
+   * are, and a 44px box around every inline action would push the rows of every table apart
+   * to fix a problem a mouse does not have.
+   */
+  .btn-link {
+    @apply inline-flex items-center px-1;
+    min-height: 2.75rem;
+  }
 }
 
 /* RTL-aware focus ring so keyboard users can see where they are on every input/button */

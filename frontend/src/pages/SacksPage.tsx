@@ -282,7 +282,7 @@ function MovementForm({ title, action, kinds, onKinds, onClose, onDone, onError 
     <div>
       <div className="flex items-center justify-between mb-3">
         <h2 className="font-semibold">{title}</h2>
-        <button className="text-sm text-gray-500 hover:underline" onClick={onClose}>إغلاق</button>
+        <button className="btn-link text-sm text-gray-500 hover:underline" onClick={onClose}>إغلاق</button>
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2 mb-3">
@@ -326,10 +326,10 @@ function MovementForm({ title, action, kinds, onKinds, onClose, onDone, onError 
               />
             </div>
             <div className="flex gap-4 sm:contents">
-              <button className="text-xs text-brand-700 hover:underline sm:pb-2" onClick={() => addKind(idx)}>+ نوع جديد</button>
+              <button className="btn-link text-xs text-brand-700 hover:underline sm:pb-2" onClick={() => addKind(idx)}>+ نوع جديد</button>
               {lines.length > 1 && (
                 <button
-                  className="text-xs text-red-600 hover:underline sm:pb-2"
+                  className="btn-link text-xs text-red-600 hover:underline sm:pb-2"
                   onClick={() => setLines((prev) => prev.filter((_, i) => i !== idx))}
                 >
                   حذف
@@ -338,7 +338,7 @@ function MovementForm({ title, action, kinds, onKinds, onClose, onDone, onError 
             </div>
           </div>
         ))}
-        <button className="text-sm text-brand-700 hover:underline" onClick={() => setLines((prev) => [...prev, emptyLine()])}>
+        <button className="btn-link text-sm text-brand-700 hover:underline" onClick={() => setLines((prev) => [...prev, emptyLine()])}>
           + نوع آخر
         </button>
       </div>
@@ -601,7 +601,7 @@ function StockTable({ kinds, canEdit, onSaved, onError }: {
                 />
               ) : <span className="font-semibold">{k.stockQuantity}</span>}
               {canEdit && draft[k.id] !== undefined && (
-                <button className="text-sm text-brand-700 hover:underline" disabled={savingId === k.id} onClick={() => save(k)}>
+                <button className="btn-link text-sm text-brand-700 hover:underline" disabled={savingId === k.id} onClick={() => save(k)}>
                   {savingId === k.id ? "..." : "حفظ"}
                 </button>
               )}
@@ -631,7 +631,7 @@ function StockTable({ kinds, canEdit, onSaved, onError }: {
                 {canEdit && (
                   <td>
                     {draft[k.id] !== undefined && (
-                      <button className="text-sm text-brand-700 hover:underline" disabled={savingId === k.id} onClick={() => save(k)}>
+                      <button className="btn-link text-sm text-brand-700 hover:underline" disabled={savingId === k.id} onClick={() => save(k)}>
                         {savingId === k.id ? "..." : "حفظ"}
                       </button>
                     )}

@@ -56,7 +56,7 @@ export function UsersPage() {
                     {u.isActive ? "مفعّل" : "معطّل"}
                   </span>
                 </td>
-                <td>{canEdit && <button className="text-brand-700 text-sm hover:underline" onClick={() => setEditing(u)}>تعديل</button>}</td>
+                <td>{canEdit && <button className="btn-link text-brand-700 text-sm hover:underline" onClick={() => setEditing(u)}>تعديل</button>}</td>
               </tr>
             ))}
           </tbody>

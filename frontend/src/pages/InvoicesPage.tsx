@@ -531,7 +531,7 @@ export function InvoicesPage() {
                           the recipient to reply to, so the send options are not offered at all. */}
                       {companyPhone && inv.merchantWhatsApp && (
                         <button
-                          className="text-xs text-green-700 hover:underline disabled:opacity-50"
+                          className="btn-link text-xs text-green-700 hover:underline disabled:opacity-50"
                           title={`إرسال للمشتري ${inv.merchantName} عبر واتساب`}
                           disabled={sendingKey === `${inv.id}-merchant`}
                           onClick={() => handleSendWhatsApp(inv, "merchant")}
@@ -541,7 +541,7 @@ export function InvoicesPage() {
                       )}
                       {companyPhone && inv.farmerWhatsApp && (
                         <button
-                          className="text-xs text-green-700 hover:underline disabled:opacity-50"
+                          className="btn-link text-xs text-green-700 hover:underline disabled:opacity-50"
                           title={`إرسال للبائع ${inv.farmerName} عبر واتساب`}
                           disabled={sendingKey === `${inv.id}-farmer`}
                           onClick={() => handleSendWhatsApp(inv, "farmer")}
@@ -551,7 +551,7 @@ export function InvoicesPage() {
                       )}
                       {companyPhone && inv.driverWhatsApp && (
                         <button
-                          className="text-xs text-green-700 hover:underline disabled:opacity-50"
+                          className="btn-link text-xs text-green-700 hover:underline disabled:opacity-50"
                           title={`إرسال للسائق ${inv.driverName} عبر واتساب`}
                           disabled={sendingKey === `${inv.id}-driver`}
                           onClick={() => handleSendWhatsApp(inv, "driver")}
@@ -560,7 +560,7 @@ export function InvoicesPage() {
                         </button>
                       )}
                       <button
-                        className="text-xs text-brand-700 hover:underline disabled:opacity-50"
+                        className="btn-link text-xs text-brand-700 hover:underline disabled:opacity-50"
                         title="مشاركة ملف الفاتورة (يفتح قائمة مشاركة النظام، فيها واتساب لو مثبت)"
                         disabled={sendingKey === `${inv.id}-share`}
                         onClick={() => handleShareFile(inv)}
@@ -568,7 +568,7 @@ export function InvoicesPage() {
                         📎 ملف
                       </button>
                       {canDelete && (
-                        <button className="text-red-500 text-sm hover:underline" onClick={() => handleDelete(inv)}>حذف</button>
+                        <button className="btn-link text-red-500 text-sm hover:underline" onClick={() => handleDelete(inv)}>حذف</button>
                       )}
                     </div>
                   </td>

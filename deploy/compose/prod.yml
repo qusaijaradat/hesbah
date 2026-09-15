@@ -35,10 +35,10 @@ services:
     # fills, Postgres cannot write, and the market stops — with a cause nobody goes
     # looking for, because nothing was wrong with the app. Same three lines on all
     # three services: 30MB each, a few days of history, and a hard ceiling.
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
         max-file: "3"
     # Deliberately no `ports:`, unlike docker-compose.yml which publishes 5432
     # for local psql access. Nothing outside this stack's network needs
@@ -63,10 +63,10 @@ services:
   api:
     image: ${API_IMAGE:?}
     restart: unless-stopped
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
         max-file: "3"
     environment:
       ConnectionStrings__Default: "Host=db;Port=5432;Database=${DB_NAME:-greenmarket};Username=${DB_USER:-greenmarket_app};Password=${DB_PASSWORD:-ChangeMe_DevOnly!}"
@@ -109,10 +109,10 @@ services:
   web:
     image: ${WEB_IMAGE:?}
     restart: unless-stopped
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
         max-file: "3"
     # Production is NOT behind preview-router: the wildcard *.<base-domain>
     # that feeds the router on 5174 matches subdomains only, not the apex, so
@@ -131,5 +131,86 @@ services:
         limits:
           memory: 256m
 
+  # ---------------------------------------------------------------- nightly pg_dump
+  #
+  # Until now the only backup this system had was a button somebody had to REMEMBER to press.
+  # That is not a backup, it is an intention.
+  #
+  # A sidecar rather than a cron job on the host, because there is no inbound SSH to this host
+  # (deploy/README.md) — everything arrives through Portainer, so anything scheduled has to live
+  # inside the stack. It reuses the postgres image that is already pulled, so it costs no extra
+  # download and its pg_dump is guaranteed to match the server's version.
+  #
+  # WHAT THIS DOES AND DOES NOT PROTECT AGAINST, said plainly because the difference matters:
+  #   • protects against — a row deleted by mistake, a bad edit, a corrupted table, an app bug
+  #     that wrote nonsense. These are the common disasters and this answers all of them.
+  #   • does NOT protect against — this VPS dying, or its disk failing. The dumps are ON it.
+  #     Somewhere else is the next step and it needs a decision nobody has made yet: where.
+  backup:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    environment:
+      PGPASSWORD: ${DB_PASSWORD:-ChangeMe_DevOnly!}
+      DB_NAME: ${DB_NAME:-greenmarket}
+      DB_USER: ${DB_USER:-greenmarket_app}
+      # Local hour to dump at, and how many daily dumps to keep. Two in the morning: the market
+      # is asleep and the dump takes a consistent read of a database nobody is writing to.
+      BACKUP_HOUR: ${BACKUP_HOUR:-2}
+      BACKUP_KEEP: ${BACKUP_KEEP:-14}
+    volumes:
+      - dbbackups:/backups
+    depends_on:
+      db:
+        condition: service_healthy
+    # One file per day, named by date, and the day's file existing is what says the day is done.
+    # That is the whole scheduler: a restart, a redeploy, or a container that was down at 02:00
+    # cannot produce two dumps for one day, and cannot skip a day either — it catches up on the
+    # next quarter-hour tick.
+    #
+    # Written to a temp name and moved into place only on success, because a half-written dump
+    # that LOOKS like a backup is worse than no backup at all: it is the one you find out about
+    # on the day you need it.
+    entrypoint:
+      - "/bin/sh"
+      - "-c"
+      - |
+        set -u
+        echo "backup: dumping ${DB_NAME} to /backups daily at ${BACKUP_HOUR}:00, keeping ${BACKUP_KEEP}"
+        while true; do
+          today=$(date +%F)
+          hour=$(date +%H)
+          out="/backups/${DB_NAME}-${today}.sql.gz"
+          if [ ! -f "${out}" ] && [ "${hour}" -ge "${BACKUP_HOUR}" ]; then
+            echo "backup: starting ${today}"
+            if pg_dump -h db -U "${DB_USER}" -d "${DB_NAME}" | gzip -c > /backups/.in-progress.gz; then
+              mv /backups/.in-progress.gz "${out}"
+              echo "backup: wrote ${out}"
+              # Newest first, drop everything past the keep count. No xargs -r: busybox is not
+              # guaranteed to have it, and an empty list must not delete anything.
+              ls -1t /backups/${DB_NAME}-*.sql.gz 2>/dev/null | tail -n +$((BACKUP_KEEP + 1)) | while read -r old; do
+                echo "backup: pruning ${old}"
+                rm -f "${old}"
+              done
+            else
+              echo "backup: pg_dump FAILED for ${today} — leaving no file, will retry"
+              rm -f /backups/.in-progress.gz
+            fi
+          fi
+          sleep 900
+        done
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+
 volumes:
   pgdata:
+  # The dumps. A named volume rather than a bind mount, for the same reason as pgdata: nothing
+  # on this host's filesystem is this stack's to assume. Read them out through Portainer, or
+  # copy them off with `docker cp` from the backup container.
+  dbbackups:

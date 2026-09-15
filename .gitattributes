@@ -1,0 +1,23 @@
+# Line endings.
+#
+# This repository is written on Windows and runs on Linux, and for most files that difference is
+# invisible — git normalises to LF on commit and the tooling on both sides copes.
+#
+# Two kinds of file do NOT cope, and both of them are in the deploy path:
+#
+#   * A YAML block scalar (the `- |` shell script inside deploy/compose/prod.yml's backup service)
+#     is only valid with LF line breaks. Checked out with CRLF, the file stops being parseable
+#     YAML — and the first anybody would know of it is a production deploy failing at the moment
+#     the stack is replaced.
+#
+#   * A shell script with CRLF fails on Linux with "bad interpreter: /bin/sh^M", which is a error
+#     message that says nothing about line endings to anybody who has not met it before.
+#
+# So these are pinned to LF in the working tree as well as in the object store. Everything else
+# keeps git's normal behaviour.
+
+*.yml   text eol=lf
+*.yaml  text eol=lf
+*.sh    text eol=lf
+Dockerfile text eol=lf
+*.conf  text eol=lf

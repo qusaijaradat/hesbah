@@ -63,6 +63,12 @@ public class AuditSaveChangesInterceptor : SaveChangesInterceptor
             // that device's encryption keys — which have no business being copied into a second
             // table that a different set of people can read.
             if (entry.Entity is PushSubscription) continue;
+            // Nor a session row. It is touched on every single refresh (LastUsedAt, and the two
+            // hashes rotate), which would bury the audit log under one row per device per hour —
+            // and those hashes are live credentials that have no business being copied into a
+            // table more people can read. Ending a session is the part worth recording, and the
+            // service writes that itself.
+            if (entry.Entity is UserSession) continue;
             if (entry.State is not (EntityState.Added or EntityState.Modified or EntityState.Deleted)) continue;
 
             var action = entry.State switch

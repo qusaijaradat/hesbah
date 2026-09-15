@@ -612,5 +612,46 @@ Console.WriteLine("== who may be told what needs attention (AlertVisibility) =="
 }
 
 Console.WriteLine();
+Console.WriteLine("== when a signed-in device is still signed in (SessionRules) ==");
+{
+    var now = new DateTimeOffset(2026, 9, 16, 9, 0, 0, TimeSpan.Zero);
+    const string current = "aaaa";
+    const string previous = "bbbb";
+
+    // The market's own choice: sessions have no expiry. They end because somebody ended them.
+    Check("no expiry set => still usable", SessionRules.IsUsable(null, null, now));
+    Check("revoked => not usable, expiry or no expiry",
+          !SessionRules.IsUsable(now.AddMinutes(-1), null, now));
+    Check("an expiry in the future is fine", SessionRules.IsUsable(null, now.AddDays(1), now));
+    Check("an expiry in the past is not", !SessionRules.IsUsable(null, now.AddSeconds(-1), now));
+
+    Check("the current token refreshes",
+          SessionRules.Verify(current, current, previous, null, null, now) == RefreshVerdict.Accepted);
+
+    // The theft signal. Every refresh retires the token it consumed, so a retired one coming back
+    // means two parties hold this session.
+    Check("a RETIRED token is reuse, not merely wrong",
+          SessionRules.Verify(previous, current, previous, null, null, now) == RefreshVerdict.Reused);
+    Check("a token belonging to nothing is just rejected",
+          SessionRules.Verify("cccc", current, previous, null, null, now) == RefreshVerdict.Rejected);
+    Check("no previous hash yet (first refresh) still accepts the current one",
+          SessionRules.Verify(current, current, null, null, null, now) == RefreshVerdict.Accepted);
+
+    // An ended session refuses everything, including the token it itself last issued — otherwise
+    // "سكّر الجلسة" would leave the device able to mint a fresh one and carry on.
+    Check("a revoked session refuses its own current token",
+          SessionRules.Verify(current, current, previous, now.AddMinutes(-1), null, now) == RefreshVerdict.Rejected);
+    Check("...and a replayed one too, without reporting reuse",
+          SessionRules.Verify(previous, current, previous, now.AddMinutes(-1), null, now) == RefreshVerdict.Rejected);
+    Check("an expired session refuses its own current token",
+          SessionRules.Verify(current, current, previous, null, now.AddSeconds(-1), now) == RefreshVerdict.Rejected);
+
+    Check("equal strings compare equal", SessionRules.FixedTimeEquals("abc123", "abc123"));
+    Check("a different length is not equal", !SessionRules.FixedTimeEquals("abc", "abcd"));
+    Check("one differing character is not equal", !SessionRules.FixedTimeEquals("abc", "abd"));
+    Check("empty compares to empty", SessionRules.FixedTimeEquals("", ""));
+}
+
+Console.WriteLine();
 Console.WriteLine($"RESULT: {passed} passed, {failed} failed");
 return failed == 0 ? 0 : 1;

@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { disablePush } from "../lib/push";
-import { login as loginApi } from "../api/auth";
+import { login as loginApi, logoutApi } from "../api/auth";
 import { AUTH_STORAGE_KEY } from "../api/client";
 import type { LoginResponse, UserDto } from "../types";
 
@@ -37,12 +37,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const stored = readStoredAuth();
-    if (stored && new Date(stored.expiresAt).getTime() > Date.now()) {
+    // Restored even when the ACCESS token has lapsed, which it will have by morning. What
+    // decides whether somebody is still signed in is the session row on the server, not this
+    // timestamp: the first request refreshes the token behind the scenes (see api/client.ts), and
+    // only a refusal there sends anybody to the login screen. Checking the timestamp here meant
+    // opening the app after lunch put you on /login with a session that was perfectly alive.
+    if (stored) {
       setUser(stored.user);
       setToken(stored.token);
       setMustChangePassword(stored.mustChangePassword);
-    } else {
-      localStorage.removeItem(AUTH_STORAGE_KEY);
     }
     setIsLoading(false);
   }, []);
@@ -56,10 +59,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   function logout() {
-    // Signing out takes this device off notifications with it. A counter phone that two people
-    // share must not keep telling the next person what the last one was allowed to see — and the
-    // subscription is per user, so leaving it behind would do exactly that. Fire-and-forget: the
-    // sign-out itself must not wait on, or be blocked by, a push service.
+    // Ends the session on the SERVER, not just here. Forgetting the token locally would leave the
+    // row live on the admin's list and the refresh cookie able to mint a new token — signing out
+    // has to actually end the session, because ending sessions is how access is controlled here.
+    void logoutApi().catch(() => undefined);
+
+    // And takes this device off notifications with it. A counter phone that two people share must
+    // not keep telling the next person what the last one was allowed to see — the subscription is
+    // per user, so leaving it behind would do exactly that. Fire-and-forget: signing out must not
+    // wait on, or be blocked by, a push service.
     void disablePush().catch(() => undefined);
     localStorage.removeItem(AUTH_STORAGE_KEY);
     setUser(null);

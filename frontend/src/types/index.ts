@@ -33,6 +33,21 @@ export interface LoginResponse {
   mustChangePassword: boolean;
 }
 
+/**
+ * One signed-in device. Sessions here do not expire — they end when somebody ends them — so this
+ * is the list that answers "where is this account signed in", and the row an admin removes when a
+ * phone is lost or a person leaves.
+ */
+export interface SessionDto {
+  id: number;
+  /** The browser describing itself. Ugly, and the only thing that tells the counter laptop from the phone. */
+  userAgent: string | null;
+  createdAt: string;
+  lastUsedAt: string;
+  revokedAt: string | null;
+  revokedReason: string | null;
+}
+
 export interface RoleDto {
   id: number;
   name: string;

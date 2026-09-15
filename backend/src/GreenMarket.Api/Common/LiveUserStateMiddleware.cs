@@ -1,5 +1,6 @@
 using System.Text.Json;
 using GreenMarket.Api.Auth;
+using GreenMarket.Api.Services;
 using GreenMarket.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
@@ -35,7 +36,7 @@ public class LiveUserStateMiddleware
 
     public LiveUserStateMiddleware(RequestDelegate next) => _next = next;
 
-    public async Task InvokeAsync(HttpContext context, AppDbContext db)
+    public async Task InvokeAsync(HttpContext context, AppDbContext db, ISessionService sessions)
     {
         if (context.User.Identity?.IsAuthenticated == true)
         {
@@ -43,6 +44,21 @@ public class LiveUserStateMiddleware
             if (!int.TryParse(userIdClaim, out var userId))
             {
                 await RejectAsync(context, 401, "Invalid session — missing user identity in token.");
+                return;
+            }
+
+            // The session, before anything else about the user. It is what "سكّر الجلسة" and
+            // "سجّل خروج" actually DO — a signed token cannot be recalled, so if this is not
+            // checked on every request, ending a session means nothing until the token lapses
+            // hours later. One indexed lookup, on a path that already pays for two.
+            //
+            // A token minted before sessions existed carries no id at all. Those are refused
+            // rather than waved through: the alternative is a permanently un-endable token, and
+            // the cost of refusing is one login on the day this ships.
+            if (!int.TryParse(context.User.FindFirst(ClaimTypesExtra.SessionId)?.Value, out var sessionId)
+                || !await sessions.IsLiveAsync(sessionId))
+            {
+                await RejectAsync(context, 401, "انتهت الجلسة — سجّل دخول من جديد.");
                 return;
             }
 

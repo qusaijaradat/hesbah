@@ -4,14 +4,19 @@ import type { RoleDto, UserDto } from "../types";
 import { apiErrorMessage } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { CollapsibleRows } from "../components/CollapsibleRows";
+import { UserSessionsDialog } from "../components/UserSessionsDialog";
 
 export function UsersPage() {
   const { hasPermission } = useAuth();
   const canCreate = hasPermission("users.create");
   const canEdit = hasPermission("users.edit");
+  // Its own permission, deliberately: ending a session is what actually puts somebody out of the
+  // system here, and that is not the same trust as being allowed to fix a name.
+  const canManageSessions = hasPermission("users.sessions");
   const [users, setUsers] = useState<UserDto[]>([]);
   const [roles, setRoles] = useState<RoleDto[]>([]);
   const [editing, setEditing] = useState<UserDto | "new" | null>(null);
+  const [sessionsFor, setSessionsFor] = useState<UserDto | null>(null);
 
   async function refresh() {
     const [u, r] = await Promise.all([listUsers(), listRoles()]);
@@ -38,6 +43,14 @@ export function UsersPage() {
             details={(u) => [
               { label: "اسم المستخدم", value: u.username },
               { label: "الدور", value: u.roleName },
+              ...(canManageSessions ? [{
+                label: "الأجهزة",
+                value: (
+                  <button className="btn-link text-sm text-brand-700 hover:underline" onClick={() => setSessionsFor(u)}>
+                    عرض / إنهاء
+                  </button>
+                ),
+              }] : []),
             ]}
             empty="لا يوجد مستخدمون"
           />
@@ -56,7 +69,14 @@ export function UsersPage() {
                     {u.isActive ? "مفعّل" : "معطّل"}
                   </span>
                 </td>
-                <td>{canEdit && <button className="btn-link text-brand-700 text-sm hover:underline" onClick={() => setEditing(u)}>تعديل</button>}</td>
+                <td className="whitespace-nowrap">
+                  {canEdit && <button className="btn-link text-brand-700 text-sm hover:underline" onClick={() => setEditing(u)}>تعديل</button>}
+                  {canManageSessions && (
+                    <button className="btn-link text-gray-500 text-sm hover:underline ms-2" onClick={() => setSessionsFor(u)}>
+                      الأجهزة
+                    </button>
+                  )}
+                </td>
               </tr>
             ))}
           </tbody>
@@ -73,6 +93,10 @@ export function UsersPage() {
           // once); editing an existing one closes as before.
           onSaved={() => { if (editing !== "new") setEditing(null); refresh(); }}
         />
+      )}
+
+      {sessionsFor && (
+        <UserSessionsDialog user={sessionsFor} onClose={() => setSessionsFor(null)} />
       )}
     </div>
   );

@@ -43,3 +43,18 @@ public record UpdateRoleRequest(string Name, string? Description, IReadOnlyList<
 /// admin-driven reset via UpdateUserRequest), so this can be exposed to every logged-in user
 /// regardless of role.</summary>
 public record ChangePasswordRequest(string CurrentPassword, string NewPassword);
+
+/// <summary>
+/// One signed-in device, as an admin (or the person themselves) sees it on screen.
+///
+/// No token, not even the hash: this is a list somebody looks at, and what it needs to answer is
+/// "which device is this and is it still in". <paramref name="UserAgent"/> is the browser's own
+/// description — ugly, but it is the only thing that tells the counter laptop from the phone.
+/// </summary>
+public record SessionDto(
+    int Id,
+    string? UserAgent,
+    DateTimeOffset CreatedAt,
+    DateTimeOffset LastUsedAt,
+    DateTimeOffset? RevokedAt,
+    string? RevokedReason);

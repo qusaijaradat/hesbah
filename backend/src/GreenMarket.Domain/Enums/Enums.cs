@@ -269,6 +269,17 @@ public static class PermissionKeys
     /// CreatedByUserId/RecordedByUserId all over the audit trail), only deactivated.</summary>
     public const string UsersEdit = "users.edit";
 
+    /// <summary>
+    /// Seeing which devices a user is signed in on, and ending any of those sessions.
+    ///
+    /// Its own key rather than folded into UsersEdit, because sessions are how the market chose to
+    /// control access at all: accounts stay signed in indefinitely and an admin ends a session when
+    /// a phone is lost or somebody leaves. That makes this the switch that actually puts somebody
+    /// out, and it belongs to whoever is trusted with that — not to everyone who may fix a typo in
+    /// a full name. Nobody needs it to end their OWN sessions; that is on every account already.
+    /// </summary>
+    public const string UsersSessions = "users.sessions";
+
     /// <summary>Separate from Users* — a role can be handed out to whoever configures screen/action
     /// access without also letting them create or deactivate user accounts, or vice versa.</summary>
     public const string RolesView = "roles.view";
@@ -301,7 +312,7 @@ public static class PermissionKeys
         SacksView, SacksCreate, SacksDelete,
         ReportsView, ReportsExport,
         SettingsView, SettingsEdit,
-        UsersView, UsersCreate, UsersEdit,
+        UsersView, UsersCreate, UsersEdit, UsersSessions,
         RolesView, RolesCreate, RolesEdit, RolesDelete,
         AuditView,
         BackupDownload

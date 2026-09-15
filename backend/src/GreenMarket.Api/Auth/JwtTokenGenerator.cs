@@ -11,7 +11,8 @@ namespace GreenMarket.Api.Auth;
 
 public interface IJwtTokenGenerator
 {
-    Task<(string Token, DateTimeOffset ExpiresAt)> GenerateAsync(User user);
+    /// <param name="sessionId">The device this token is for — see ClaimTypesExtra.SessionId.</param>
+    Task<(string Token, DateTimeOffset ExpiresAt)> GenerateAsync(User user, int sessionId);
 }
 
 public class JwtTokenGenerator : IJwtTokenGenerator
@@ -25,7 +26,7 @@ public class JwtTokenGenerator : IJwtTokenGenerator
         _db = db;
     }
 
-    public async Task<(string Token, DateTimeOffset ExpiresAt)> GenerateAsync(User user)
+    public async Task<(string Token, DateTimeOffset ExpiresAt)> GenerateAsync(User user, int sessionId)
     {
         var permissionKeys = await _db.RolePermissions
             .Where(rp => rp.RoleId == user.RoleId)
@@ -39,6 +40,7 @@ public class JwtTokenGenerator : IJwtTokenGenerator
             new(ClaimTypes.Name, user.FullName),
             new("username", user.Username),
             new(ClaimTypesExtra.RoleName, user.Role?.Name ?? string.Empty),
+            new(ClaimTypesExtra.SessionId, sessionId.ToString()),
         };
         claims.AddRange(permissionKeys.Select(key => new Claim(ClaimTypesExtra.Permission, key)));
 

@@ -1,4 +1,5 @@
 using GreenMarket.Api.Auth;
+using GreenMarket.Domain.Entities;
 using GreenMarket.Api.Common;
 using GreenMarket.Api.DTOs;
 using GreenMarket.Infrastructure.Persistence;
@@ -9,7 +10,12 @@ namespace GreenMarket.Api.Services;
 
 public interface IAuthService
 {
-    Task<LoginResponse> LoginAsync(LoginRequest request);
+    /// <param name="userAgent">What the browser calls itself, recorded on the session so a list
+    /// of devices can be told apart. Nothing depends on it.</param>
+    /// <returns>The response, plus the raw refresh token — the only moment it exists outside the
+    /// device it is about to be given to. The controller puts it in an httpOnly cookie and it is
+    /// never returned in a body, where a script could read it.</returns>
+    Task<(LoginResponse Response, string RefreshToken)> LoginAsync(LoginRequest request, string? userAgent);
     Task ChangePasswordAsync(int userId, ChangePasswordRequest request);
 }
 
@@ -23,14 +29,16 @@ public class AuthService : IAuthService
 
     private readonly AppDbContext _db;
     private readonly IJwtTokenGenerator _jwt;
+    private readonly ISessionService _sessions;
 
-    public AuthService(AppDbContext db, IJwtTokenGenerator jwt)
+    public AuthService(AppDbContext db, IJwtTokenGenerator jwt, ISessionService sessions)
     {
         _db = db;
         _jwt = jwt;
+        _sessions = sessions;
     }
 
-    public async Task<LoginResponse> LoginAsync(LoginRequest request)
+    public async Task<(LoginResponse Response, string RefreshToken)> LoginAsync(LoginRequest request, string? userAgent)
     {
         var user = await _db.Users.Include(u => u.Role)
             .SingleOrDefaultAsync(u => u.Username == request.Username);
@@ -65,14 +73,17 @@ public class AuthService : IAuthService
         user.LockedUntil = null;
         await _db.SaveChangesAsync();
 
-        var (token, expiresAt) = await _jwt.GenerateAsync(user);
+        // The session first: the access token carries its id, which is what makes the session
+        // endable — see ClaimTypesExtra.SessionId.
+        var (sessionId, refreshToken) = await _sessions.StartAsync(user.Id, userAgent);
+        var (token, expiresAt) = await _jwt.GenerateAsync(user, sessionId);
         var permissions = await _db.RolePermissions
             .Where(rp => rp.RoleId == user.RoleId)
             .Select(rp => rp.Permission.Key)
             .ToListAsync();
 
         var dto = new UserDto(user.Id, user.FullName, user.Username, user.Role.Name, user.IsActive, permissions);
-        return new LoginResponse(token, expiresAt, dto, user.MustChangePassword);
+        return (new LoginResponse(token, expiresAt, dto, user.MustChangePassword), refreshToken);
     }
 
     /// <summary>Self-service password change — the only path where the caller only proves
@@ -91,6 +102,12 @@ public class AuthService : IAuthService
             throw new ValidationAppException("كلمة المرور الحالية غير صحيحة.");
 
         PasswordPolicy.Validate(request.NewPassword);
+
+        // Changing a password is the one action that means "whoever else had this, no longer does".
+        // Every session goes, including this one: the app signs in again straight after, on a
+        // screen the person is already looking at, which is a far smaller cost than leaving a
+        // device signed in on a password its owner has just decided was compromised.
+        await _sessions.EndAllForUserAsync(userId, SessionRevokeReason.PasswordChanged, userId);
 
         var (hash, salt) = PasswordHasher.HashPassword(request.NewPassword);
         user.PasswordHash = hash;

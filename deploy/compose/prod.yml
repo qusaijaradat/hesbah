@@ -30,6 +30,16 @@ services:
   db:
     image: postgres:16-alpine
     restart: unless-stopped
+    # Docker's json-file driver has NO size cap by default, so every line this stack
+    # has ever logged stays on the disk. On a small VPS that ends one way: the disk
+    # fills, Postgres cannot write, and the market stops — with a cause nobody goes
+    # looking for, because nothing was wrong with the app. Same three lines on all
+    # three services: 30MB each, a few days of history, and a hard ceiling.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     # Deliberately no `ports:`, unlike docker-compose.yml which publishes 5432
     # for local psql access. Nothing outside this stack's network needs
     # Postgres in production, and publishing it would expose the database to
@@ -53,6 +63,11 @@ services:
   api:
     image: ${API_IMAGE:?}
     restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     environment:
       ConnectionStrings__Default: "Host=db;Port=5432;Database=${DB_NAME:-greenmarket};Username=${DB_USER:-greenmarket_app};Password=${DB_PASSWORD:-ChangeMe_DevOnly!}"
       Jwt__SigningKey: ${JWT_SIGNING_KEY:?}
@@ -94,6 +109,11 @@ services:
   web:
     image: ${WEB_IMAGE:?}
     restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     # Production is NOT behind preview-router: the wildcard *.<base-domain>
     # that feeds the router on 5174 matches subdomains only, not the apex, so
     # the apex gets its own edge vhost pointing straight here.

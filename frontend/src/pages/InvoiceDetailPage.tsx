@@ -128,9 +128,18 @@ export function InvoiceDetailPage() {
             <h1 className="text-xl font-bold">فاتورة مشتري {invoice.invoiceNumber}</h1>
             <div className="text-sm text-gray-500">{formatDate(invoice.date)}</div>
           </div>
-          <span className={`text-xs px-2 py-1 rounded-full ${invoice.status === "Active" ? "bg-brand-100 text-brand-800" : "bg-red-100 text-red-700"}`}>
-            {invoice.status === "Active" ? "فعّالة" : "ملغاة"}
-          </span>
+          <div className="flex items-center gap-3">
+            {/* Same buyer, same seller, same items, most days. This is where somebody is standing
+                when they realise today looks like this one. */}
+            {hasPermission("invoices.create") && (
+              <Link to={`/invoices/new?copyFrom=${invoice.id}`} className="btn-link text-sm text-brand-700 hover:underline">
+                📋 نسخ لفاتورة جديدة
+              </Link>
+            )}
+            <span className={`text-xs px-2 py-1 rounded-full ${invoice.status === "Active" ? "bg-brand-100 text-brand-800" : "bg-red-100 text-red-700"}`}>
+              {invoice.status === "Active" ? "فعّالة" : "ملغاة"}
+            </span>
+          </div>
         </div>
 
         {/* البائع/السائق deليberately لا يظهروا هون — هاي الفاتورة اللي بتوصل للمشتري، وما لازم

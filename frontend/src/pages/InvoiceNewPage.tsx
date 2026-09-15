@@ -3,10 +3,10 @@ import { CaptureBar } from "../components/CaptureBar";
 import { parseSpokenRow } from "../lib/ledgerCapture";
 import type { KnownNames } from "../lib/ledgerCapture";
 import { listItems } from "../api/items";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { PartnerAutocomplete } from "../components/PartnerAutocomplete";
 import { ItemAutocomplete } from "../components/ItemAutocomplete";
-import { createInvoice } from "../api/invoices";
+import { createInvoice, getInvoice } from "../api/invoices";
 
 import { getMerchantAccount } from "../api/partners";
 import { apiErrorMessage } from "../api/client";
@@ -50,6 +50,12 @@ const WOOD_PRICE_OTHER = "أخرى";
 
 /** Resolves a row's actual wood-price number, whether it came from the preset list or the
  *  free-typed "أخرى" field. */
+/** The reverse of resolveWoodPrice: a stored number back into what the picker should show. */
+function woodPriceFieldFor(value: number): string {
+  if (!value || value <= 0) return "";
+  return WOOD_PRICE_OPTIONS.includes(String(value)) ? String(value) : WOOD_PRICE_OTHER;
+}
+
 function resolveWoodPrice(row: Row): number {
   return row.woodPrice === WOOD_PRICE_OTHER ? (parseFloat(row.woodPriceCustom) || 0) : (parseFloat(row.woodPrice) || 0);
 }
@@ -61,6 +67,10 @@ function resolveWoodPrice(row: Row): number {
 
 export function InvoiceNewPage() {
   const navigate = useNavigate();
+  // "نسخ لفاتورة جديدة" — see the effect below for what is copied and, more importantly, what is not.
+  const [searchParams] = useSearchParams();
+  const copyFromId = Number(searchParams.get("copyFrom")) || null;
+  const [copiedFrom, setCopiedFrom] = useState<string | null>(null);
   const [date, setDate] = useState(() => todayLocalDateString());
   // Partner fields track BOTH a selected existing partner (id + name) and the raw typed
   // text — requirement: no separate "add partner" step, any typed name is fine and will
@@ -123,6 +133,42 @@ export function InvoiceNewPage() {
   useEffect(() => {
     listItems({ pageSize: 1000 }).then((r) => setKnownItems(r.items.map((i) => i.name)));
   }, []);
+
+  /**
+   * Copying an invoice: the same buyer, from the same seller, with the same driver and the same
+   * items, is most days in a market. This fills those in.
+   *
+   * What it does NOT copy is the point of it: no quantity, no weight, no price, no crate or carton
+   * count, no أجرة النقل. Those are what TODAY'S load actually was, and yesterday's numbers sitting
+   * pre-filled in those boxes is how a figure nobody checked ends up on an invoice — which is the
+   * one failure mode this system keeps having. The same rule the ledger's "↑ زي فوق" already
+   * follows: it copies the people and the item, never the numbers.
+   *
+   * سعر الخشب is copied, because it is a preset the market picks from and not a figure derived from
+   * the load.
+   */
+  useEffect(() => {
+    if (!copyFromId) return;
+    let cancelled = false;
+    getInvoice(copyFromId).then((inv) => {
+      if (cancelled) return;
+      if (inv.merchantId) { setMerchant({ id: inv.merchantId, name: inv.merchantName }); setMerchantText(inv.merchantName); }
+      if (inv.farmerId && inv.farmerName) { setFarmer({ id: inv.farmerId, name: inv.farmerName }); setFarmerText(inv.farmerName); }
+      if (inv.driverId && inv.driverName) { setDriver({ id: inv.driverId, name: inv.driverName }); setDriverText(inv.driverName); }
+      setRows(inv.items.length > 0
+        ? inv.items.map((item) => ({
+            ...emptyRow(),
+            itemName: item.itemName,
+            woodPrice: woodPriceFieldFor(item.woodPrice),
+            woodPriceCustom: WOOD_PRICE_OPTIONS.includes(String(item.woodPrice)) || item.woodPrice <= 0
+              ? ""
+              : String(item.woodPrice),
+          }))
+        : [emptyRow()]);
+      setCopiedFrom(inv.invoiceNumber);
+    }).catch(() => { /* a bad id is just a blank form, which is what the page is anyway */ });
+    return () => { cancelled = true; };
+  }, [copyFromId]);
 
   useEffect(() => {
     listSettings().then((settings) => {
@@ -256,7 +302,18 @@ export function InvoiceNewPage() {
 
   return (
     <div className="max-w-3xl">
-      <h1 className="text-2xl font-bold mb-6">فاتورة بيع جديدة</h1>
+      <h1 className="text-2xl font-bold mb-2">فاتورة بيع جديدة</h1>
+
+      {/* Said out loud, because a half-filled form is only helpful when it is obvious WHICH half.
+          Somebody assuming the numbers came across too would save one load as another. */}
+      {copiedFrom ? (
+        <div className="text-sm bg-brand-50 text-brand-900 border border-brand-200 rounded-md p-3 mb-6">
+          منسوخة عن الفاتورة <span className="font-semibold">{copiedFrom}</span> — المشتري والبائع
+          والسائق والأصناف بس.{" "}
+          <span className="font-semibold">العدد والوزن والسعر وأجرة النقل فاضية عن قصد</span>،
+          لأنها بتخص حمولة اليوم مش حمولة إمبارح.
+        </div>
+      ) : <div className="mb-6" />}
 
       {lastSaved && (
         <div className="text-sm text-brand-800 bg-brand-50 border border-brand-200 rounded-md p-3 mb-4 flex items-center justify-between flex-wrap gap-2">

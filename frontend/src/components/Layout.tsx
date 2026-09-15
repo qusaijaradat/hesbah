@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { Link, NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
+import { GlobalSearch } from "./GlobalSearch";
 import { NotificationsBell } from "./NotificationsBell";
 import { PushPrompt } from "./PushPrompt";
 
@@ -125,11 +126,15 @@ export function Layout({ children }: { children: ReactNode }) {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
             </svg>
           </button>
-          <div className="md:hidden text-sm font-bold">🥬 الحسبة</div>
+          <div className="md:hidden text-sm font-bold shrink-0">🥬 الحسبة</div>
 
-          {/* Pushed to the end of the bar — the left, in an RTL page — which is where every app
-              anybody here already uses keeps it. */}
-          <div className="ms-auto">
+          {/* The search box takes the middle of the bar at every width. It is the control used
+              most often by the people who know the app least, so it is not hidden behind anything. */}
+          <GlobalSearch />
+
+          {/* The bell sits at the end of the bar — the left, in an RTL page — which is where every
+              app anybody here already uses keeps it. */}
+          <div className="shrink-0">
             <NotificationsBell />
           </div>
         </header>

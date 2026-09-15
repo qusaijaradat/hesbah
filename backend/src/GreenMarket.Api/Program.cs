@@ -61,6 +61,7 @@ builder.Services.AddScoped<IBackupService, BackupService>();
 builder.Services.AddScoped<IAlertService, AlertService>();
 builder.Services.AddScoped<IPushService, PushService>();
 builder.Services.AddScoped<ISessionService, SessionService>();
+builder.Services.AddScoped<ISearchService, SearchService>();
 // The one piece of background work this app has: the alerts banner, delivered to a phone at
 // seven in the morning. Reports itself off and returns immediately when no VAPID key is set.
 builder.Services.AddHostedService<AlertPushSender>();

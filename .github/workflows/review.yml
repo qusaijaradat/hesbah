@@ -65,6 +65,12 @@ jobs:
         # `npm run build` is `tsc -b && vite build`, so this is the typecheck
         # too — and it fails on the same errors the image build would.
         run: npm run build
+      - name: Domain checks
+        # 101 assertions over the rules that decide what a scanned page means, what a
+        # dictated row means, and what a column filter matches — the same kind of harness
+        # backend/tools/SmokeTests is, and until now the only thing running them was
+        # somebody remembering to. A check nobody runs is a check that is already broken.
+        run: npm run check:ledger && npm run check:filters && npm run check:capture
 
   images:
     name: Docker images build

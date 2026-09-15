@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { Link, NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
-import { AlertsBanner } from "./AlertsBanner";
+import { NotificationsBell } from "./NotificationsBell";
 import { PushPrompt } from "./PushPrompt";
 
 /**
@@ -108,31 +108,35 @@ export function Layout({ children }: { children: ReactNode }) {
       )}
 
       <div className="flex-1 flex flex-col min-w-0">
-        {/* Mobile top bar with hamburger — hidden on md+ where the sidebar is always visible.
-            Sticky, because the pages it sits above are long lists: scrolling to the bottom of the
-            invoices used to mean scrolling all the way back up to reach the menu. */}
-        <header className="md:hidden sticky top-0 z-30 flex items-center gap-3 bg-brand-900 text-white px-4 py-3">
+        {/* The app bar. It was the phone's alone until the bell moved in — the bell has to be
+            reachable from every screen at every width, so the bar exists at every width too and
+            the hamburger is the only part that hides. On a desktop the sidebar already carries
+            the name, so the bar there is a thin strip with nothing on it but the bell.
+
+            Sticky, because the pages under it are long lists: reaching the menu — or now the
+            bell — used to mean scrolling all the way back to the top. */}
+        <header className="sticky top-0 z-30 flex items-center gap-3 bg-brand-900 text-white px-4 py-3">
           <button
             aria-label="فتح القائمة"
-            className="rounded-md p-1.5 hover:bg-brand-800"
+            className="md:hidden rounded-md p-1.5 hover:bg-brand-800"
             onClick={() => setMobileNavOpen(true)}
           >
             <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
             </svg>
           </button>
-          <div className="text-sm font-bold">🥬 الحسبة</div>
+          <div className="md:hidden text-sm font-bold">🥬 الحسبة</div>
+
+          {/* Pushed to the end of the bar — the left, in an RTL page — which is where every app
+              anybody here already uses keeps it. */}
+          <div className="ms-auto">
+            <NotificationsBell />
+          </div>
         </header>
 
-        {/* Above <main>, so it sits at the very top of whatever page is open. No permission
-            check here: the endpoint gates each alert kind on the caller's own permissions and
-            returns an empty list when they can see none, so the banner renders nothing on its
-            own rather than needing the layout to guess which permissions its contents need. */}
-        {/* Above the alerts it is offering to deliver. Asks once, stays quiet for two weeks
-            after "مش هلأ", and never comes back once this device is subscribed. */}
+        {/* Asks once, stays quiet for two weeks after "مش هلأ", and never comes back once this
+            device is subscribed. */}
         <PushPrompt />
-
-        <AlertsBanner />
 
         <main className="flex-1 p-4 sm:p-6 bg-gray-50 min-w-0">{children}</main>
       </div>

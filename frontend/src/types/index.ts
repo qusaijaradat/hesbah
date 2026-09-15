@@ -816,7 +816,7 @@ export interface DashboardSummaryDto {
 }
 
 /** What a top-of-page alert is about — see backend AlertKind. The backend returns the fact;
- * the wording and the link live in AlertsBanner.tsx alongside every other user-facing string. */
+ * the wording and the link live in lib/alertText.ts alongside every other user-facing string. */
 export type AlertKind = "OverdueChecks" | "ChecksDueToday" | "UnpricedInvoices" | "StaleSacks";
 export type AlertSeverity = "Info" | "Warning" | "Critical";
 

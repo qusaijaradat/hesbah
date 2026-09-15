@@ -4,7 +4,7 @@ import { apiErrorMessage } from "../api/client";
 import { BLOCKER_MESSAGE, disablePush, enablePush, isPushSubscribed, pushBlocker } from "../lib/push";
 
 /**
- * "إشعارات الجوال" — the alerts banner, delivered to a phone that is not currently open.
+ * "الإشعارات" — the alerts banner, delivered to a device that is not currently looking at it.
  *
  * Per DEVICE, which is why this is a switch and not a setting: the person is turning notifications
  * on for the phone in their hand, and their tablet is a separate answer. And per USER, because the
@@ -86,9 +86,9 @@ export function PushNotificationsCard() {
 
   return (
     <div className="card p-4 mb-4">
-      <h2 className="font-semibold mb-1">إشعارات الجوال</h2>
+      <h2 className="font-semibold mb-1">الإشعارات</h2>
       <p className="text-sm text-gray-500 mb-3">
-        بتوصلك التنبيهات على الجوال الصبح حتى لو التطبيق مسكّر — شيكات، فواتير غير مسعّرة، مخالات
+        بتوصلك التنبيهات على جهازك الصبح حتى لو التطبيق مسكّر — شيكات، فواتير غير مسعّرة، مخالات
         عند الناس من زمان. <span className="font-medium">وبتوصلك بس الأشياء الي صلاحيتك بتوصلها</span>:
         إذا عندك صلاحية الدفعات والشيكات بس، ما بيوصلك إشي عن الفواتير.
       </p>

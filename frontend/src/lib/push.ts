@@ -102,7 +102,7 @@ export async function isPushSubscribed(): Promise<boolean> {
 }
 
 export const BLOCKER_MESSAGE: Record<PushBlocker, string> = {
-  unsupported: "هذا المتصفح ما بيدعم إشعارات الجوال.",
+  unsupported: "هذا المتصفح ما بيدعم الإشعارات.",
   "needs-install":
     "على الآيفون الإشعارات بتشتغل بس إذا التطبيق منزّل على الشاشة الرئيسية: افتح المشاركة ⬆️ ثم «إضافة إلى الشاشة الرئيسية»، وافتحه من هناك.",
   denied:

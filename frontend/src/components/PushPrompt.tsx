@@ -89,7 +89,7 @@ export function PushPrompt() {
     <div className="bg-amber-50 border-b border-amber-200 px-4 py-3">
       <div className="flex flex-col sm:flex-row sm:items-center gap-3">
         <div className="flex-1 text-sm text-amber-900">
-          <span className="font-semibold">🔔 بتحب يوصلك تنبيه على الجوال؟</span>{" "}
+          <span className="font-semibold">🔔 بتحب يوصلك تنبيه على جهازك؟</span>{" "}
           {needsInstall
             ? BLOCKER_MESSAGE["needs-install"]
             : "الشيكات والفواتير غير المسعّرة والمخالات — بيوصلك الصبح حتى لو التطبيق مسكّر، وبس الأشياء الي صلاحيتك بتوصلها."}

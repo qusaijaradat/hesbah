@@ -68,7 +68,7 @@ public class PushService : IPushService
     public async Task SubscribeAsync(int userId, PushSubscribeRequest request, CancellationToken ct = default)
     {
         if (!_settings.IsConfigured)
-            throw new ValidationAppException("إشعارات الجوال غير مفعّلة على السيرفر.");
+            throw new ValidationAppException("الإشعارات غير مفعّلة على السيرفر.");
         if (string.IsNullOrWhiteSpace(request.Endpoint)
             || string.IsNullOrWhiteSpace(request.Keys?.P256dh)
             || string.IsNullOrWhiteSpace(request.Keys?.Auth))

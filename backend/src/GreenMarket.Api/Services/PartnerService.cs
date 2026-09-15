@@ -199,7 +199,6 @@ public class PartnerService : IPartnerService
             WhatsAppNumber = request.WhatsAppNumber,
             Address = request.Address,
             Notes = request.Notes,
-            CreditLimit = request.CreditLimit,
             OpeningBalance = request.OpeningBalance,
             IncludeOpeningBalanceInInvoices = request.IncludeOpeningBalanceInInvoices
         };
@@ -321,7 +320,6 @@ public class PartnerService : IPartnerService
         partner.WhatsAppNumber = request.WhatsAppNumber;
         partner.Address = request.Address;
         partner.Notes = request.Notes;
-        partner.CreditLimit = request.CreditLimit;
         partner.OpeningBalance = request.OpeningBalance;
         partner.IncludeOpeningBalanceInInvoices = request.IncludeOpeningBalanceInInvoices;
         await _db.SaveChangesAsync();
@@ -389,7 +387,6 @@ public class PartnerService : IPartnerService
         var totalPurchases = invoices.Sum(i => i.GrandTotal);
         var totalPaid = payments.Where(p => PaymentRules.CountsTowardBalance(p.CheckStatus)).Sum(p => p.Amount);
         var remaining = openingBalance + totalPurchases - totalPaid;
-        var isOverLimit = partner.CreditLimit is not null && remaining > partner.CreditLimit;
 
         // Containers (crates, sacks) used to be computed here and carried on this DTO. They moved
         // to their own service and screen once sellers and drivers needed them too and once there
@@ -397,7 +394,7 @@ public class PartnerService : IPartnerService
         return new MerchantAccountDto(
             partner.Id, partner.Name,
             totalPurchases, totalPaid, remaining,
-            partner.CreditLimit, isOverLimit, partner.OpeningBalance,
+            partner.OpeningBalance,
             statement.Select(ToStatementLineDto).ToList());
     }
 
@@ -627,7 +624,7 @@ public class PartnerService : IPartnerService
             line.InvoiceId, line.InvoiceNumber, line.SaleValue, line.Commission, line.Method, line.Notes);
 
     private static PartnerDto ToDto(Partner p, decimal? farmerRemaining = null, decimal? merchantRemaining = null) =>
-        new(p.Id, p.Name, p.Type, p.WhatsAppNumber, p.Address, p.Notes, p.CreditLimit, p.OpeningBalance,
+        new(p.Id, p.Name, p.Type, p.WhatsAppNumber, p.Address, p.Notes, p.OpeningBalance,
             p.IncludeOpeningBalanceInInvoices, farmerRemaining, merchantRemaining);
 
     /// <summary>Minimal projection used only inside GetDebtsOverviewAsync — a typed stand-in for an

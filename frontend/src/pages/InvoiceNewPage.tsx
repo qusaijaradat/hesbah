@@ -8,13 +8,10 @@ import { PartnerAutocomplete } from "../components/PartnerAutocomplete";
 import { ItemAutocomplete } from "../components/ItemAutocomplete";
 import { createInvoice, getInvoice } from "../api/invoices";
 
-import { getMerchantAccount } from "../api/partners";
 import { apiErrorMessage } from "../api/client";
 import { listSettings } from "../api/settings";
 import { InvoiceCharge, lineTotalOf } from "../lib/invoiceCharge";
 import { formatCount, formatCurrency, formatWeight, todayLocalDateString } from "../lib/format";
-import type { MerchantAccountDto } from "../types";
-import { CREDIT_LIMIT_UI_ENABLED } from "../lib/featureFlags";
 
 
 interface Row {
@@ -79,7 +76,6 @@ export function InvoiceNewPage() {
   const [merchantText, setMerchantText] = useState("");
   // Roadmap: "alert when a merchant exceeds a credit limit" — fetched once a known merchant is
   // selected, purely informational (never blocks saving the invoice).
-  const [merchantAccount, setMerchantAccount] = useState<MerchantAccountDto | null>(null);
   // Seller (بائع) and Driver (سائق) are both optional and independent — either, both, or
   // neither can be attached to the same invoice, each from its own type-filtered list.
   const [farmer, setFarmer] = useState<{ id: number; name: string } | null>(null);
@@ -188,17 +184,6 @@ export function InvoiceNewPage() {
   const grandTotal = InvoiceCharge.forMerchant(totalValue, woodTotal, boxFeeTotal);
 
 
-  useEffect(() => {
-    if (!merchant) { setMerchantAccount(null); return; }
-    let cancelled = false;
-    getMerchantAccount(merchant.id).then((account) => { if (!cancelled) setMerchantAccount(account); });
-    return () => { cancelled = true; };
-  }, [merchant]);
-
-  // Projected: what the merchant's remaining balance would be if this invoice is saved as-is.
-  const projectedRemaining = (merchantAccount?.remaining ?? 0) + grandTotal;
-  const wouldExceedCreditLimit = merchantAccount?.creditLimit != null && projectedRemaining > merchantAccount.creditLimit;
-
   function updateRow(index: number, patch: Partial<Row>) {
     setRows((prev) => prev.map((row, i) => (i === index ? { ...row, ...patch } : row)));
   }
@@ -247,7 +232,6 @@ export function InvoiceNewPage() {
     setDate(todayLocalDateString());
     setMerchant(null);
     setMerchantText("");
-    setMerchantAccount(null);
     setFarmer(null);
     setFarmerText("");
     setDriver(null);
@@ -356,12 +340,6 @@ export function InvoiceNewPage() {
             types={["Driver", "Farmer"]}
           />
         </div>
-        {CREDIT_LIMIT_UI_ENABLED && wouldExceedCreditLimit && (
-          <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-md p-3">
-            ⚠️ هذا المشتري سيتجاوز حده الائتماني ({formatCurrency(merchantAccount!.creditLimit ?? 0)}) إذا حُفظت هذه الفاتورة —
-            الرصيد المتوقع بعدها {formatCurrency(projectedRemaining)}. هذا تنبيه فقط ولا يمنع الحفظ.
-          </div>
-        )}
       </div>
 
       <div className="card p-5 mb-4">

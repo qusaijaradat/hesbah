@@ -24,13 +24,6 @@ public class Partner : AuditableEntity
 
     public string? Notes { get; set; }
 
-    /// <summary>
-    /// Optional soft ceiling on a merchant's outstanding balance (requirement roadmap: "credit
-    /// limit per merchant"). Null means no limit is enforced. This is advisory only — invoices
-    /// are never blocked from being created — the UI simply warns when a merchant's remaining
-    /// balance would exceed it, so someone can decide whether to keep selling to them on credit.
-    /// </summary>
-    public decimal? CreditLimit { get; set; }
 
     /// <summary>
     /// "الرصيد الافتتاحي" — a manually-entered starting balance, for a person who already had money

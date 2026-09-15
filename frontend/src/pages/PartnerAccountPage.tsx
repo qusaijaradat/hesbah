@@ -10,7 +10,6 @@ import { apiErrorMessage } from "../api/client";
 import type { FarmerAccountDto, MerchantAccountDto, StatementLineDto } from "../types";
 import { formatCurrency, formatDate, partnerHasRole } from "../lib/format";
 import { StatCard } from "../components/StatCard";
-import { CREDIT_LIMIT_UI_ENABLED } from "../lib/featureFlags";
 import { useAuth } from "../auth/AuthContext";
 import { PdfActions } from "../components/PdfActions";
 import { CollapsibleRows } from "../components/CollapsibleRows";
@@ -182,17 +181,10 @@ export function MerchantAccountPage() {
         <PdfActions fetchPdf={() => printMerchantAccountPdf(Number(id))} fileName={`account-${id}.pdf`} shareTitle="كشف حساب" />
       </div>
 
-      {CREDIT_LIMIT_UI_ENABLED && account.isOverCreditLimit && (
-        <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-md p-3 mb-4">
-          ⚠️ هذا المشتري تجاوز الحد الائتماني المسموح ({formatCurrency(account.creditLimit ?? 0)}) — الرصيد المتبقي حاليًا {formatCurrency(account.remaining)}.
-        </div>
-      )}
-
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 mb-6">
         <StatCard label="إجمالي المشتريات" value={formatCurrency(account.totalPurchases)} />
         <StatCard label="المدفوع" value={formatCurrency(account.totalPaid)} tone="positive" />
         <StatCard label="المتبقي" value={formatCurrency(account.remaining)} tone="negative" />
-        {CREDIT_LIMIT_UI_ENABLED && account.creditLimit != null && <StatCard label="الحد الائتماني" value={formatCurrency(account.creditLimit)} />}
       </div>
 
 

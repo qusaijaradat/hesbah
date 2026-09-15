@@ -9,7 +9,6 @@ import { useAuth } from "../auth/AuthContext";
 import { usePagination } from "../lib/usePagination";
 import { TablePagination } from "../components/TablePagination";
 import { CollapsibleRows } from "../components/CollapsibleRows";
-import { CREDIT_LIMIT_UI_ENABLED } from "../lib/featureFlags";
 import { useSelection } from "../lib/useSelection";
 import { runBulkDelete, summarizeBulkDelete } from "../lib/bulkDelete";
 import { useColumnFilters } from "../lib/useColumnFilters";
@@ -147,7 +146,7 @@ export function PartnersPage() {
       apply: (p, v) => updatePartner(p.id, {
         name: p.name, type: v as PartnerType, whatsAppNumber: p.whatsAppNumber ?? undefined,
         address: p.address ?? undefined, notes: p.notes ?? undefined,
-        creditLimit: p.creditLimit ?? null, openingBalance: p.openingBalance ?? null,
+        openingBalance: p.openingBalance ?? null,
         includeOpeningBalanceInInvoices: p.includeOpeningBalanceInInvoices,
       }).then(() => undefined),
     },
@@ -158,7 +157,7 @@ export function PartnersPage() {
       apply: (p, v) => updatePartner(p.id, {
         name: p.name, type: p.type, whatsAppNumber: p.whatsAppNumber ?? undefined,
         address: p.address ?? undefined, notes: p.notes ?? undefined,
-        creditLimit: p.creditLimit ?? null, openingBalance: p.openingBalance ?? null,
+        openingBalance: p.openingBalance ?? null,
         includeOpeningBalanceInInvoices: v === "yes",
       }).then(() => undefined),
     },
@@ -250,7 +249,6 @@ export function PartnersPage() {
               <th>النوع</th>
               <th>رقم واتساب</th>
               <th>العنوان</th>
-              {CREDIT_LIMIT_UI_ENABLED && <th>الحد الائتماني</th>}
               <th>الرصيد</th>
               <th>ملاحظات</th>
               <th></th>
@@ -259,7 +257,6 @@ export function PartnersPage() {
               columns={[
                 ...(canDelete ? [null] : []),
                 "name", "type", "whatsApp", "address",
-                ...(CREDIT_LIMIT_UI_ENABLED ? [null] : []),
                 "balance", "notes", null,
               ]}
               specs={PARTNER_FILTERS}
@@ -269,9 +266,9 @@ export function PartnersPage() {
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={(CREDIT_LIMIT_UI_ENABLED ? 8 : 7) + (canDelete ? 1 : 0)} className="text-center text-gray-400 py-6">جاري التحميل...</td></tr>
+              <tr><td colSpan={7 + (canDelete ? 1 : 0)} className="text-center text-gray-400 py-6">جاري التحميل...</td></tr>
             ) : filters.rows.length === 0 ? (
-              <tr><td colSpan={(CREDIT_LIMIT_UI_ENABLED ? 8 : 7) + (canDelete ? 1 : 0)} className="text-center text-gray-400 py-6">لا يوجد نتائج</td></tr>
+              <tr><td colSpan={7 + (canDelete ? 1 : 0)} className="text-center text-gray-400 py-6">لا يوجد نتائج</td></tr>
             ) : (
               pager.pageRows.map((p) => (
                 <tr key={p.id}>
@@ -284,7 +281,6 @@ export function PartnersPage() {
                   <td>{partnerTypeLabel(p.type)}</td>
                   <td>{p.whatsAppNumber || "—"}</td>
                   <td className="text-gray-500">{p.address || "—"}</td>
-                  {CREDIT_LIMIT_UI_ENABLED && <td>{p.creditLimit != null ? formatCurrency(p.creditLimit) : "—"}</td>}
                   <td>{renderRemaining(p)}</td>
                   <td className="text-gray-500">{p.notes || "—"}</td>
                   <td className="whitespace-nowrap">
@@ -344,7 +340,6 @@ function PartnerEditModal({ partner, onClose, onSaved }: {
   const [whatsAppNumber, setWhatsAppNumber] = useState(partner?.whatsAppNumber ?? "");
   const [address, setAddress] = useState(partner?.address ?? "");
   const [notes, setNotes] = useState(partner?.notes ?? "");
-  const [creditLimit, setCreditLimit] = useState(partner?.creditLimit != null ? String(partner.creditLimit) : "");
   const [openingBalance, setOpeningBalance] = useState(partner?.openingBalance != null ? String(partner.openingBalance) : "");
   // Off for a new person, and off for every person who already existed (the column defaults to
   // false) — an old debt belongs on the account, not on a bill for today's goods.
@@ -359,9 +354,8 @@ function PartnerEditModal({ partner, onClose, onSaved }: {
     setBusy(true);
     setError(null);
     try {
-      const creditLimitValue = creditLimit.trim() === "" ? null : parseFloat(creditLimit);
       const openingBalanceValue = openingBalance.trim() === "" ? null : parseFloat(openingBalance);
-      const payload = { name, type: type || null, whatsAppNumber: whatsAppNumber || undefined, address: address || undefined, notes: notes || undefined, creditLimit: creditLimitValue, openingBalance: openingBalanceValue, includeOpeningBalanceInInvoices };
+      const payload = { name, type: type || null, whatsAppNumber: whatsAppNumber || undefined, address: address || undefined, notes: notes || undefined, openingBalance: openingBalanceValue, includeOpeningBalanceInInvoices };
       if (partner) {
         await updatePartner(partner.id, payload);
         onSaved();
@@ -370,7 +364,7 @@ function PartnerEditModal({ partner, onClose, onSaved }: {
       await createPartner(payload);
       onSaved();
       // Stay open for the next person instead of closing.
-      setName(""); setType(""); setWhatsAppNumber(""); setAddress(""); setNotes(""); setCreditLimit(""); setOpeningBalance("");
+      setName(""); setType(""); setWhatsAppNumber(""); setAddress(""); setNotes(""); setOpeningBalance("");
       setJustAdded(true);
       nameRef.current?.focus();
       setTimeout(() => setJustAdded(false), 1200);
@@ -407,14 +401,6 @@ function PartnerEditModal({ partner, onClose, onSaved }: {
             <label className="label">العنوان (اختياري)</label>
             <input className="input" value={address} onChange={(e) => setAddress(e.target.value)} placeholder="اتركه فارغًا إذا لا يوجد" />
           </div>
-          {CREDIT_LIMIT_UI_ENABLED && (
-            <div>
-              <label className="label">الحد الائتماني (₪، اختياري)</label>
-              <input className="input" type="number" min="0" step="0.01" value={creditLimit} onChange={(e) => setCreditLimit(e.target.value)}
-                placeholder="اتركه فارغًا لعدم وضع حد" />
-              <p className="text-xs text-gray-400 mt-1">عند تجاوز المشتري هذا الحد، سيظهر تنبيه في كشف حسابه وعند إصدار فاتورة جديدة له.</p>
-            </div>
-          )}
           <div>
             <label className="label">الرصيد الافتتاحي (₪، اختياري)</label>
             <input className="input" type="number" step="0.01" value={openingBalance} onChange={(e) => setOpeningBalance(e.target.value)}

@@ -18,9 +18,9 @@ namespace GreenMarket.Domain.Entities;
 /// WoodQuantity mirrors FarmerGoodsRow's WoodQuantity — the portion of Quantity that came in wood
 /// crates, purely informational (never subtracted from anything on its own).
 ///
-/// Like Partner.CreditLimit, going negative (sold more than was ever logged as received) is never
-/// blocked — it's shown as a warning on the page so staff can fix a missed/incomplete "add goods"
-/// entry, not something that can stop a sale from being recorded.
+/// Going negative (sold more than was ever logged as received) is never blocked — it's shown as a
+/// warning on the page so staff can fix a missed/incomplete "add goods" entry, not something that
+/// can stop a sale from being recorded.
 /// </summary>
 public class FarmerGoodsEntry : AuditableEntity
 {

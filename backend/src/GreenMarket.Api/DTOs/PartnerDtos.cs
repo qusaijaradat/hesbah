@@ -17,22 +17,20 @@ namespace GreenMarket.Api.DTOs;
 /// GetAsync/CreateAsync/UpdateAsync, which don't compute this at all.</summary>
 public record PartnerDto(
     int Id, string Name, PartnerType? Type, string? WhatsAppNumber, string? Address, string? Notes,
-    decimal? CreditLimit, decimal? OpeningBalance, bool IncludeOpeningBalanceInInvoices,
+    decimal? OpeningBalance, bool IncludeOpeningBalanceInInvoices,
     decimal? FarmerRemaining = null, decimal? MerchantRemaining = null);
 
 public record PartnerSuggestionDto(int Id, string Name, PartnerType? Type);
 
 public record CreatePartnerRequest(
-    string Name, PartnerType? Type, string? WhatsAppNumber, string? Notes, decimal? CreditLimit,
+    string Name, PartnerType? Type, string? WhatsAppNumber, string? Notes,
     string? Address = null, decimal? OpeningBalance = null, bool IncludeOpeningBalanceInInvoices = false);
 
 public record UpdatePartnerRequest(
-    string Name, PartnerType? Type, string? WhatsAppNumber, string? Notes, decimal? CreditLimit,
+    string Name, PartnerType? Type, string? WhatsAppNumber, string? Notes,
     string? Address = null, decimal? OpeningBalance = null, bool IncludeOpeningBalanceInInvoices = false);
 
 /// <summary>Requirement doc §6: merchant account = invoices, total purchases, paid, remaining.
-/// CreditLimit/IsOverCreditLimit mirror the roadmap's "credit limit per merchant" feature — null
-/// CreditLimit means no limit is enforced and IsOverCreditLimit is always false in that case.
 /// OpeningBalance is the partner's manually-entered starting balance (0/null shown as null here) —
 /// already folded INTO Remaining, shown separately too so the statement's numbers are traceable.
 ///
@@ -44,7 +42,7 @@ public record UpdatePartnerRequest(
 public record MerchantAccountDto(
     int PartnerId, string Name,
     decimal TotalPurchases, decimal TotalPaid, decimal Remaining,
-    decimal? CreditLimit, bool IsOverCreditLimit, decimal? OpeningBalance,
+    decimal? OpeningBalance,
     IReadOnlyList<StatementLineDto> Statement);
 
 /// <summary>Requirement doc §6: farmer/driver account = value sold or transport fees earned,

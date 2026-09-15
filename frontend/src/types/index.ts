@@ -74,7 +74,6 @@ export interface PartnerDto {
   /** "العنوان" — plain optional free text, purely informational. */
   address?: string | null;
   notes?: string | null;
-  creditLimit?: number | null;
   /** "الرصيد الافتتاحي" — manually-entered starting balance from before this system was in use.
    * See backend Partner.OpeningBalance's doc comment for the sign convention. */
   openingBalance?: number | null;
@@ -184,8 +183,6 @@ export interface MerchantAccountDto {
   totalPurchases: number;
   totalPaid: number;
   remaining: number;
-  creditLimit?: number | null;
-  isOverCreditLimit: boolean;
   /** Already folded into `remaining` — shown separately so the numbers stay traceable. */
   openingBalance?: number | null;
   /** Containers live on their own screen (see PartnerContainersDto) — they are counts, they

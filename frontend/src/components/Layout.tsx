@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { Link, NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
+import { BackButton } from "./BackButton";
 import { GlobalSearch } from "./GlobalSearch";
 import { NotificationsBell } from "./NotificationsBell";
 import { PushPrompt } from "./PushPrompt";
@@ -126,6 +127,10 @@ export function Layout({ children }: { children: ReactNode }) {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
             </svg>
           </button>
+          {/* Installed to a home screen this app has no browser chrome and therefore no back
+              arrow of its own — see BackButton. It hides itself when there is nowhere to go. */}
+          <BackButton />
+
           <div className="md:hidden text-sm font-bold shrink-0">🥬 الحسبة</div>
 
           {/* The search box takes the middle of the bar at every width. It is the control used

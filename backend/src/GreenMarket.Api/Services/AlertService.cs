@@ -26,8 +26,8 @@ namespace GreenMarket.Api.Services;
 ///
 /// Left out on purpose: unpaid invoices (in a credit market that is the normal state, not an
 /// exception — it would be permanently on), checks due later this week (real, but not actionable
-/// today, and already on the dashboard), and credit limits (that whole feature is switched off by
-/// CREDIT_LIMIT_UI_ENABLED — an alert would be resurrecting it through the back door).
+/// today, and already on the dashboard). Credit limits used to be on this list too; the market
+/// does not work that way and the whole feature was removed on 2026-09-16.
 /// </summary>
 public interface IAlertService
 {

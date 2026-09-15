@@ -12,7 +12,6 @@ public class PartnerConfiguration : IEntityTypeConfiguration<Partner>
         builder.Property(x => x.Name).HasMaxLength(200).IsRequired();
         builder.Property(x => x.WhatsAppNumber).HasMaxLength(30);
         builder.Property(x => x.Notes).HasMaxLength(1000);
-        builder.Property(x => x.CreditLimit).HasColumnType("numeric(14,2)");
 
         // Trigram index for the §3 "suggest existing names while typing" feature is created in
         // database/schema.sql (requires the pg_trgm extension) rather than here, since EF Core's

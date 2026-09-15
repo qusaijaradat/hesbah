@@ -27,12 +27,12 @@ export async function getPartner(id: number) {
   return data;
 }
 
-export async function createPartner(payload: { name: string; type: PartnerType | null; whatsAppNumber?: string; address?: string; notes?: string; creditLimit?: number | null; openingBalance?: number | null; includeOpeningBalanceInInvoices?: boolean }) {
+export async function createPartner(payload: { name: string; type: PartnerType | null; whatsAppNumber?: string; address?: string; notes?: string; openingBalance?: number | null; includeOpeningBalanceInInvoices?: boolean }) {
   const { data } = await apiClient.post<PartnerDto>("/partners", payload);
   return data;
 }
 
-export async function updatePartner(id: number, payload: { name: string; type: PartnerType | null; whatsAppNumber?: string; address?: string; notes?: string; creditLimit?: number | null; openingBalance?: number | null; includeOpeningBalanceInInvoices?: boolean }) {
+export async function updatePartner(id: number, payload: { name: string; type: PartnerType | null; whatsAppNumber?: string; address?: string; notes?: string; openingBalance?: number | null; includeOpeningBalanceInInvoices?: boolean }) {
   const { data } = await apiClient.put<PartnerDto>(`/partners/${id}`, payload);
   return data;
 }

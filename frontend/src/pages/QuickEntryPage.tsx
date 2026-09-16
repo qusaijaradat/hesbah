@@ -382,12 +382,13 @@ export function QuickEntryPage() {
                 </div>
 
                 <div className="space-y-2">
+                  {/* No types filter: anybody may buy — see the note on the invoice form. */}
                   <PartnerAutocomplete
                     label="المشتري" value={row.merchant}
                     onChange={(p) => updateRow(idx, { merchant: p })}
                     text={row.merchantText}
                     onFreeTextChange={(t) => updateRow(idx, { merchantText: t })}
-                    allowNew newTypeLabel="مشتري" types={["Merchant"]}
+                    allowNew newTypeLabel="مشتري"
                   />
                   <div>
                     <label className="label">الصنف</label>
@@ -507,7 +508,7 @@ export function QuickEntryPage() {
                       onChange={(p) => updateRow(idx, { merchant: p })}
                       text={row.merchantText}
                       onFreeTextChange={(t) => updateRow(idx, { merchantText: t })}
-                      allowNew newTypeLabel="مشتري" types={["Merchant"]}
+                      allowNew newTypeLabel="مشتري"
                     />
                   </td>
                   <td>

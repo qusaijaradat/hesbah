@@ -275,11 +275,20 @@ export function InvoiceNewPage() {
             <label className="label">التاريخ</label>
             <input type="date" className="input" value={date} onChange={(e) => setDate(e.target.value)} />
           </div>
+          {/* No `types` filter, deliberately: anybody may buy.
+
+              A seller who buys a crate of something else off another seller is an ordinary day
+              here, and while this list was restricted to people who had ALREADY bought, he was
+              unreachable — the one name you needed was the one the picker would not offer. The
+              backend has never had the problem: picking somebody as a buyer IS the statement
+              that they buy, and PartnerService.GetWithRoleAsync grants the role on the spot
+              (roles only ever add, see PartnerRoles). It was the dropdown alone that refused.
+
+              The seller and driver fields still filter. Say the word and they will not. */}
           <PartnerAutocomplete
             label="المشتري" value={merchant} onChange={setMerchant}
             allowNew newTypeLabel="مشتري" text={merchantText} onFreeTextChange={setMerchantText}
             placeholder="اكتب اسم المشتري أو اختره من القائمة..."
-            types={["Merchant"]}
           />
           <PartnerAutocomplete
             label="البائع (اختياري)" value={farmer} onChange={setFarmer}

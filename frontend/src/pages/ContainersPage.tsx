@@ -327,7 +327,7 @@ function MovementForm({ partnerId, onSaved }: { partnerId: number; onSaved: () =
           <label className="label">العدد</label>
           <input className="input" type="number" min="0" step="1" value={quantity} onChange={(e) => setQuantity(e.target.value)} />
         </div>
-        <div className="grow min-w-[12rem]">
+        <div className="grow min-w-0 sm:min-w-[12rem]">
           <label className="label">ملاحظات (اختياري)</label>
           <input className="input" value={notes} maxLength={500} onChange={(e) => setNotes(e.target.value)} />
         </div>

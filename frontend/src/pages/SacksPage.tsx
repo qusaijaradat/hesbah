@@ -576,7 +576,7 @@ function StockTable({ kinds, canEdit, onSaved, onError }: {
         <div className="flex items-end gap-2 flex-wrap px-4 pt-3">
           <div>
             <label className="label">نوع جديد</label>
-            <input className="input w-40" value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="أحمر" />
+            <input className="input w-full sm:w-40" value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="أحمر" />
           </div>
           <div>
             <label className="label">كم عندك</label>

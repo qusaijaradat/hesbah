@@ -123,7 +123,7 @@ export function InvoiceDetailPage() {
       <Link to="/invoices" className="text-sm text-brand-700 hover:underline">← رجوع إلى قائمة الفواتير</Link>
 
       <div className="card p-6 mt-3">
-        <div className="flex justify-between items-start mb-4">
+        <div className="flex justify-between items-start gap-3 flex-wrap mb-4">
           <div>
             <h1 className="text-xl font-bold">فاتورة مشتري {invoice.invoiceNumber}</h1>
             <div className="text-sm text-gray-500">{formatDate(invoice.date)}</div>

@@ -86,7 +86,7 @@ export function ReportsPage() {
           </div>
         )}
         {hasPermission("reports.export") && (
-          <div className="flex gap-2 ms-auto">
+          <div className="flex gap-2 flex-wrap ms-auto">
             <button className="btn-secondary" onClick={handleExportExcel}>تصدير Excel</button>
             <PdfActions
               fetchPdf={() => exportReport(tab, "pdf", reportFilter())}

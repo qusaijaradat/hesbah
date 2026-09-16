@@ -182,7 +182,7 @@ export function PartnersPage() {
       {error && <div className="text-sm text-red-600 bg-red-50 rounded-md p-3 mb-4 whitespace-pre-line">{error}</div>}
 
       {selection.selected.size > 0 && (canDelete || canEdit) && (
-        <div className="flex items-center gap-3 mb-4">
+        <div className="flex items-center gap-3 mb-4 flex-wrap">
           <span className="text-sm text-gray-600">محدد: <span className="font-semibold">{selection.selected.size}</span></span>
           {canEdit && (
             <button className="btn-secondary text-sm" onClick={() => setBulkEditing(true)}>

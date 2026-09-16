@@ -83,7 +83,7 @@ export function ItemsPage() {
       {error && <div className="text-sm text-red-600 bg-red-50 rounded-md p-3 mb-4 whitespace-pre-line">{error}</div>}
 
       {canDelete && selection.selected.size > 0 && (
-        <div className="flex items-center gap-3 mb-4">
+        <div className="flex items-center gap-3 mb-4 flex-wrap">
           <span className="text-sm text-gray-600">محدد: <span className="font-semibold">{selection.selected.size}</span></span>
           <button className="btn-danger text-sm" disabled={bulkDeleting} onClick={handleBulkDelete}>
             {bulkDeleting ? "جاري الحذف..." : `حذف المحدد (${selection.selected.size})`}

@@ -71,6 +71,11 @@ jobs:
         # backend/tools/SmokeTests is, and until now the only thing running them was
         # somebody remembering to. A check nobody runs is a check that is already broken.
         run: npm run check:ledger && npm run check:filters && npm run check:capture
+      - name: Nothing scrolls sideways
+        # Reads the source for the shapes that make a page wider than a phone. The CSS backstop
+        # (body { overflow-x: clip }) HIDES that overflow, so without this the bug would stop
+        # announcing itself and simply lose the right-hand end of a row.
+        run: npm run check:responsive
 
   images:
     name: Docker images build

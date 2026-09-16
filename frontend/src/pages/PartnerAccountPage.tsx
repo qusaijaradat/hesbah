@@ -139,7 +139,7 @@ function AdjustmentSection({ partnerId, roleLabel, onChanged }: { partnerId: num
             <input className="input" type="number" min="0" step="0.01" value={amount}
               onChange={(e) => setAmount(e.target.value)} />
           </div>
-          <div className="grow min-w-[14rem]">
+          <div className="grow min-w-0 sm:min-w-[14rem]">
             <label className="label">السبب</label>
             <input className="input" value={reason} maxLength={500}
               onChange={(e) => setReason(e.target.value)} placeholder="مثال: تعويض عن انخفاض سعر البندورة" />

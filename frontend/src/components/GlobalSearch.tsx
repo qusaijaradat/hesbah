@@ -90,7 +90,10 @@ export function GlobalSearch() {
   const showPanel = open && query.trim().length >= MIN_CHARS;
 
   return (
-    <div className="relative flex-1 max-w-md" ref={boxRef}>
+    // min-w-0: a flex child will not shrink below its content's intrinsic width unless told it
+    // may, and an <input> carries a browser default of about twenty characters. Without it this
+    // box refused to shrink and pushed the whole bar — and with it the page — past the screen.
+    <div className="relative flex-1 min-w-0 max-w-md" ref={boxRef}>
       <input
         ref={inputRef}
         type="search"
@@ -98,7 +101,7 @@ export function GlobalSearch() {
         onChange={(e) => setQuery(e.target.value)}
         onFocus={() => setOpen(true)}
         onKeyDown={onKeyDown}
-        placeholder="🔍 دوّر على اسم أو رقم فاتورة..."
+        placeholder="🔍 دوّر على اسم أو رقم"
         aria-label="بحث"
         className="w-full rounded-md bg-brand-800 text-white placeholder:text-brand-300 border border-brand-700 px-3 py-1.5 text-sm focus:outline-none focus:border-brand-400"
       />

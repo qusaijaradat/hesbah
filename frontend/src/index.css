@@ -6,7 +6,31 @@ html, body, #root {
   height: 100%;
 }
 
+/*
+ * Nothing in this app scrolls sideways.
+ *
+ * A page one pixel too wide does not announce itself — it just drifts under the thumb, and on a
+ * phone that reads as a broken app rather than as a layout bug. This is the backstop for that: the
+ * real fixes are in the components, and this makes sure a new one cannot reintroduce it quietly.
+ *
+ * Two choices here, both about not breaking the sticky app bar that holds the menu, the search and
+ * the bell:
+ *
+ *   `clip`, not `hidden`. overflow-x: hidden coerces the other axis into a scroll container, and a
+ *   scroll container between a sticky element and the viewport is what stops it sticking.
+ *
+ *   on `body`, not `html`. Body's overflow propagates up to the viewport — so the page cannot
+ *   scroll sideways — while body itself goes on behaving as `visible`, which leaves nothing between
+ *   the header and the viewport it sticks to.
+ */
+/* An image or an embed wider than its column is the other half of the same problem. Not svg:
+   every one in this app is an icon with an explicit size. */
+img, video, canvas, iframe {
+  max-width: 100%;
+}
+
 body {
+  overflow-x: clip;
   @apply bg-gray-50 text-gray-900;
   font-family: "Tahoma", "Segoe UI", Arial, sans-serif;
 
@@ -31,10 +55,24 @@ body {
     -webkit-overflow-scrolling: touch;
   }
 
-  /* iOS zooms the whole page in when a focused input is smaller than 16px. The app then stays
-     zoomed after the keyboard closes, and every screen is suddenly too wide. */
-  input, select, textarea {
-    font-size: 16px;
+  /*
+   * iOS zooms the whole page in when a focused input is smaller than 16px, and STAYS zoomed after
+   * the keyboard closes — which is the "why is the app zoomed and sliding left and right" that
+   * this app had on every phone, on every screen with a field on it.
+   *
+   * !important, which is not decoration here. This rule was already present and had never once
+   * applied: `.input` is defined with Tailwind's `text-sm` (14px), and a class selector beats a
+   * bare element selector no matter how the file is ordered. Every input in this app is `.input`.
+   * So the rule that was supposed to prevent the zoom was outranked by the class it was written
+   * to correct, silently, for as long as both have existed.
+   *
+   * Checkboxes and radios are left out: they have no text, and sizing them does nothing but move
+   * them off their labels.
+   */
+  input:not([type="checkbox"]):not([type="radio"]),
+  select,
+  textarea {
+    font-size: 16px !important;
   }
 
   /* A button 34px tall is a mouse target. Both platforms ask for ~44px for a finger, and these

@@ -131,10 +131,13 @@ export function Layout({ children }: { children: ReactNode }) {
               arrow of its own — see BackButton. It hides itself when there is nowhere to go. */}
           <BackButton />
 
-          <div className="md:hidden text-sm font-bold shrink-0">🥬 الحسبة</div>
+          {/* The name is on the drawer's own header and on the icon this app was opened from, so
+              on a phone it is three things competing for the same row and losing to the search box.
+              It stays from sm up, where there is room for it. */}
+          <div className="hidden sm:block md:hidden text-sm font-bold shrink-0">🥬 الحسبة</div>
 
-          {/* The search box takes the middle of the bar at every width. It is the control used
-              most often by the people who know the app least, so it is not hidden behind anything. */}
+          {/* The search box takes the middle of the bar at every width. It is the control used most
+              often by the people who know the app least, so it is not hidden behind anything. */}
           <GlobalSearch />
 
           {/* The bell sits at the end of the bar — the left, in an RTL page — which is where every

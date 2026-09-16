@@ -65,14 +65,14 @@ export function CollapsibleRows<T>({ rows, rowKey, title, value, details, leadin
             <div className="flex items-center">
             {leading && <div className="ps-3">{leading(row)}</div>}
             <button
-              className="flex-1 flex items-center gap-2 px-3 py-3 text-start"
+              className="flex-1 min-w-0 flex items-center gap-2 px-3 py-3 text-start"
               onClick={() => toggle(key)}
               aria-expanded={isOpen}
             >
               {/* The chevron turns rather than swapping glyphs, so the control reads as one thing
                   in two states instead of two different buttons. */}
               <span className={`text-gray-400 text-xs transition-transform ${isOpen ? "rotate-90" : ""}`}>▶</span>
-              <span className="flex-1 font-medium">{title(row)}</span>
+              <span className="flex-1 min-w-0 break-words font-medium">{title(row)}</span>
               {value && <span className="font-semibold whitespace-nowrap">{value(row)}</span>}
             </button>
             </div>

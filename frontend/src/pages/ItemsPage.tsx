@@ -103,7 +103,7 @@ export function ItemsPage() {
                 {canDelete && (
                   <input type="checkbox" checked={selection.selected.has(item.id)} onChange={() => selection.toggleOne(item.id)} />
                 )}
-                <span className="flex-1 font-medium">{item.name}</span>
+                <span className="flex-1 min-w-0 break-words font-medium">{item.name}</span>
                 {canEdit && (
                   <button className="btn-link text-gray-500 text-sm hover:underline" onClick={() => setEditing(item)}>تعديل</button>
                 )}

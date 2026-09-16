@@ -592,7 +592,7 @@ function StockTable({ kinds, canEdit, onSaved, onError }: {
             <div className="text-center text-gray-400 py-6">ما في أنواع بعد — ضيف واحد فوق</div>
           ) : kinds.map((k) => (
             <div key={k.id} className="flex items-center gap-3 py-3">
-              <span className="flex-1 font-medium">{k.name}</span>
+              <span className="flex-1 min-w-0 break-words font-medium">{k.name}</span>
               {canEdit ? (
                 <input
                   className="input w-24" type="number" min="0" step="1"

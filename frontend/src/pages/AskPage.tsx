@@ -78,7 +78,7 @@ export function AskPage() {
       <div className="card p-4 mb-4">
         <div className="flex gap-2 flex-wrap">
           <input
-            className="input flex-1 min-w-64"
+            className="input flex-1 sm:min-w-64"
             placeholder="مثال: كم على أبو علي؟"
             value={question}
             onChange={(e) => setQuestion(e.target.value)}

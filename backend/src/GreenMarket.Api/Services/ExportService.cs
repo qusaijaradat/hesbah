@@ -720,14 +720,17 @@ public class ExportService : IExportService
                                     if (index < count)
                                     {
                                         var cardIndex = index;
-                                        // Every card carries its position in the run — 3/12 — in
-                                        // the corner farthest from anything that is read.
+                                        // Every card is numbered, 1, 2, 3, through the run, in the
+                                        // corner farthest from anything that is read.
                                         //
-                                        // A sheet of four is cut into four, and once it is cut
-                                        // there is nothing on a card that says whether the stack
-                                        // is whole. A missing quadrant, a page that did not print,
-                                        // a run somebody stopped halfway: all of them look exactly
-                                        // like a complete stack afterwards. Now they do not.
+                                        // A sheet of four is cut into four, and once it is cut there
+                                        // is nothing on a card that says whether the stack is whole.
+                                        // A missing quadrant, a page that did not print, a run
+                                        // somebody stopped halfway: all three look exactly like a
+                                        // complete stack afterwards. Counting to the last number, and
+                                        // finding no gap in it, is the check — which is why it is a
+                                        // plain number and not "3 of 12": the total belongs to the
+                                        // last card, not to every one of them.
                                         //
                                         // As a layer rather than inside the card, so both the
                                         // ordinary and the merged card get it from one place and
@@ -735,9 +738,9 @@ public class ExportService : IExportService
                                         cell.Layers(layers =>
                                         {
                                             layers.PrimaryLayer().Element(c => renderCard(c, cardIndex));
-                                            layers.Layer().AlignTop().AlignLeft().PaddingTop(3).PaddingLeft(4)
-                                                .Text($"{cardIndex + 1}/{count}")
-                                                .FontSize(7).FontColor(PrintInk.Secondary);
+                                            layers.Layer().AlignTop().AlignLeft().PaddingTop(3).PaddingLeft(5)
+                                                .Text($"{cardIndex + 1}")
+                                                .Bold().FontSize(9).FontColor(PrintInk.Secondary);
                                         });
                                     }
                                     // else: blank quadrant — the cell above still reserves its

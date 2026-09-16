@@ -6,6 +6,7 @@ import type { SettingDto } from "../types";
 import { apiErrorMessage } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { toMonochromePng } from "../lib/monochrome";
+import { MySessionsCard } from "../components/MySessionsCard";
 import { PushNotificationsCard } from "../components/PushNotificationsCard";
 
 const KEY_LABELS: Record<string, string> = {
@@ -163,6 +164,10 @@ export function SettingsPage() {
       {/* No permission gate: this is somebody choosing to be told about what they can already see,
           and the server decides what that is. A role that reaches nothing gets a silent phone. */}
       <PushNotificationsCard />
+
+      {/* No permission gate either: everyone may see where their OWN account is signed in and end
+          any of it. users.sessions is for doing that to somebody else. */}
+      <MySessionsCard />
 
       {hasPermission("backup.download") && (
         <div className="card p-4 mb-4">

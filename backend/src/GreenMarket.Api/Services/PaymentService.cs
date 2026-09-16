@@ -257,16 +257,40 @@ public class PaymentService : IPaymentService
         var partner = await _db.Partners.FindAsync(partnerId)
             ?? throw new NotFoundAppException("Partner", partnerId);
 
-        // Asked of the very same methods the two account pages are built from. Working these out
-        // again here would be a third opinion on what somebody owes, and the third opinion is
-        // always the one that turns out to be wrong six months later.
-        var buyer = await _partners.GetMerchantAccountAsync(partnerId);
-        var seller = await _partners.GetFarmerAccountAsync(partnerId);
+        // Three aggregate queries, not two whole account pages.
+        //
+        // This used to ask GetMerchantAccountAsync and GetFarmerAccountAsync, on the grounds that
+        // a second opinion about what somebody owes is how this system gets money wrong. The
+        // grounds were right and the method was not: those two build a complete STATEMENT — every
+        // invoice, every payment, every ledger row, assembled into running balances — to hand back
+        // one number each. And it is read on every visit to either account page (OtherSideNotice),
+        // which already built one of them: three full statements to show one line.
+        //
+        // The formulas are the same formulas, because they are now a function both sides call
+        // (Domain.Services.PartnerBalance) rather than the same arithmetic typed out again.
+        var openingBalance = partner.OpeningBalance ?? 0;
+
+        var purchases = await _db.Invoices
+            .Where(i => i.MerchantId == partnerId && i.Status == InvoiceStatus.Active)
+            .SumAsync(i => (decimal?)i.GrandTotal) ?? 0m;
+
+        // A check that has not cleared is not money yet — the same rule every 'paid' sum obeys.
+        var paid = await _db.Payments
+            .Where(PaymentRules.CountsTowardBalanceExpression)
+            .Where(p => p.PartnerId == partnerId && p.Direction == PaymentDirection.FromMerchant)
+            .SumAsync(p => (decimal?)p.Amount) ?? 0m;
+
+        var ledgerNet = await _db.FarmerTransactions
+            .Where(t => t.FarmerId == partnerId)
+            .SumAsync(t => (decimal?)t.Amount) ?? 0m;
+
+        var buyerOwes = PartnerBalance.ForBuyer(openingBalance, purchases, paid);
+        var marketOwesSeller = PartnerBalance.ForSeller(openingBalance, ledgerNet);
 
         return new PartnerBalancesDto(
             partner.Id, partner.Name,
-            buyer.Remaining, seller.Remaining,
-            OffsetRules.Maximum(buyer.Remaining, seller.Remaining));
+            buyerOwes, marketOwesSeller,
+            OffsetRules.Maximum(buyerOwes, marketOwesSeller));
     }
 
     public async Task<IReadOnlyList<PaymentDto>> CreateOffsetAsync(

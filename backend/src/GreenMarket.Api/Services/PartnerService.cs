@@ -137,10 +137,13 @@ public class PartnerService : IPartnerService
         var items = pageItems.Select(p =>
         {
             decimal? farmerRemaining = PartnerRoles.HasSellerSide(p.Type)
-                ? (p.OpeningBalance ?? 0) + netAmountBySeller.GetValueOrDefault(p.Id)
+                ? PartnerBalance.ForSeller(p.OpeningBalance ?? 0, netAmountBySeller.GetValueOrDefault(p.Id))
                 : null;
             decimal? merchantRemaining = PartnerRoles.Has(p.Type, PartnerType.Merchant)
-                ? (p.OpeningBalance ?? 0) + purchasesByMerchant.GetValueOrDefault(p.Id) - paidByMerchant.GetValueOrDefault(p.Id)
+                ? PartnerBalance.ForBuyer(
+                    p.OpeningBalance ?? 0,
+                    purchasesByMerchant.GetValueOrDefault(p.Id),
+                    paidByMerchant.GetValueOrDefault(p.Id))
                 : null;
             return ToDto(p, farmerRemaining, merchantRemaining);
         }).ToList();
@@ -392,7 +395,7 @@ public class PartnerService : IPartnerService
         var statement = AccountStatementBuilder.Build(entries, openingBalance, partner.CreatedAt);
         var totalPurchases = invoices.Sum(i => i.GrandTotal);
         var totalPaid = payments.Where(p => PaymentRules.CountsTowardBalance(p.CheckStatus)).Sum(p => p.Amount);
-        var remaining = openingBalance + totalPurchases - totalPaid;
+        var remaining = PartnerBalance.ForBuyer(openingBalance, totalPurchases, totalPaid);
 
         // Containers (crates, sacks) used to be computed here and carried on this DTO. They moved
         // to their own service and screen once sellers and drivers needed them too and once there
@@ -476,7 +479,7 @@ public class PartnerService : IPartnerService
         // exactly the kind of mismatch a detailed, invoice-traceable statement must never have.
         // Summing every transaction's own (already correctly signed) Amount is the same computation
         // AccountStatementBuilder.Build does internally, so this always matches the statement below.
-        var remaining = openingBalance + transactions.Sum(t => t.Amount);
+        var remaining = PartnerBalance.ForSeller(openingBalance, transactions.Sum(t => t.Amount));
 
         return new FarmerAccountDto(
             partner.Id, partner.Name, partner.Type,
@@ -534,7 +537,10 @@ public class PartnerService : IPartnerService
                 {
                     var oldDebt = p.OpeningBalance ?? 0;
                     var current = currentFn(p.Id);
-                    return new PartnerDebtRow(p.Id, p.Name, oldDebt, current, oldDebt + current);
+                    // Both formulas reduce to opening + current here: the buyer's subtraction is
+                    // already inside MerchantCurrent, and the seller's ledger net inside
+                    // SellerCurrent. ForSeller is the one that says so.
+                    return new PartnerDebtRow(p.Id, p.Name, oldDebt, current, PartnerBalance.ForSeller(oldDebt, current));
                 })
                 .Where(r => r.Remaining != 0)
                 .OrderByDescending(r => Math.Abs(r.Remaining))

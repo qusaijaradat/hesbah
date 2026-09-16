@@ -34,16 +34,21 @@ export function MySessionsCard() {
   async function refresh() {
     try {
       setSessions(await mySessions());
-    } catch {
-      // The card simply does not appear. A failure to list devices is not worth a red box on a
-      // settings page somebody opened to do something else.
+      setError(null);
+    } catch (err) {
       setSessions([]);
+      setError(apiErrorMessage(err, "فشل تحميل الأجهزة"));
     }
   }
 
   useEffect(() => { refresh(); }, []);
 
-  if (sessions === null || sessions.length === 0) return null;
+  // Only while the first read is still in flight. It does NOT hide on an empty list or on a
+  // failure, which is what it did at first and what made it unfindable: somebody looking for
+  // "أجهزتي" and seeing nothing cannot tell a card that is missing from a card that decided it had
+  // nothing to say. An empty list is itself an answer, and a failure needs to be visible to be
+  // fixed.
+  if (sessions === null) return null;
 
   const live = sessions.filter((s) => !s.revokedAt);
 
@@ -70,6 +75,10 @@ export function MySessionsCard() {
       </p>
 
       {error && <div className="text-sm text-red-600 bg-red-50 rounded-md p-2 mb-3">{error}</div>}
+
+      {sessions.length === 0 && !error && (
+        <div className="text-sm text-gray-400 py-4 text-center">ما في أجهزة مسجّلة بعد</div>
+      )}
 
       <ul className="divide-y divide-gray-100">
         {sessions.map((s) => (

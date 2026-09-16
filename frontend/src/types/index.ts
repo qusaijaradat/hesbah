@@ -436,6 +436,23 @@ export interface PagedResult<T> {
   totalPages: number;
 }
 
+/**
+ * The two sides of one person — the man who brings produce in the morning and buys something
+ * else in the afternoon.
+ *
+ * buyerOwes: positive means he owes the market.
+ * marketOwesSeller: positive means the market owes him.
+ * maxOffset: the smaller of the two, floored at zero. Decided server-side (OffsetRules), never
+ * here — two opinions about what somebody owes is one too many.
+ */
+export interface PartnerBalancesDto {
+  partnerId: number;
+  partnerName: string;
+  buyerOwes: number;
+  marketOwesSeller: number;
+  maxOffset: number;
+}
+
 export interface PaymentDto {
   id: number;
   partnerId: number;
@@ -455,6 +472,12 @@ export interface PaymentDto {
   /** The date the check was ACTUALLY cashed/deposited — only ever set while checkStatus is
    * "Cleared". Distinct from checkDueDate (the nominal due date). */
   checkClearedDate?: string | null;
+  /**
+   * Set on BOTH halves of a "مقاصّة" — settling what somebody owes as a buyer against what the
+   * market owes them as a seller. Two rows, one event, no cash. The screens read it to say so,
+   * and deleting either half takes the pair.
+   */
+  offsetGroupId?: string | null;
 }
 
 export interface ExpenseDto {

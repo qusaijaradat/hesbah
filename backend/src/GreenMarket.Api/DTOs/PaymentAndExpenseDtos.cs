@@ -22,7 +22,9 @@ public record CreatePaymentRequest(int? PartnerId, string? PartnerName, PaymentD
 /// Cleared/Bounced without touching anything else about the payment.</summary>
 public record UpdatePaymentRequest(decimal Amount, DateTimeOffset Date, string? Method, string? Notes, int? InvoiceId = null, DateTimeOffset? CheckDueDate = null, string? CheckNumber = null, CheckClearanceStatus? CheckStatus = null, DateTimeOffset? CheckClearedDate = null);
 
-public record PaymentDto(int Id, int PartnerId, string PartnerName, PaymentDirection Direction, decimal Amount, DateTimeOffset Date, string? Method, string? Notes, int? InvoiceId, string? InvoiceNumber, DateTimeOffset? CheckDueDate, string? CheckNumber, CheckClearanceStatus? CheckStatus, DateTimeOffset? CheckClearedDate);
+/// <param name="OffsetGroupId">Set on both halves of a مقاصّة — see Payment.OffsetGroupId. The
+/// screens use it to say that this row moved no cash, and the delete uses it to take the pair.</param>
+public record PaymentDto(int Id, int PartnerId, string PartnerName, PaymentDirection Direction, decimal Amount, DateTimeOffset Date, string? Method, string? Notes, int? InvoiceId, string? InvoiceNumber, DateTimeOffset? CheckDueDate, string? CheckNumber, CheckClearanceStatus? CheckStatus, DateTimeOffset? CheckClearedDate, Guid? OffsetGroupId);
 
 /// <summary>EmployeeId optionally attributes this expense (or withdrawal — see Employee.cs) to a
 /// specific employee; null means it isn't tied to anyone, same as before this field existed.</summary>
@@ -31,3 +33,22 @@ public record CreateExpenseRequest(DateTimeOffset Date, string Description, deci
 public record UpdateExpenseRequest(DateTimeOffset Date, string Description, decimal Amount, string? Category, int? EmployeeId = null);
 
 public record ExpenseDto(int Id, DateTimeOffset Date, string Description, decimal Amount, string? Category, int? EmployeeId, string? EmployeeName);
+
+/// <summary>
+/// Both sides of one person, and how much of the two can be settled against each other.
+///
+/// Read straight off the same two account pages the app already shows (PartnerService's
+/// GetMerchantAccountAsync / GetFarmerAccountAsync), never recomputed — a third place that
+/// works out what somebody owes is a third place for it to be wrong.
+/// </summary>
+/// <param name="BuyerOwes">His merchant balance. Positive means he owes the market.</param>
+/// <param name="MarketOwesSeller">His seller/driver balance. Positive means the market owes him.</param>
+/// <param name="MaxOffset">The smaller of the two, floored at zero — Domain.Services.OffsetRules.</param>
+public record PartnerBalancesDto(
+    int PartnerId, string PartnerName, decimal BuyerOwes, decimal MarketOwesSeller, decimal MaxOffset);
+
+/// <summary>
+/// One مقاصّة. Becomes two payments — one collected from him as a buyer, one paid to him as a
+/// seller — of the same amount, on the same date, sharing an OffsetGroupId. No cash moves.
+/// </summary>
+public record CreateOffsetRequest(int PartnerId, decimal Amount, DateTimeOffset Date, string? Notes);

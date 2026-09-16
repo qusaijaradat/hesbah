@@ -3,6 +3,7 @@ using GreenMarket.Api.DTOs;
 using GreenMarket.Domain.Entities;
 using GreenMarket.Domain.Enums;
 using GreenMarket.Domain.Services;
+using GreenMarket.Domain.Services;
 using GreenMarket.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
@@ -12,6 +13,21 @@ namespace GreenMarket.Api.Services;
 public interface IPaymentService
 {
     Task<PaymentDto> CreateAsync(CreatePaymentRequest request, int recordedByUserId);
+
+    /// <summary>
+    /// Both sides of one person, and how much of them can be settled against each other.
+    /// </summary>
+    Task<PartnerBalancesDto> GetBalancesAsync(int partnerId);
+
+    /// <summary>
+    /// "مقاصّة" — settles what somebody owes as a BUYER against what the market owes them as a
+    /// SELLER. Returns the two payments it wrote, buyer side first.
+    ///
+    /// The same man brings produce in the morning and buys something else in the afternoon, and
+    /// until now the market handed him cash for the one and collected cash back for the other, on
+    /// the same day, in opposite directions.
+    /// </summary>
+    Task<IReadOnlyList<PaymentDto>> CreateOffsetAsync(CreateOffsetRequest request, int recordedByUserId);
 
     /// <summary>Single-payment lookup for the edit form — previously the edit screen had to fetch
     /// and filter the whole paged list to find one row instead of asking for it directly.</summary>
@@ -126,7 +142,7 @@ public class PaymentService : IPaymentService
         var total = await query.CountAsync();
         var items = await query.OrderByDescending(p => p.Date)
             .Skip((page - 1) * pageSize).Take(pageSize)
-            .Select(p => new PaymentDto(p.Id, p.PartnerId, p.Partner.Name, p.Direction, p.Amount, p.Date, p.Method, p.Notes, p.InvoiceId, p.Invoice != null ? p.Invoice.InvoiceNumber : null, p.CheckDueDate, p.CheckNumber, p.CheckStatus, p.CheckClearedDate))
+            .Select(p => new PaymentDto(p.Id, p.PartnerId, p.Partner.Name, p.Direction, p.Amount, p.Date, p.Method, p.Notes, p.InvoiceId, p.Invoice != null ? p.Invoice.InvoiceNumber : null, p.CheckDueDate, p.CheckNumber, p.CheckStatus, p.CheckClearedDate, p.OffsetGroupId))
             .ToListAsync();
 
         return new PagedResult<PaymentDto> { Items = items, TotalCount = total, Page = page, PageSize = pageSize };
@@ -147,7 +163,7 @@ public class PaymentService : IPaymentService
         var total = await query.CountAsync();
         var items = await query.OrderBy(p => p.CheckDueDate)
             .Skip((page - 1) * pageSize).Take(pageSize)
-            .Select(p => new PaymentDto(p.Id, p.PartnerId, p.Partner.Name, p.Direction, p.Amount, p.Date, p.Method, p.Notes, p.InvoiceId, p.Invoice != null ? p.Invoice.InvoiceNumber : null, p.CheckDueDate, p.CheckNumber, p.CheckStatus, p.CheckClearedDate))
+            .Select(p => new PaymentDto(p.Id, p.PartnerId, p.Partner.Name, p.Direction, p.Amount, p.Date, p.Method, p.Notes, p.InvoiceId, p.Invoice != null ? p.Invoice.InvoiceNumber : null, p.CheckDueDate, p.CheckNumber, p.CheckStatus, p.CheckClearedDate, p.OffsetGroupId))
             .ToListAsync();
 
         return new PagedResult<PaymentDto> { Items = items, TotalCount = total, Page = page, PageSize = pageSize };
@@ -216,14 +232,113 @@ public class PaymentService : IPaymentService
         var payment = await _db.Payments.SingleOrDefaultAsync(p => p.Id == id)
             ?? throw new NotFoundAppException("Payment", id);
 
-        if (payment.Direction is PaymentDirection.ToFarmer or PaymentDirection.ToDriver)
+        // A مقاصّة is one event written as two rows. Deleting half of it would leave the books out
+        // by the amount — his buyer balance corrected and his seller balance not, or the reverse —
+        // so the pair goes together however it was reached.
+        var group = payment.OffsetGroupId is null
+            ? new List<Payment> { payment }
+            : await _db.Payments.Where(p => p.OffsetGroupId == payment.OffsetGroupId).ToListAsync();
+
+        foreach (var row in group)
         {
-            var transaction = await _db.FarmerTransactions.SingleOrDefaultAsync(t => t.PaymentId == payment.Id);
-            if (transaction is not null) _db.FarmerTransactions.Remove(transaction);
+            if (row.Direction is PaymentDirection.ToFarmer or PaymentDirection.ToDriver)
+            {
+                var transaction = await _db.FarmerTransactions.SingleOrDefaultAsync(t => t.PaymentId == row.Id);
+                if (transaction is not null) _db.FarmerTransactions.Remove(transaction);
+            }
+            row.IsDeleted = true;
         }
 
-        payment.IsDeleted = true;
         await _db.SaveChangesAsync();
+    }
+
+    public async Task<PartnerBalancesDto> GetBalancesAsync(int partnerId)
+    {
+        var partner = await _db.Partners.FindAsync(partnerId)
+            ?? throw new NotFoundAppException("Partner", partnerId);
+
+        // Asked of the very same methods the two account pages are built from. Working these out
+        // again here would be a third opinion on what somebody owes, and the third opinion is
+        // always the one that turns out to be wrong six months later.
+        var buyer = await _partners.GetMerchantAccountAsync(partnerId);
+        var seller = await _partners.GetFarmerAccountAsync(partnerId);
+
+        return new PartnerBalancesDto(
+            partner.Id, partner.Name,
+            buyer.Remaining, seller.Remaining,
+            OffsetRules.Maximum(buyer.Remaining, seller.Remaining));
+    }
+
+    public async Task<IReadOnlyList<PaymentDto>> CreateOffsetAsync(
+        CreateOffsetRequest request, int recordedByUserId)
+    {
+        var balances = await GetBalancesAsync(request.PartnerId);
+
+        if (request.Amount <= 0)
+            throw new ValidationAppException("قيمة المقاصّة لازم تكون أكبر من صفر.");
+        if (balances.MaxOffset <= 0)
+            throw new ValidationAppException(
+                "ما في إشي للمقاصّة: لازم يكون عليه مبلغ كمشتري وإله مبلغ كبائع بنفس الوقت.");
+        if (!OffsetRules.IsAllowed(request.Amount, balances.BuyerOwes, balances.MarketOwesSeller))
+            throw new ValidationAppException(
+                $"أكبر مبلغ ممكن تقاصّه هو {balances.MaxOffset:N2} — عليه {balances.BuyerOwes:N2} كمشتري وإله {balances.MarketOwesSeller:N2} كبائع.");
+
+        // Both roles, because both halves are about to be written against them. Typing somebody's
+        // name into either field has always granted the role (see GetWithRoleAsync); this is the
+        // same statement, made once for each side.
+        await _partners.GetWithRoleAsync(request.PartnerId, PartnerType.Merchant, "مشتري");
+        var partner = await _partners.GetWithRoleAsync(request.PartnerId, PartnerType.Farmer, "بائع");
+
+        var group = Guid.NewGuid();
+        var notes = string.IsNullOrWhiteSpace(request.Notes)
+            ? "مقاصّة بين حسابه كمشتري وحسابه كبائع"
+            : request.Notes!.Trim();
+
+        Payment Half(PaymentDirection direction) => new()
+        {
+            PartnerId = partner.Id,
+            Direction = direction,
+            Amount = request.Amount,
+            Date = request.Date,
+            Method = OffsetMethod,
+            Notes = notes,
+            RecordedByUserId = recordedByUserId,
+            OffsetGroupId = group
+            // No invoice link and no check: a مقاصّة settles a BALANCE, and there is no paper.
+        };
+
+        var fromBuyer = Half(PaymentDirection.FromMerchant);
+        var toSeller = Half(PaymentDirection.ToFarmer);
+
+        // One transaction over all three writes, for the reason CreateAsync gives: a half-written
+        // offset is worse than none, because it silently moves one balance and not the other.
+        await using var transaction = await _db.Database.BeginTransactionAsync();
+
+        _db.Payments.Add(fromBuyer);
+        _db.Payments.Add(toSeller);
+        await _db.SaveChangesAsync(); // need toSeller.Id for the ledger row below
+
+        // The seller half posts to the internal ledger exactly as an ordinary payment to a seller
+        // does — same table, same sign, same shape — so his statement reads it without knowing
+        // anything about offsets. Never a check, so it always counts immediately.
+        _db.FarmerTransactions.Add(new FarmerTransaction
+        {
+            FarmerId = partner.Id,
+            Type = FarmerTransactionType.Payment,
+            PaymentId = toSeller.Id,
+            Date = toSeller.Date,
+            Amount = -toSeller.Amount,
+            Notes = notes
+        });
+        await _db.SaveChangesAsync();
+        await transaction.CommitAsync();
+
+        // Buyer side first: it is the half that answers "what happened to what he owed me".
+        return new[]
+        {
+            ToDto(fromBuyer, partner.Name, null),
+            ToDto(toSeller, partner.Name, null),
+        };
     }
 
     /// <summary>Direction tells us which side of the ledger a partner belongs on: ToFarmer =>
@@ -310,5 +425,13 @@ public class PaymentService : IPaymentService
     }
 
     private static PaymentDto ToDto(Payment p, string partnerName, string? invoiceNumber) =>
-        new(p.Id, p.PartnerId, partnerName, p.Direction, p.Amount, p.Date, p.Method, p.Notes, p.InvoiceId, invoiceNumber, p.CheckDueDate, p.CheckNumber, p.CheckStatus, p.CheckClearedDate);
+        new(p.Id, p.PartnerId, partnerName, p.Direction, p.Amount, p.Date, p.Method, p.Notes, p.InvoiceId, invoiceNumber, p.CheckDueDate, p.CheckNumber, p.CheckStatus, p.CheckClearedDate, p.OffsetGroupId);
+
+    /// <summary>
+    /// What a مقاصّة is called in the "طريقة الدفع" column, on both halves.
+    ///
+    /// It matters that this reads as its own thing rather than as "نقدي": somebody reconciling a
+    /// day's cash must be able to see at a glance that these two rows moved no money at all.
+    /// </summary>
+    public const string OffsetMethod = "مقاصّة";
 }

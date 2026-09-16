@@ -13,6 +13,7 @@ import { StatCard } from "../components/StatCard";
 import { useAuth } from "../auth/AuthContext";
 import { PdfActions } from "../components/PdfActions";
 import { CollapsibleRows } from "../components/CollapsibleRows";
+import { OtherSideNotice } from "../components/OtherSideNotice";
 
 
 
@@ -42,6 +43,10 @@ export function FarmerAccountPage() {
         <h1 className="text-2xl font-bold">كشف حساب {roleLabel}: {account.name}</h1>
         <PdfActions fetchPdf={() => printFarmerAccountPdf(Number(id))} fileName={`account-${id}.pdf`} shareTitle="كشف حساب" />
       </div>
+
+      {/* A seller who also buys. Standing here you could pay him everything he is owed and never
+          learn he owed the market on the other page — see components/OtherSideNotice. */}
+      <OtherSideNotice partnerId={Number(id)} side="seller" />
 
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-4 mb-6">
         <StatCard label="إجمالي المبيعات" value={formatCurrency(account.totalSalesValue)} />
@@ -180,6 +185,8 @@ export function MerchantAccountPage() {
         <h1 className="text-2xl font-bold">كشف حساب مشتري: {account.name}</h1>
         <PdfActions fetchPdf={() => printMerchantAccountPdf(Number(id))} fileName={`account-${id}.pdf`} shareTitle="كشف حساب" />
       </div>
+
+      <OtherSideNotice partnerId={Number(id)} side="merchant" />
 
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 mb-6">
         <StatCard label="إجمالي المشتريات" value={formatCurrency(account.totalPurchases)} />

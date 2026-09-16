@@ -97,6 +97,28 @@ public class PaymentsController : ControllerBase
     public async Task<ActionResult<PaymentDto>> Create(CreatePaymentRequest request) =>
         Ok(await _paymentService.CreateAsync(request, CurrentUserId.Require(User)));
 
+    /// <summary>
+    /// Both sides of one person — what he owes as a buyer, what the market owes him as a seller,
+    /// and how much of the two can be settled. Feeds the مقاصّة form, and the line the account
+    /// pages show when somebody turns out to have a balance on the other side too.
+    ///
+    /// PaymentsView, not Create: it is a reading of two balances, and the form that writes has its
+    /// own gate below.
+    /// </summary>
+    [HttpGet("balances/{partnerId:int}")]
+    [RequirePermission(PermissionKeys.PaymentsView)]
+    public async Task<ActionResult<PartnerBalancesDto>> Balances(int partnerId) =>
+        Ok(await _paymentService.GetBalancesAsync(partnerId));
+
+    /// <summary>
+    /// "مقاصّة" — settles what he owes as a buyer against what the market owes him as a seller.
+    /// Writes two payments and returns both. PaymentsCreate, because that is what it is.
+    /// </summary>
+    [HttpPost("offset")]
+    [RequirePermission(PermissionKeys.PaymentsCreate)]
+    public async Task<ActionResult<IReadOnlyList<PaymentDto>>> Offset(CreateOffsetRequest request) =>
+        Ok(await _paymentService.CreateOffsetAsync(request, CurrentUserId.Require(User)));
+
     [HttpPut("{id:int}")]
     [RequirePermission(PermissionKeys.PaymentsEdit)]
     public async Task<ActionResult<PaymentDto>> Update(int id, UpdatePaymentRequest request) =>

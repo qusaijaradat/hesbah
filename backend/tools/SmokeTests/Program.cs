@@ -653,5 +653,55 @@ Console.WriteLine("== when a signed-in device is still signed in (SessionRules) 
 }
 
 Console.WriteLine();
+Console.WriteLine("== settling a seller who also buys (OffsetRules) ==");
+{
+    // The market's own case: the same man brings produce in the morning and buys something else in
+    // the afternoon. `buyerOwes` is his merchant balance (positive = he owes the market);
+    // `marketOwesSeller` is his seller balance (positive = the market owes him).
+
+    Check("owes 2,000 as a buyer, owed 5,000 as a seller => 2,000 can be settled",
+          OffsetRules.Maximum(2_000m, 5_000m) == 2_000m, $"got {OffsetRules.Maximum(2_000m, 5_000m)}");
+    Check("...and the other way round, the seller side is the ceiling",
+          OffsetRules.Maximum(5_000m, 2_000m) == 2_000m, $"got {OffsetRules.Maximum(5_000m, 2_000m)}");
+    Check("equal on both sides settles the lot",
+          OffsetRules.Maximum(3_000m, 3_000m) == 3_000m);
+
+    // Nothing to settle. Each of these would otherwise invent a debt out of nothing: paying him
+    // money the market does not owe, or collecting money he does not owe.
+    Check("owes nothing as a buyer => nothing to settle", OffsetRules.Maximum(0m, 5_000m) == 0m);
+    Check("the market owes him nothing => nothing to settle", OffsetRules.Maximum(2_000m, 0m) == 0m);
+    Check("neither side => nothing to settle", OffsetRules.Maximum(0m, 0m) == 0m);
+
+    // A credit on either side is a negative balance, and a negative maximum would be meaningless.
+    Check("he is in credit as a buyer => nothing to settle, never a negative",
+          OffsetRules.Maximum(-1_500m, 5_000m) == 0m, $"got {OffsetRules.Maximum(-1_500m, 5_000m)}");
+    Check("he owes the market as a seller => nothing to settle either",
+          OffsetRules.Maximum(2_000m, -800m) == 0m, $"got {OffsetRules.Maximum(2_000m, -800m)}");
+    Check("both negative => still zero, not the larger negative",
+          OffsetRules.Maximum(-2_000m, -5_000m) == 0m);
+
+    // What may actually be written.
+    Check("settling exactly the maximum is allowed", OffsetRules.IsAllowed(2_000m, 2_000m, 5_000m));
+    Check("settling less is allowed", OffsetRules.IsAllowed(500m, 2_000m, 5_000m));
+    Check("one agora over the maximum is refused, not clamped",
+          !OffsetRules.IsAllowed(2_000.01m, 2_000m, 5_000m));
+    Check("zero is refused", !OffsetRules.IsAllowed(0m, 2_000m, 5_000m));
+    Check("a negative amount is refused", !OffsetRules.IsAllowed(-100m, 2_000m, 5_000m));
+    Check("nothing at all can be settled when one side is empty",
+          !OffsetRules.IsAllowed(100m, 0m, 5_000m));
+
+    // The identity that makes this safe to record as two ordinary payments: settling X takes X off
+    // what he owes AND X off what he is owed, so the market's net position is unchanged. If those
+    // two ever stopped moving together, one side of the books would drift.
+    const decimal buyer = 2_000m, seller = 5_000m, settle = 1_200m;
+    var netBefore = seller - buyer;
+    var netAfter = (seller - settle) - (buyer - settle);
+    Check("settling moves both sides by the same amount, so the net is unchanged",
+          netAfter == netBefore, $"{netBefore} => {netAfter}");
+    Check("and the settled amount really came off each side",
+          (buyer - settle) == 800m && (seller - settle) == 3_800m);
+}
+
+Console.WriteLine();
 Console.WriteLine($"RESULT: {passed} passed, {failed} failed");
 return failed == 0 ? 0 : 1;

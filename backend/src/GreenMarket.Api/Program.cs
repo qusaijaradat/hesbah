@@ -348,6 +348,21 @@ using (var scope = app.Services.CreateScope())
         app.Logger.LogError(ex, "Failed to prepare the sack_kinds table / container_movements.SackKindId column — the sacks screen will not work until this is fixed.");
     }
 
+    // "مقاصّة": settling what somebody owes as a buyer against what the market owes them as a
+    // seller writes TWO payments — one on each side — and they share this id so a delete can never
+    // take half of it and leave the books out by the amount. Null on every ordinary payment.
+    try
+    {
+        await db.Database.ExecuteSqlRawAsync("""
+            ALTER TABLE payments ADD COLUMN IF NOT EXISTS "OffsetGroupId" uuid NULL;
+            CREATE INDEX IF NOT EXISTS "IX_payments_OffsetGroupId" ON payments ("OffsetGroupId");
+            """);
+    }
+    catch (Exception ex)
+    {
+        app.Logger.LogError(ex, "Failed to prepare payments.OffsetGroupId — مقاصّة will not work until this is fixed.");
+    }
+
     // Signed-in devices. Accounts stay signed in until somebody ends the session (the market's
     // own decision), which only works if the session is a row that can be recalled — see
     // Domain/Entities/UserSession.cs. An existing database has no table for them.

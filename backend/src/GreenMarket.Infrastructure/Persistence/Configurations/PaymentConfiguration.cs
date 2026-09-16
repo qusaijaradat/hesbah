@@ -35,6 +35,9 @@ public class PaymentConfiguration : IEntityTypeConfiguration<Payment>
         // Used by ListChecksAsync (the "الشيكات" page) to find every check payment fast — that
         // query filters on CheckDueDate != null and orders by it, so this index serves both.
         builder.HasIndex(x => x.CheckDueDate);
+        // The two halves of one مقاصّة are found by this, on delete and wherever a statement wants
+        // to say that no cash moved.
+        builder.HasIndex(x => x.OffsetGroupId);
     }
 }
 

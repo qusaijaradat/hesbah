@@ -1,5 +1,5 @@
 import { apiClient } from "./client";
-import type { CheckClearanceStatus, PagedResult, PaymentDirection, PaymentDto, ExpenseDto } from "../types";
+import type { CheckClearanceStatus, PagedResult, PartnerBalancesDto, PaymentDirection, PaymentDto, ExpenseDto } from "../types";
 
 /** `invoiceId` narrows to one invoice's own payments — several rows for one invoice is normal,
  * since a payment split across methods (and a check payment split across several checks) is
@@ -74,4 +74,24 @@ export async function updateExpense(id: number, payload: { date: string; descrip
 
 export async function deleteExpense(id: number) {
   await apiClient.delete(`/expenses/${id}`);
+}
+
+/**
+ * Both sides of one person: what he owes the market as a buyer, what the market owes him as a
+ * seller, and how much of the two can be settled against each other.
+ *
+ * Read server-side off the same two account pages the app already shows — never worked out here.
+ */
+export async function partnerBalances(partnerId: number) {
+  const { data } = await apiClient.get<PartnerBalancesDto>(`/payments/balances/${partnerId}`);
+  return data;
+}
+
+/**
+ * "مقاصّة" — settles the two against each other. Writes two payments, one on each side, and
+ * returns both. No cash moves.
+ */
+export async function createOffset(payload: { partnerId: number; amount: number; date: string; notes?: string }) {
+  const { data } = await apiClient.post<PaymentDto[]>("/payments/offset", payload);
+  return data;
 }

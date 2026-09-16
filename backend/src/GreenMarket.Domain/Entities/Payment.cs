@@ -45,6 +45,18 @@ public class Payment : AuditableEntity
     /// <summary>Only meaningful when <see cref="CheckDueDate"/> is set — defaults to Pending at creation.</summary>
     public CheckClearanceStatus? CheckStatus { get; set; }
 
+    /// <summary>
+    /// Ties the two halves of a "مقاصّة" together — see Domain.Services.OffsetRules.
+    ///
+    /// Settling what somebody owes as a buyer against what the market owes them as a seller is ONE
+    /// event and two payment rows: money the market would have handed over, handed back instead.
+    /// Neither row is meaningful alone, and deleting one without the other would leave the books
+    /// out by the amount — so they share this id, and the delete takes both.
+    ///
+    /// Null on every ordinary payment, which is nearly all of them.
+    /// </summary>
+    public Guid? OffsetGroupId { get; set; }
+
     /// <summary>The date the check was ACTUALLY cashed/deposited — only ever set while
     /// <see cref="CheckStatus"/> is Cleared, and cleared back to null the moment it isn't (see
     /// PaymentService.UpdateAsync). Distinct from <see cref="CheckDueDate"/>: a check can clear

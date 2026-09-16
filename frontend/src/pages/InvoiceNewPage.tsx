@@ -1,8 +1,4 @@
 import { useEffect, useState } from "react";
-import { CaptureBar } from "../components/CaptureBar";
-import { parseSpokenRow } from "../lib/ledgerCapture";
-import type { KnownNames } from "../lib/ledgerCapture";
-import { listItems } from "../api/items";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { PartnerAutocomplete } from "../components/PartnerAutocomplete";
 import { ItemAutocomplete } from "../components/ItemAutocomplete";
@@ -122,13 +118,6 @@ export function InvoiceNewPage() {
   // The crate rate the backend will apply on save (Setting "boxes.price"). Read once — a preview
   // of a figure the server owns, not a second source for it.
   const [boxPrice, setBoxPrice] = useState(0);
-  // The item catalogue, so a spoken "بندورة" lands as the catalogue spells it rather than as
-  // whatever the microphone heard — the same matching the ledger screen does.
-  const [knownItems, setKnownItems] = useState<KnownNames["items"]>([]);
-
-  useEffect(() => {
-    listItems({ pageSize: 1000 }).then((r) => setKnownItems(r.items.map((i) => i.name)));
-  }, []);
 
   /**
    * Copying an invoice: the same buyer, from the same seller, with the same driver and the same
@@ -190,37 +179,6 @@ export function InvoiceNewPage() {
 
   function addRow() {
     setRows((prev) => [...prev, emptyRow()]);
-  }
-
-  /**
-   * One spoken or typed sentence becomes one ITEM line — not a whole invoice.
-   *
-   * The parties are the invoice's, not the line's, and they are already picked once at the top of
-   * this form. Letting a sentence set them would mean the third line of a load could quietly
-   * rewrite who the whole invoice is for, so only `items` is passed as what the sentence may name
-   * and the partner list is left out deliberately.
-   */
-  function addSpokenLine(said: string): string | null {
-    const patch = parseSpokenRow(said, { items: knownItems, partners: [] });
-    const fields = {
-      itemName: patch.itemName ?? "",
-      quantity: patch.quantity ?? "",
-      weightKg: patch.weightKg ?? "",
-      pricePerUnit: patch.pricePerUnit ?? "",
-      boxQuantity: patch.boxQuantity ?? "",
-      cartonQuantity: patch.cartonQuantity ?? "",
-    };
-    if (Object.values(fields).every((v) => v === "")) {
-      return `ما قدرت أطلع إشي أكيد من: "${said}" — قول كلمة "عدد" و"سعر" قبل الأرقام.`;
-    }
-    setRows((prev) => {
-      // Into the first line that is still untouched, so speaking after opening the form fills the
-      // blank line already sitting there instead of adding a second one beside it.
-      const at = prev.findIndex((r) => r.itemName === "" && r.quantity === "" && r.pricePerUnit === "");
-      const filled = { ...emptyRow(), ...fields };
-      return at >= 0 ? prev.map((r, i) => (i === at ? filled : r)) : [...prev, filled];
-    });
-    return null;
   }
 
   function removeRow(index: number) {
@@ -345,18 +303,6 @@ export function InvoiceNewPage() {
       <div className="card p-5 mb-4">
         <h2 className="font-semibold mb-3">بنود البضاعة</h2>
 
-        {/* Same two ways in as the ledger screen — see components/CaptureBar. Here a sentence is
-            one LINE: the buyer, seller and driver belong to the invoice and are picked above. */}
-        <CaptureBar
-          onSentence={addSpokenLine}
-          placeholder="قول أو اكتب البند: بندورة عدد ٢٠ بسعر ٣٫٥ صناديق ١٠"
-          hint={<>
-            على الجوال اضغط زر المايك 🎤 اللي على لوحة المفاتيح وأملِ البند. قول كلمة
-            <span className="font-semibold"> عدد </span>و<span className="font-semibold">سعر</span>
-            و<span className="font-semibold">صناديق</span> قبل أرقامها — الرقم اللي بدون كلمة قبله بينترك فاضي.
-            الأسماء (المشتري والبائع والسائق) بتنتعبّى فوق مرة وحدة للفاتورة كلها.
-          </>}
-        />
         <div className="space-y-3 sm:space-y-2">
 
           {rows.map((row, idx) => {

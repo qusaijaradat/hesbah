@@ -1,13 +1,17 @@
 /*
- * Nothing in this app may scroll sideways.
+ * What a phone must be able to do, checked against the source.
+ *
+ * Two things: nothing may scroll sideways, and nothing may be reachable on a laptop and not on a
+ * phone.
  *
  * `body { overflow-x: clip }` in index.css is the backstop, and a backstop is exactly the wrong
  * place to find out about a layout bug: it HIDES the overflow, so a row too wide for a phone stops
  * announcing itself and quietly loses its right-hand end instead. This reads the source and fails
  * on the shapes that cause it, so it is caught where it was written.
  *
- * Four rules, all mechanical. Each one is a real bug that was found by hand first: a table that
- * was not hidden, a search box that could not shrink, six selection bars that could not wrap.
+ * Five rules, all mechanical. Each one is a real bug that was found by hand first: a table that
+ * was not hidden, a search box that could not shrink, six selection bars that could not wrap, and
+ * eleven screens whose buttons existed only on a laptop.
  *
  *   node tools/responsiveCheck.cjs
  */
@@ -97,11 +101,45 @@ for (const abs of walk(ROOT)) {
   });
 }
 
+// ---- 5. The phone must be able to do what the desktop can.
+//
+// Every table in this app has a card half. The BUTTONS, though, were written into the rows — so
+// تعديل, حذف, "تحديد كمصروف", a partner's كشف حساب and an invoice's whole action set existed on a
+// laptop and simply did not exist on a phone. Nobody notices, because whoever writes the row is
+// looking at a laptop while they do it.
+//
+// So: a CollapsibleRows whose matching table has buttons must have them too.
+for (const abs of walk(ROOT)) {
+  const rel = path.relative(path.join(__dirname, ".."), abs).split(path.sep).join("/");
+  const lines = fs.readFileSync(abs, "utf8").split(/\r?\n/);
+
+  lines.forEach((line, i) => {
+    if (!line.includes("<CollapsibleRows")) return;
+
+    // The card ends at the `/>` on its own line at the indent it opened on — not at the first
+    // `/>`, which would stop inside a nested self-closing element like <PdfActions ... />.
+    const indent = (line.match(/^\s*/) || [""])[0];
+    let end = i;
+    while (end < lines.length && lines[end] !== indent + "/>") end++;
+    const card = lines.slice(i, end + 1).join("\n");
+
+    let t = end;
+    while (t < lines.length && !lines[t].includes("</table>")) t++;
+    const table = lines.slice(end, Math.min(t + 1, lines.length)).join("\n");
+
+    const tableActs = /<button/.test(table);
+    const cardActs = /onClick|Actions\(/.test(card);
+    if (tableActs && !cardActs) {
+      fail(rel + ":" + (i + 1), "buttons-missing-on-phone",
+        "the desktop table has buttons this card does not");
+    }
+  });
+}
 if (failures.length === 0) {
-  console.log("RESULT: nothing that can push a page sideways");
+  console.log("RESULT: nothing pushes a page sideways, and the phone can do what the laptop can");
   process.exit(0);
 }
 
 for (const f of failures) console.log("  [FAIL] " + f.where + "  " + f.rule + " — " + f.detail);
-console.log("\nRESULT: " + failures.length + " thing(s) that can push a page sideways");
+console.log("\nRESULT: " + failures.length + " problem(s) on a phone");
 process.exit(1);

@@ -163,6 +163,40 @@ export function PartnersPage() {
     },
   ];
 
+  /**
+   * A person's own buttons: their two account pages, edit, delete.
+   *
+   * Defined once and rendered twice — in the desktop row and on the phone's card. They lived in
+   * the row alone, so on a phone a partner's card had no way to reach his كشف حساب at all: the
+   * one thing anybody opens this screen to do.
+   */
+  function rowActions(p: PartnerDto) {
+    return (
+      <span className="flex flex-wrap items-center gap-3">
+                  {/* Label reflects this person's ACTUAL type — not a blanket "بائع/سائق" for
+                      everyone, since a Driver never has a farmer side and vice versa. A Both
+                      partner is farmer+merchant (never a driver), so their farmer-side link
+                      always reads "بائع". */}
+                  {(partnerHasRole(p.type, "Farmer") || partnerHasRole(p.type, "Driver")) && (
+                    <Link to={`/partners/${p.id}/farmer-account`} className="text-brand-700 text-sm hover:underline ms-2">
+                      كشف حساب ({partnerHasRole(p.type, "Driver") && !partnerHasRole(p.type, "Farmer") ? "سائق" : "بائع"})
+                    </Link>
+                  )}
+                  {partnerHasRole(p.type, "Merchant") && (
+                    <Link to={`/partners/${p.id}/merchant-account`} className="text-brand-700 text-sm hover:underline ms-2">كشف حساب (مشتري)</Link>
+                  )}
+                  {canEdit && (
+                    <button className="btn-link text-gray-500 text-sm hover:underline ms-2" onClick={() => setEditing(p)}>تعديل</button>
+                  )}
+                  {canDelete && (
+                    <button className="btn-link text-red-500 text-sm hover:underline ms-2" disabled={deletingId === p.id} onClick={() => handleDelete(p)}>
+                      {deletingId === p.id ? "جاري الحذف..." : "حذف"}
+                    </button>
+                  )}
+      </span>
+    );
+  }
+
   return (
     <div>
       <div className="flex items-center justify-between flex-wrap gap-3 mb-6">
@@ -228,6 +262,7 @@ export function PartnersPage() {
               { label: "واتساب", value: p.whatsAppNumber || "—" },
               { label: "العنوان", value: p.address || "—" },
               { label: "ملاحظات", value: p.notes || "—" },
+              { label: "", value: rowActions(p) },
             ]}
             empty="لا يوجد نتائج"
           />
@@ -283,28 +318,7 @@ export function PartnersPage() {
                   <td className="text-gray-500">{p.address || "—"}</td>
                   <td>{renderRemaining(p)}</td>
                   <td className="text-gray-500">{p.notes || "—"}</td>
-                  <td className="whitespace-nowrap">
-                    {/* Label reflects this person's ACTUAL type — not a blanket "بائع/سائق" for
-                        everyone, since a Driver never has a farmer side and vice versa. A Both
-                        partner is farmer+merchant (never a driver), so their farmer-side link
-                        always reads "بائع". */}
-                    {(partnerHasRole(p.type, "Farmer") || partnerHasRole(p.type, "Driver")) && (
-                      <Link to={`/partners/${p.id}/farmer-account`} className="text-brand-700 text-sm hover:underline ms-2">
-                        كشف حساب ({partnerHasRole(p.type, "Driver") && !partnerHasRole(p.type, "Farmer") ? "سائق" : "بائع"})
-                      </Link>
-                    )}
-                    {partnerHasRole(p.type, "Merchant") && (
-                      <Link to={`/partners/${p.id}/merchant-account`} className="text-brand-700 text-sm hover:underline ms-2">كشف حساب (مشتري)</Link>
-                    )}
-                    {canEdit && (
-                      <button className="btn-link text-gray-500 text-sm hover:underline ms-2" onClick={() => setEditing(p)}>تعديل</button>
-                    )}
-                    {canDelete && (
-                      <button className="btn-link text-red-500 text-sm hover:underline ms-2" disabled={deletingId === p.id} onClick={() => handleDelete(p)}>
-                        {deletingId === p.id ? "جاري الحذف..." : "حذف"}
-                      </button>
-                    )}
-                  </td>
+                  <td className="whitespace-nowrap">{rowActions(p)}</td>
                 </tr>
               ))
             )}

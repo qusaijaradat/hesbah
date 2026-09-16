@@ -104,6 +104,26 @@ export function AuditLogPage() {
             details={(log) => [
               { label: "المستخدم", value: log.userFullName ?? "—" },
               { label: "المعرّف", value: log.entityId },
+              // The diff itself, opened in place. It was reachable only from the desktop row, so
+              // on a phone the log said that something changed and never what.
+              ...(log.changesJson && log.changesJson !== "{}" ? [{
+                label: "",
+                value: (
+                  <span>
+                    <button
+                      className="btn-link text-brand-700 text-sm hover:underline"
+                      onClick={() => setExpanded(expanded === log.id ? null : log.id)}
+                    >
+                      {expanded === log.id ? "إخفاء" : "التفاصيل"}
+                    </button>
+                    {expanded === log.id && (
+                      <span className="block mt-2">
+                        <ChangesDetail json={log.changesJson} />
+                      </span>
+                    )}
+                  </span>
+                ),
+              }] : []),
             ]}
             empty="لا توجد سجلات مطابقة"
           />

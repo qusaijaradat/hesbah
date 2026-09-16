@@ -177,6 +177,15 @@ function HoldersTable({ holders, onPick }: { holders: ContainerHolderDto[] | nul
           details={(h) => [
             { label: "النوع", value: TYPE_LABEL[h.type] },
             { label: h.remaining > 0 ? "عليه" : "عندنا إله", value: formatCount(Math.abs(h.remaining)) },
+            // On the desktop the person's NAME is the button that opens their movements. In a card
+            // the name is the title, and the title lives inside the open/close toggle — a button
+            // inside a button is invalid HTML and two clicks fighting each other. So it is its own
+            // row here, which is also the only way a phone could reach their movements at all.
+            { label: "", value: (
+              <button className="btn-link text-brand-700 text-sm hover:underline" onClick={() => onPick(h.partnerId, h.partnerName)}>
+                عرض حركاته
+              </button>
+            ) },
           ]}
           empty="كل الحسابات مظبوطة — ما في حدا ماسك صناديق"
         />
@@ -361,6 +370,17 @@ function MovementsTable({
     }
   }
 
+  /**
+   * The row's own button. One definition, rendered by the desktop row and the phone's card —
+   * a button that exists on only one of them is a button half the market does not have.
+   */
+  function rowActions(m: PartnerContainersDto["movements"][number]) {
+    if (!canDelete) return null;
+    return (
+      <button className="btn-link text-sm text-red-600 hover:underline" onClick={() => handleDelete(m.id)}>حذف</button>
+    );
+  }
+
   return (
     <div className="card">
       <div className="sm:hidden">
@@ -376,6 +396,7 @@ function MovementsTable({
           details={(m) => [
             { label: "التاريخ", value: formatDate(m.date) },
             { label: "ملاحظات", value: m.notes || "—" },
+            ...(canDelete ? [{ label: "", value: rowActions(m) }] : []),
           ]}
           empty="لا توجد حركات مسجّلة"
         />
@@ -399,11 +420,7 @@ function MovementsTable({
               </td>
               <td className="font-medium">{m.quantity.toLocaleString("en-US")} {TYPE_UNIT[m.type]}</td>
               <td className="text-gray-600">{m.notes || "—"}</td>
-              {canDelete && (
-                <td>
-                  <button className="btn-link text-sm text-red-600 hover:underline" onClick={() => handleDelete(m.id)}>حذف</button>
-                </td>
-              )}
+              {canDelete && <td>{rowActions(m)}</td>}
             </tr>
           ))}
         </tbody>

@@ -363,7 +363,7 @@ public class PartnerService : IPartnerService
         // rather than it silently not existing.
         var payments = await _db.Payments
             .Where(p => p.PartnerId == id && p.Direction == PaymentDirection.FromMerchant)
-            .Select(p => new { p.Date, p.Amount, p.Method, p.Notes, p.InvoiceId, p.CheckStatus, LinkedInvoiceNumber = p.Invoice != null ? p.Invoice.InvoiceNumber : null })
+            .Select(p => new { p.Date, p.Amount, p.Method, p.Notes, p.InvoiceId, p.CheckStatus, p.OffsetGroupId, LinkedInvoiceNumber = p.Invoice != null ? p.Invoice.InvoiceNumber : null })
             .ToListAsync();
 
         var entries = invoices.Select(i => new AccountStatementBuilder.Entry(
@@ -372,7 +372,13 @@ public class PartnerService : IPartnerService
             .Concat(payments.Select(p =>
             {
                 var counts = PaymentRules.CountsTowardBalance(p.CheckStatus);
-                var description = counts
+                // A مقاصّة says so in the LINE ITSELF, not only in the method column beside it.
+                // On paper "دفعة مستلمة" reads as cash across a counter, and this one never was:
+                // it came off what the market owed him as a seller. The statement somebody is
+                // handed has to be arguable from, and that is the fact being argued about.
+                var description = p.OffsetGroupId is not null
+                    ? "مقاصّة — خصم من مستحقاته كبائع"
+                    : counts
                     ? "دفعة مستلمة"
                     : p.CheckStatus == CheckClearanceStatus.Bounced
                     ? "دفعة بشيك ارتد (لم تُحتسب)"
@@ -433,7 +439,11 @@ public class PartnerService : IPartnerService
                     // someone typed on this account. Different things, so they read differently —
                     // and the reason typed for the manual one shows in Notes just below.
                     FarmerTransactionType.Adjustment => t.Invoice is not null ? $"تعديل — فاتورة رقم {t.Invoice.InvoiceNumber}" : "تسوية",
-                    _ => "دفعة مدفوعة"
+                    // The other half of the same مقاصّة. "دفعة مدفوعة" would say the market
+                    // handed him money; it handed him nothing and collected nothing.
+                    _ => t.Payment != null && t.Payment.OffsetGroupId != null
+                        ? "مقاصّة — خصم مما عليه كمشتري"
+                        : "دفعة مدفوعة"
                 },
                 t.Amount,
                 InvoiceId: linkedInvoiceId,

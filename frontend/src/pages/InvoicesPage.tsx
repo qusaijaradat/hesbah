@@ -238,6 +238,68 @@ export function InvoicesPage() {
     }
   }
 
+  /**
+   * An invoice's own buttons: open it, edit it, send it, share the file, delete it.
+   *
+   * Defined once and rendered twice — in the desktop row and on the phone's card. They were
+   * written into the row only, so on a phone the whole set was simply absent and the card
+   * offered nothing but تفاصيل. A button that exists on one half is a button half the market
+   * does not have, and the half that goes missing is always the phone's.
+   */
+  function rowActions(inv: InvoiceListItemDto) {
+    return (
+                    <div className="flex items-center gap-2 flex-wrap">
+                  <Link to={`/invoices/${inv.id}`} className="text-brand-700 text-sm hover:underline">تفاصيل</Link>
+                  {inv.status === "Active" && hasPermission("invoices.edit") && (
+                    <Link to={`/invoices/${inv.id}/edit`} className="text-brand-700 text-sm hover:underline">✏️ تعديل</Link>
+                  )}
+                  {/* companyPhone is market.whatsapp — with no number set there is nobody for
+                      the recipient to reply to, so the send options are not offered at all. */}
+                  {companyPhone && inv.merchantWhatsApp && (
+                    <button
+                      className="btn-link text-xs text-green-700 hover:underline disabled:opacity-50"
+                      title={`إرسال للمشتري ${inv.merchantName} عبر واتساب`}
+                      disabled={sendingKey === `${inv.id}-merchant`}
+                      onClick={() => handleSendWhatsApp(inv, "merchant")}
+                    >
+                      📤 مشتري
+                    </button>
+                  )}
+                  {companyPhone && inv.farmerWhatsApp && (
+                    <button
+                      className="btn-link text-xs text-green-700 hover:underline disabled:opacity-50"
+                      title={`إرسال للبائع ${inv.farmerName} عبر واتساب`}
+                      disabled={sendingKey === `${inv.id}-farmer`}
+                      onClick={() => handleSendWhatsApp(inv, "farmer")}
+                    >
+                      📤 بائع
+                    </button>
+                  )}
+                  {companyPhone && inv.driverWhatsApp && (
+                    <button
+                      className="btn-link text-xs text-green-700 hover:underline disabled:opacity-50"
+                      title={`إرسال للسائق ${inv.driverName} عبر واتساب`}
+                      disabled={sendingKey === `${inv.id}-driver`}
+                      onClick={() => handleSendWhatsApp(inv, "driver")}
+                    >
+                      📤 سائق
+                    </button>
+                  )}
+                  <button
+                    className="btn-link text-xs text-brand-700 hover:underline disabled:opacity-50"
+                    title="مشاركة ملف الفاتورة (يفتح قائمة مشاركة النظام، فيها واتساب لو مثبت)"
+                    disabled={sendingKey === `${inv.id}-share`}
+                    onClick={() => handleShareFile(inv)}
+                  >
+                    📎 ملف
+                  </button>
+                  {canDelete && (
+                    <button className="btn-link text-red-500 text-sm hover:underline" onClick={() => handleDelete(inv)}>حذف</button>
+                  )}
+                    </div>
+    );
+  }
+
   return (
     <div>
       {notice && <div className="text-sm text-blue-700 bg-blue-50 rounded-md p-3 mb-4">{notice}</div>}
@@ -428,12 +490,7 @@ export function InvoicesPage() {
                 ),
               },
               { label: "الحالة", value: STATUS_LABELS[inv.status] ?? inv.status },
-              {
-                label: "",
-                value: (
-                  <Link to={`/invoices/${inv.id}`} className="text-brand-700 hover:underline">تفاصيل</Link>
-                ),
-              },
+              { label: "", value: rowActions(inv) },
             ]}
             empty="لا توجد فواتير"
           />
@@ -521,57 +578,7 @@ export function InvoicesPage() {
                       {STATUS_LABELS[inv.status]}
                     </span>
                   </td>
-                  <td>
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <Link to={`/invoices/${inv.id}`} className="text-brand-700 text-sm hover:underline">تفاصيل</Link>
-                      {inv.status === "Active" && hasPermission("invoices.edit") && (
-                        <Link to={`/invoices/${inv.id}/edit`} className="text-brand-700 text-sm hover:underline">✏️ تعديل</Link>
-                      )}
-                      {/* companyPhone is market.whatsapp — with no number set there is nobody for
-                          the recipient to reply to, so the send options are not offered at all. */}
-                      {companyPhone && inv.merchantWhatsApp && (
-                        <button
-                          className="btn-link text-xs text-green-700 hover:underline disabled:opacity-50"
-                          title={`إرسال للمشتري ${inv.merchantName} عبر واتساب`}
-                          disabled={sendingKey === `${inv.id}-merchant`}
-                          onClick={() => handleSendWhatsApp(inv, "merchant")}
-                        >
-                          📤 مشتري
-                        </button>
-                      )}
-                      {companyPhone && inv.farmerWhatsApp && (
-                        <button
-                          className="btn-link text-xs text-green-700 hover:underline disabled:opacity-50"
-                          title={`إرسال للبائع ${inv.farmerName} عبر واتساب`}
-                          disabled={sendingKey === `${inv.id}-farmer`}
-                          onClick={() => handleSendWhatsApp(inv, "farmer")}
-                        >
-                          📤 بائع
-                        </button>
-                      )}
-                      {companyPhone && inv.driverWhatsApp && (
-                        <button
-                          className="btn-link text-xs text-green-700 hover:underline disabled:opacity-50"
-                          title={`إرسال للسائق ${inv.driverName} عبر واتساب`}
-                          disabled={sendingKey === `${inv.id}-driver`}
-                          onClick={() => handleSendWhatsApp(inv, "driver")}
-                        >
-                          📤 سائق
-                        </button>
-                      )}
-                      <button
-                        className="btn-link text-xs text-brand-700 hover:underline disabled:opacity-50"
-                        title="مشاركة ملف الفاتورة (يفتح قائمة مشاركة النظام، فيها واتساب لو مثبت)"
-                        disabled={sendingKey === `${inv.id}-share`}
-                        onClick={() => handleShareFile(inv)}
-                      >
-                        📎 ملف
-                      </button>
-                      {canDelete && (
-                        <button className="btn-link text-red-500 text-sm hover:underline" onClick={() => handleDelete(inv)}>حذف</button>
-                      )}
-                    </div>
-                  </td>
+                  <td>{rowActions(inv)}</td>
                 </tr>
               ))
             )}

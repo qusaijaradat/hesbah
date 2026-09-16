@@ -90,6 +90,27 @@ export function EmployeesPage() {
     },
   ];
 
+  /**
+   * A row's own buttons. Defined once and rendered twice — in the desktop row and on the
+   * phone's card — because a button that exists on only one of them is a button half the
+   * market does not have, and the half that goes missing is always the phone's.
+   */
+  function rowActions(e: EmployeeDto) {
+    if (!canEdit && !canDelete) return null;
+    return (
+      <span className="flex flex-wrap gap-3">
+        {canEdit && (
+          <button className="btn-link text-gray-500 text-sm hover:underline" onClick={() => setEditing(e)}>تعديل</button>
+        )}
+        {canDelete && (
+          <button className="btn-link text-red-500 text-sm hover:underline" disabled={deletingId === e.id} onClick={() => handleDelete(e)}>
+            {deletingId === e.id ? "جاري الحذف..." : "حذف"}
+          </button>
+        )}
+      </span>
+    );
+  }
+
   return (
     <div>
       <div className="flex items-center justify-between flex-wrap gap-3 mb-6">
@@ -145,6 +166,7 @@ export function EmployeesPage() {
               { label: "رقم الهاتف", value: e.phone || "—" },
               { label: "الحالة", value: e.isActive ? "نشط" : "غير نشط" },
               { label: "ملاحظات", value: e.notes || "—" },
+              ...(canEdit || canDelete ? [{ label: "", value: rowActions(e) }] : []),
             ]}
             empty="لا يوجد موظفون بعد"
           />
@@ -198,16 +220,7 @@ export function EmployeesPage() {
                     </span>
                   </td>
                   <td className="font-semibold">{formatCurrency(e.totalExpenses)}</td>
-                  <td className="whitespace-nowrap">
-                    {canEdit && (
-                      <button className="btn-link text-gray-500 text-sm hover:underline ms-2" onClick={() => setEditing(e)}>تعديل</button>
-                    )}
-                    {canDelete && (
-                      <button className="btn-link text-red-500 text-sm hover:underline ms-2" disabled={deletingId === e.id} onClick={() => handleDelete(e)}>
-                        {deletingId === e.id ? "جاري الحذف..." : "حذف"}
-                      </button>
-                    )}
-                  </td>
+                  <td className="whitespace-nowrap">{rowActions(e)}</td>
                 </tr>
               ))
             )}

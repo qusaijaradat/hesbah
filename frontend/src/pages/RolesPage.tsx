@@ -173,6 +173,22 @@ export function RolesPage() {
     if (outcome.failedCount > 0) setError(summarizeBulkDelete(outcome));
   }
 
+  /**
+   * A row's own buttons. Defined once and rendered twice — in the desktop row and on the
+   * phone's card — because a button that exists on only one of them is a button half the
+   * market does not have, and the half that goes missing is always the phone's.
+   */
+  function rowActions(r: RoleDto) {
+    return (
+      <span className="flex flex-wrap gap-3">
+        <button className="btn-link text-brand-700 text-sm hover:underline" onClick={() => setEditing(r)}>تعديل</button>
+        <button className="btn-link text-red-500 text-sm hover:underline" disabled={deletingId === r.id} onClick={() => handleDelete(r)}>
+          {deletingId === r.id ? "جاري الحذف..." : "حذف"}
+        </button>
+      </span>
+    );
+  }
+
   return (
     <div>
       <div className="flex items-center justify-between flex-wrap gap-3 mb-6">
@@ -201,6 +217,7 @@ export function RolesPage() {
             details={(r) => [
               { label: "الوصف", value: r.description || "—" },
               { label: "التنبيهات", value: alertsSummary(r) },
+              { label: "", value: rowActions(r) },
             ]}
             empty="لا توجد أدوار"
           />
@@ -231,12 +248,7 @@ export function RolesPage() {
                 <td className={r.alertFamilies?.length ? "text-sm" : "text-sm text-gray-400"}>
                   {alertsSummary(r)}
                 </td>
-                <td className="whitespace-nowrap">
-                  <button className="btn-link text-brand-700 text-sm hover:underline ms-2" onClick={() => setEditing(r)}>تعديل</button>
-                  <button className="btn-link text-red-500 text-sm hover:underline ms-2" disabled={deletingId === r.id} onClick={() => handleDelete(r)}>
-                    {deletingId === r.id ? "جاري الحذف..." : "حذف"}
-                  </button>
-                </td>
+                <td className="whitespace-nowrap">{rowActions(r)}</td>
               </tr>
             ))}
           </tbody>

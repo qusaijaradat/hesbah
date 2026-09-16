@@ -149,6 +149,21 @@ function PaymentsTab({ canCreate, canEdit, canDelete }: { canCreate: boolean; ca
     },
   ];
 
+  /**
+   * A row's own buttons. Defined once and rendered twice — in the desktop row and on the
+   * phone's card — because a button that exists on only one of them is a button half the
+   * market does not have, and the half that goes missing is always the phone's.
+   */
+  function rowActions(p: PaymentDto) {
+    if (!canEdit && !canDelete) return null;
+    return (
+      <span className="flex flex-wrap gap-3">
+        {canEdit && <button className="btn-link text-brand-700 text-sm hover:underline" onClick={() => setEditing(p)}>تعديل</button>}
+        {canDelete && <button className="btn-link text-red-500 text-sm hover:underline" onClick={() => handleDelete(p)}>حذف</button>}
+      </span>
+    );
+  }
+
   return (
     <div>
       <div className="flex items-center gap-2 mb-4 flex-wrap">
@@ -214,6 +229,7 @@ function PaymentsTab({ canCreate, canEdit, canDelete }: { canCreate: boolean; ca
               { label: "الفاتورة", value: p.invoiceNumber || "—" },
               { label: "طريقة الدفع", value: p.method || "—" },
               { label: "ملاحظات", value: p.notes || "—" },
+              ...(canEdit || canDelete ? [{ label: "", value: rowActions(p) }] : []),
             ]}
             empty="لا توجد دفعات"
           />
@@ -288,12 +304,7 @@ function PaymentsTab({ canCreate, canEdit, canDelete }: { canCreate: boolean; ca
                   )}
                   {p.notes || "—"}
                 </td>
-                {showActionsColumn && (
-                  <td className="whitespace-nowrap">
-                    {canEdit && <button className="btn-link text-brand-700 text-sm hover:underline ms-2" onClick={() => setEditing(p)}>تعديل</button>}
-                    {canDelete && <button className="btn-link text-red-500 text-sm hover:underline ms-2" onClick={() => handleDelete(p)}>حذف</button>}
-                  </td>
-                )}
+                {showActionsColumn && <td className="whitespace-nowrap">{rowActions(p)}</td>}
               </tr>
             ))}
           </tbody>
@@ -765,6 +776,21 @@ function ExpensesTab({ canCreate, canEdit, canDelete }: { canCreate: boolean; ca
     },
   ];
 
+  /**
+   * A row's own buttons. Defined once and rendered twice — in the desktop row and on the
+   * phone's card — because a button that exists on only one of them is a button half the
+   * market does not have, and the half that goes missing is always the phone's.
+   */
+  function expenseActions(e: ExpenseDto) {
+    if (!canEdit && !canDelete) return null;
+    return (
+      <span className="flex flex-wrap gap-3">
+        {canEdit && <button className="btn-link text-brand-700 text-sm hover:underline" onClick={() => setEditing(e)}>تعديل</button>}
+        {canDelete && <button className="btn-link text-red-500 text-sm hover:underline" onClick={() => handleDelete(e)}>حذف</button>}
+      </span>
+    );
+  }
+
   return (
     <div>
       <div className="flex items-center gap-2 mb-4 flex-wrap">
@@ -820,6 +846,7 @@ function ExpensesTab({ canCreate, canEdit, canDelete }: { canCreate: boolean; ca
               { label: "التاريخ", value: formatDate(e.date) },
               { label: "الفئة", value: e.category || "—" },
               { label: "الموظف", value: e.employeeName || "—" },
+              ...(canEdit || canDelete ? [{ label: "", value: expenseActions(e) }] : []),
             ]}
             empty="لا توجد مصاريف"
           />
@@ -865,12 +892,7 @@ function ExpensesTab({ canCreate, canEdit, canDelete }: { canCreate: boolean; ca
                 <td>{e.category || "—"}</td>
                 <td>{e.employeeName || "—"}</td>
                 <td className="font-medium">{formatCurrency(e.amount)}</td>
-                {showActionsColumn && (
-                  <td className="whitespace-nowrap">
-                    {canEdit && <button className="btn-link text-brand-700 text-sm hover:underline ms-2" onClick={() => setEditing(e)}>تعديل</button>}
-                    {canDelete && <button className="btn-link text-red-500 text-sm hover:underline ms-2" onClick={() => handleDelete(e)}>حذف</button>}
-                  </td>
-                )}
+                {showActionsColumn && <td className="whitespace-nowrap">{expenseActions(e)}</td>}
               </tr>
             ))}
           </tbody>

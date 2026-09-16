@@ -128,6 +128,34 @@ export function ChecksPage() {
     .filter((c) => c.checkStatus === "Pending")
     .reduce((sum, c) => sum + c.amount, 0);
 
+  /**
+   * A check's own buttons. Defined once and rendered twice — in the desktop row and on the phone's
+   * card — because a button that exists on only one of them is a button half the market does not
+   * have. That is exactly how these three went missing from the phone in the first place.
+   */
+  function rowActions(c: PaymentDto) {
+    if (!canEdit) return null;
+    return (
+      <span className="flex flex-wrap gap-3">
+        {c.checkStatus !== "Cleared" && (
+          <button className="btn-link text-brand-700 text-sm hover:underline" disabled={busyId === c.id} onClick={() => setStatus(c, "Cleared")}>
+            تحديد كمصروف
+          </button>
+        )}
+        {c.checkStatus !== "Bounced" && (
+          <button className="btn-link text-red-600 text-sm hover:underline" disabled={busyId === c.id} onClick={() => setStatus(c, "Bounced")}>
+            تحديد كمرتجع
+          </button>
+        )}
+        {c.checkStatus !== "Pending" && (
+          <button className="btn-link text-gray-500 text-sm hover:underline" disabled={busyId === c.id} onClick={() => setStatus(c, "Pending")}>
+            إعادة لقيد التحصيل
+          </button>
+        )}
+      </span>
+    );
+  }
+
   return (
     <div>
       <div className="flex items-start justify-between flex-wrap gap-3 mb-1">
@@ -191,6 +219,7 @@ export function ChecksPage() {
               { label: "الفاتورة", value: c.invoiceNumber || "—" },
               { label: "الحالة", value: STATUS_LABELS[c.checkStatus ?? "Pending"] },
               { label: "تاريخ الصرف", value: c.checkClearedDate ? formatDate(c.checkClearedDate) : "—" },
+              ...(canEdit ? [{ label: "", value: rowActions(c) }] : []),
             ]}
             empty="لا توجد شيكات"
           />
@@ -223,7 +252,35 @@ export function ChecksPage() {
                 ? Math.round((new Date(c.checkDueDate.slice(0, 10)).getTime() - new Date(today).getTime()) / 86400000)
                 : null;
               const isDueSoon = !isOverdue && c.checkStatus === "Pending" && daysUntilDue !== null && daysUntilDue >= 0 && daysUntilDue <= DUE_SOON_DAYS;
-              return (
+              /**
+   * A check's own buttons. Defined once and rendered twice — in the desktop row and on the phone's
+   * card — because a button that exists on only one of them is a button half the market does not
+   * have. That is exactly how these three went missing from the phone in the first place.
+   */
+  function rowActions(c: PaymentDto) {
+    if (!canEdit) return null;
+    return (
+      <span className="flex flex-wrap gap-3">
+        {c.checkStatus !== "Cleared" && (
+          <button className="btn-link text-brand-700 text-sm hover:underline" disabled={busyId === c.id} onClick={() => setStatus(c, "Cleared")}>
+            تحديد كمصروف
+          </button>
+        )}
+        {c.checkStatus !== "Bounced" && (
+          <button className="btn-link text-red-600 text-sm hover:underline" disabled={busyId === c.id} onClick={() => setStatus(c, "Bounced")}>
+            تحديد كمرتجع
+          </button>
+        )}
+        {c.checkStatus !== "Pending" && (
+          <button className="btn-link text-gray-500 text-sm hover:underline" disabled={busyId === c.id} onClick={() => setStatus(c, "Pending")}>
+            إعادة لقيد التحصيل
+          </button>
+        )}
+      </span>
+    );
+  }
+
+  return (
                 <tr key={c.id} className={isOverdue ? "bg-red-50" : isDueSoon ? "bg-amber-50" : ""}>
                   <td className={isOverdue ? "text-red-700 font-semibold" : isDueSoon ? "text-amber-700 font-semibold" : ""}>
                     {c.checkDueDate ? formatDate(c.checkDueDate) : "—"}
@@ -249,25 +306,7 @@ export function ChecksPage() {
                     </span>
                   </td>
                   <td className="text-gray-500 text-sm">{c.checkClearedDate ? formatDate(c.checkClearedDate) : "—"}</td>
-                  {canEdit && (
-                    <td className="whitespace-nowrap">
-                      {c.checkStatus !== "Cleared" && (
-                        <button className="btn-link text-brand-700 text-sm hover:underline ms-2" disabled={busyId === c.id} onClick={() => setStatus(c, "Cleared")}>
-                          تحديد كمصروف
-                        </button>
-                      )}
-                      {c.checkStatus !== "Bounced" && (
-                        <button className="btn-link text-red-600 text-sm hover:underline ms-2" disabled={busyId === c.id} onClick={() => setStatus(c, "Bounced")}>
-                          تحديد كمرتجع
-                        </button>
-                      )}
-                      {c.checkStatus !== "Pending" && (
-                        <button className="btn-link text-gray-500 text-sm hover:underline ms-2" disabled={busyId === c.id} onClick={() => setStatus(c, "Pending")}>
-                          إعادة لقيد التحصيل
-                        </button>
-                      )}
-                    </td>
-                  )}
+                  {canEdit && <td className="whitespace-nowrap">{rowActions(c)}</td>}
                 </tr>
               );
             })}

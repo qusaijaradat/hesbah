@@ -209,14 +209,19 @@ public class GoodsService : IGoodsService
                 receivedAgg.Weight, soldWeight, receivedAgg.Weight - soldWeight,
                 receivedAgg.Wood, receivedAgg.Sack, key.FarmerId, farmerName);
         })
-        // "البضاعة المتوفرة حاليًا" means exactly that: an item a farmer brought in and has since
-        // sold out of (Available == 0) is finished business and just pads the table — explicit
-        // request to drop the whole row, not blank the number. Deliberately `!= 0` and NOT `> 0`:
-        // a NEGATIVE row means more was sold than was ever logged as received, which is a missing
-        // "إضافة بضاعة" entry someone needs to see and fix (see GetForFarmerAsync's own doc
-        // comment for why those rows exist at all) — hiding those would bury the very problem
-        // they're there to surface.
-        .Where(r => r.Available != 0)
+        // "البضاعة المتوفرة حاليًا" means exactly that, and nothing else: only what is actually
+        // there to sell. Sold out is finished business, and a NEGATIVE row is not stock at all.
+        //
+        // It used to be `!= 0`, which kept the negatives on purpose — more sold than was ever
+        // logged as received means a missing "إضافة بضاعة" entry, and this was where somebody
+        // would see it. The market asked for `> 0` and is right about this screen: it is the one
+        // that answers "what can I sell today", and an impossible number sitting in it makes the
+        // whole column harder to trust rather than easier.
+        //
+        // That signal now has nowhere of its own. The per-seller view (GetForFarmerAsync) still
+        // shows every row including the negatives, so it is not gone — but nobody goes looking
+        // there, and this was the screen that volunteered it.
+        .Where(r => r.Available > 0)
         .OrderBy(r => r.FarmerName).ThenBy(r => r.ItemName)
         .ToList();
     }

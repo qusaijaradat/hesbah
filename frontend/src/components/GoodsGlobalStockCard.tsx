@@ -65,8 +65,9 @@ export function GoodsGlobalStockCard({
           {loading ? (
             <tr><td colSpan={7} className="text-center text-gray-400 py-6">جاري التحميل...</td></tr>
           ) : rows.length === 0 ? (
-            // Sold-out rows are dropped server-side (see GoodsService.GetGlobalStockAsync), so an
-            // empty table here means "nothing left in stock", not "nothing was ever recorded".
+            // Only rows with something actually left are returned (GoodsService.GetGlobalStockAsync
+            // filters Available > 0), so an empty table here means "nothing left in stock", not
+            // "nothing was ever recorded".
             <tr><td colSpan={7} className="text-center text-gray-400 py-6">لا توجد بضاعة متوفرة حاليًا</td></tr>
           ) : (
             pager.pageRows.map((r, idx) => (

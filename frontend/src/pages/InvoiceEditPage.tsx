@@ -280,7 +280,9 @@ export function InvoiceEditPage() {
               that they buy, and PartnerService.GetWithRoleAsync grants the role on the spot
               (roles only ever add, see PartnerRoles). It was the dropdown alone that refused.
 
-              The seller and driver fields still filter. Say the word and they will not. */}
+              The seller and driver fields do not filter either, for the same reason: a buyer who
+              starts bringing produce, or a seller who hauls his own load, is the same person the
+              picker would otherwise hide. */}
           <PartnerAutocomplete
             label="المشتري" value={merchant} onChange={setMerchant}
             allowNew newTypeLabel="مشتري" text={merchantText} onFreeTextChange={setMerchantText}
@@ -290,7 +292,6 @@ export function InvoiceEditPage() {
             label="البائع (اختياري)" value={farmer} onChange={setFarmer}
             allowNew newTypeLabel="بائع" text={farmerText} onFreeTextChange={setFarmerText}
             placeholder="اتركه فارغًا إن لم يكن معروفًا..."
-            types={["Farmer"]}
           />
           {/* Sellers are listed in the driver field too: the same man often brings his own produce
               in. Picking him adds the driver role to the account he already has instead of opening
@@ -300,7 +301,6 @@ export function InvoiceEditPage() {
             label="السائق (اختياري)" value={driver} onChange={setDriver}
             allowNew newTypeLabel="سائق" text={driverText} onFreeTextChange={setDriverText}
             placeholder="اتركه فارغًا إن لم يكن معروفًا..."
-            types={["Driver", "Farmer"]}
           />
         </div>
       </div>

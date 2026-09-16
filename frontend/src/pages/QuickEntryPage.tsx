@@ -416,14 +416,14 @@ export function QuickEntryPage() {
                     onChange={(p) => updateRow(idx, { driver: p })}
                     text={row.driverText}
                     onFreeTextChange={(t) => updateRow(idx, { driverText: t })}
-                    allowNew newTypeLabel="سائق" types={["Driver", "Farmer"]}
+                    allowNew newTypeLabel="سائق"
                   />
                   <PartnerAutocomplete
                     label="البائع" value={row.farmer}
                     onChange={(p) => updateRow(idx, { farmer: p })}
                     text={row.farmerText}
                     onFreeTextChange={(t) => updateRow(idx, { farmerText: t })}
-                    allowNew newTypeLabel="بائع" types={["Farmer"]}
+                    allowNew newTypeLabel="بائع"
                   />
                   <div className="grid grid-cols-3 gap-2">
                     <div>
@@ -533,7 +533,7 @@ export function QuickEntryPage() {
                       onChange={(p) => updateRow(idx, { driver: p })}
                       text={row.driverText}
                       onFreeTextChange={(t) => updateRow(idx, { driverText: t })}
-                      allowNew newTypeLabel="سائق" types={["Driver", "Farmer"]}
+                      allowNew newTypeLabel="سائق"
                     />
                   </td>
                   <td>
@@ -542,7 +542,7 @@ export function QuickEntryPage() {
                       onChange={(p) => updateRow(idx, { farmer: p })}
                       text={row.farmerText}
                       onFreeTextChange={(t) => updateRow(idx, { farmerText: t })}
-                      allowNew newTypeLabel="بائع" types={["Farmer"]}
+                      allowNew newTypeLabel="بائع"
                     />
                   </td>
                   <td>

@@ -398,7 +398,7 @@ public class ExportService : IExportService
                         // Same as on the card: الصنف reads first, so it carries the weight.
                         table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(item.ItemName).Bold();
                         table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(CountCell(item.Quantity));
-                        table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(thermalWidth ? WeightCellCompact(item.WeightKg) : WeightCell(item.WeightKg));
+                        table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(WeightCell(item.WeightKg));
                         // PricePerUnit == 0 means "not priced yet, will be priced later" (see
                         // InvoiceNewPage/InvoiceEditPage's now-optional price field) — flagged
                         // instead of printing a misleading "₪0.00" that reads as a free item.
@@ -720,7 +720,25 @@ public class ExportService : IExportService
                                     if (index < count)
                                     {
                                         var cardIndex = index;
-                                        cell.Element(c => renderCard(c, cardIndex));
+                                        // Every card carries its position in the run — 3/12 — in
+                                        // the corner farthest from anything that is read.
+                                        //
+                                        // A sheet of four is cut into four, and once it is cut
+                                        // there is nothing on a card that says whether the stack
+                                        // is whole. A missing quadrant, a page that did not print,
+                                        // a run somebody stopped halfway: all of them look exactly
+                                        // like a complete stack afterwards. Now they do not.
+                                        //
+                                        // As a layer rather than inside the card, so both the
+                                        // ordinary and the merged card get it from one place and
+                                        // neither renderer has to know the number exists.
+                                        cell.Layers(layers =>
+                                        {
+                                            layers.PrimaryLayer().Element(c => renderCard(c, cardIndex));
+                                            layers.Layer().AlignTop().AlignLeft().PaddingTop(3).PaddingLeft(4)
+                                                .Text($"{cardIndex + 1}/{count}")
+                                                .FontSize(7).FontColor(PrintInk.Secondary);
+                                        });
                                     }
                                     // else: blank quadrant — the cell above still reserves its
                                     // share of the row's width so the grid stays evenly divided.
@@ -1852,7 +1870,7 @@ public class ExportService : IExportService
     /// <summary>Shaded header cell for the shrunk-down invoice-card table used in the 4-per-page
     /// bulk print — same look as HeaderCell, just smaller to fit a quarter page.</summary>
     private static IContainer MiniHeaderCell(IContainer container) =>
-        container.Background(PrintInk.SubHeaderFill).PaddingVertical(3).PaddingHorizontal(4).DefaultTextStyle(x => x.Bold().FontSize(9));
+        container.Background(PrintInk.SubHeaderFill).PaddingVertical(2).PaddingHorizontal(4).DefaultTextStyle(x => x.Bold().FontSize(8));
 
     /// <summary>Alternating row shading for the shrunk-down invoice-card table — same look as
     /// DataCell, just smaller to fit a quarter page.</summary>
@@ -1860,7 +1878,7 @@ public class ExportService : IExportService
     // the copy most likely to be handed to someone across a counter, and the goods on it are the
     // part being argued about.
     private static IContainer MiniDataCell(IContainer container, bool shaded) =>
-        container.Background(shaded ? PrintInk.ZebraFill : PrintInk.NoFill).PaddingVertical(3).PaddingHorizontal(4).DefaultTextStyle(x => x.FontSize(9));
+        container.Background(shaded ? PrintInk.ZebraFill : PrintInk.NoFill).PaddingVertical(2).PaddingHorizontal(4).DefaultTextStyle(x => x.FontSize(8));
 
     /// <summary>Shaded header cell for a "مرتب" (organized) look — grey background, bold text.</summary>
     private static IContainer HeaderCell(IContainer container) =>
@@ -1884,26 +1902,25 @@ public class ExportService : IExportService
     /// </summary>
     private static string WeightText(decimal kg) => kg > 0 ? $"{kg:0.###} كغم" : "—";
 
-    /// <summary>The "الوزن" column. Empty on a line that was not weighed — which is what decides
-    /// how it was priced (InvoiceCalculator.LineTotalFor), so the dash is information, not a gap.
-    /// It used to be filled only on a Kg-unit line and show a dash on every box-priced one, which
-    /// is why a line could never be both counted and weighed.</summary>
-    private static string WeightCell(decimal? weightKg) => WeightText(weightKg ?? 0m);
+    /// <summary>
+    /// The "الوزن" column. Empty on a line that was not weighed — which is what decides how it was
+    /// priced (InvoiceCalculator.LineTotalFor), so the dash is information, not a gap.
+    ///
+    /// No "كغم" suffix on any of them. The column header says الوزن once; repeating the unit in
+    /// every cell cost the column enough width that "500 كغم" wrapped onto a second line and made
+    /// the whole row twice as tall — on the quarter-page card, where the rows are tightest, most of
+    /// them did. The thermal roll dropped it for exactly this reason; every width has now.
+    ///
+    /// The labelled totals lines keep it: "إجمالي الوزن: 1320 كغم" is one line that cannot wrap,
+    /// and there the unit is the sentence rather than a repetition of the heading above it.
+    /// </summary>
+    private static string WeightCell(decimal? weightKg) =>
+        weightKg is > 0 ? weightKg.Value.ToString("0.###") : "—";
 
     /// <summary>The "العدد" column — always filled, on every line. It used to be filled only on a
     /// box-priced line, the mirror of the old WeightCell, so exactly one of the pair ever carried a
     /// number. Both carry one now whenever the line has both.</summary>
     private static string CountCell(decimal quantity) => quantity.ToString("0.###");
-
-    /// <summary>
-    /// WeightCell without the "كغم" suffix, for the 80mm thermal roll only. Splitting الكمية into
-    /// العدد + الوزن costs that width a whole column, and at 80mm "120 كغم" then wraps onto two
-    /// lines and makes every row twice as tall — the "الوزن" header already says what the number
-    /// is, so the suffix is the part that goes. A4 and the quarter-page cards have the room and
-    /// keep it.
-    /// </summary>
-    private static string WeightCellCompact(decimal? weightKg) =>
-        weightKg is > 0 ? weightKg.Value.ToString("0.###") : "—";
 
 
     /// <summary>One-page end-of-day summary, printable at the end of a shift. Label/value pairs rather

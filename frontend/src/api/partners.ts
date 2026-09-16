@@ -137,3 +137,9 @@ export async function createAdjustment(partnerId: number, payload: { amount: num
   const { data } = await apiClient.post<AdjustmentDto>(`/partners/${partnerId}/adjustments`, payload);
   return data;
 }
+
+/** Corrects a crate/sack movement in place. Everything but the person it belongs to. */
+export async function updateContainerMovement(movementId: number, payload: CreateContainerMovementRequest) {
+  const { data } = await apiClient.put<ContainerMovementDto>(`/partners/containers/${movementId}`, payload);
+  return data;
+}

@@ -34,6 +34,14 @@ public interface ISackService
     Task<IReadOnlyList<SackMovementDto>> CreateMovementAsync(
         ContainerDirection direction, CreateSackMovementRequest request);
 
+    /// <summary>
+    /// Corrects one recorded line in place — see UpdateSackMovementRequest for what may change.
+    ///
+    /// Nothing recomputes afterwards because nothing is stored: every total on the sacks screen is
+    /// summed from these rows on each read, so fixing the row IS fixing the totals.
+    /// </summary>
+    Task<SackMovementDto> UpdateMovementAsync(int movementId, UpdateSackMovementRequest request);
+
     Task DeleteMovementAsync(int movementId);
 
     Task<SacksOverviewDto> GetOverviewAsync(DateTimeOffset? dateFrom, DateTimeOffset? dateTo, int? partnerId);
@@ -155,6 +163,50 @@ public class SackService : ISackService
             m.Id, partner.Id, partner.Name, m.SackKindId,
             m.SackKindId is null ? NoKind : names.GetValueOrDefault(m.SackKindId.Value, NoKind),
             m.Direction.ToString(), m.Date, m.Quantity, m.Notes)).ToList();
+    }
+
+    public async Task<SackMovementDto> UpdateMovementAsync(int movementId, UpdateSackMovementRequest request)
+    {
+        if (request.Quantity <= 0)
+            throw new ValidationAppException("العدد لازم يكون أكبر من صفر — الحركة الغلط بتنمسح، ما بتنسجّل بالسالب.");
+        if (!Enum.IsDefined(request.Direction))
+            throw new ValidationAppException("اتجاه غير معروف.");
+
+        var movement = await _db.ContainerMovements
+            .Include(m => m.Partner)
+            .Include(m => m.SackKind)
+            .SingleOrDefaultAsync(m => m.Id == movementId)
+            ?? throw new NotFoundAppException("Container movement", movementId);
+
+        // Same guard the delete has, and for the same reason: the two screens keep their own rows
+        // straight, and a crate corrected from the sacks form would be corrected by somebody who
+        // cannot see what they changed.
+        if (movement.Type != ContainerType.Sack)
+            throw new ValidationAppException("هاي الحركة مش مخالات — عدّلها من شاشة الصناديق.");
+
+        if (request.SackKindId is not null)
+        {
+            var exists = await _db.SackKinds.AnyAsync(k => k.Id == request.SackKindId.Value);
+            if (!exists) throw new NotFoundAppException("Sack kind", request.SackKindId.Value);
+        }
+
+        movement.SackKindId = request.SackKindId;
+        movement.Direction = request.Direction;
+        movement.Date = request.Date;
+        movement.Quantity = request.Quantity;
+        movement.Notes = request.Notes;
+        // The audit interceptor writes a before/after of every field touched, which is what makes
+        // correcting in place safe rather than a quiet rewrite of a count.
+        await _db.SaveChangesAsync();
+
+        var kindName = request.SackKindId is null
+            ? "بدون نوع"
+            : await _db.SackKinds.Where(k => k.Id == request.SackKindId.Value).Select(k => k.Name).SingleAsync();
+
+        return new SackMovementDto(
+            movement.Id, movement.PartnerId, movement.Partner.Name,
+            movement.SackKindId, kindName,
+            movement.Direction.ToString(), movement.Date, movement.Quantity, movement.Notes);
     }
 
     public async Task DeleteMovementAsync(int movementId)

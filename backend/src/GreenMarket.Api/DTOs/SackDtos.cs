@@ -1,3 +1,5 @@
+using GreenMarket.Domain.Enums;
+
 namespace GreenMarket.Api.DTOs;
 
 /// <summary>A kind of sack the market distinguishes — a colour, a shape. Created from the picker.</summary>
@@ -28,6 +30,19 @@ public record CreateSackMovementRequest(
     DateTimeOffset Date,
     IReadOnlyList<SackLineRequest> Lines,
     string? Notes = null);
+
+/// <summary>
+/// Correcting one recorded line: its kind, its direction, its date, its count, its note.
+///
+/// Not the person. A handover recorded against the wrong man is a different event, not a wrong
+/// field — it is deleted and recorded against the right one, which leaves both rows in the audit
+/// trail saying what happened.
+///
+/// One LINE, not one handover. Thirty red and twenty yellow given out together are two rows, and
+/// the correction is nearly always to one of them — usually the count.
+/// </summary>
+public record UpdateSackMovementRequest(
+    int? SackKindId, ContainerDirection Direction, DateTimeOffset Date, decimal Quantity, string? Notes);
 
 /// <summary>One recorded line, as it reads back on a report or a person's page.</summary>
 public record SackMovementDto(

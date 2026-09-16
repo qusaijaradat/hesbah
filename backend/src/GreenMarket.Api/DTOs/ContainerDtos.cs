@@ -12,6 +12,14 @@ public record CreateContainerMovementRequest(
     ContainerType Type, ContainerDirection Direction, DateTimeOffset Date, decimal Quantity, string? Notes);
 
 /// <summary>
+/// Correcting a movement already recorded. Everything about it may change except who it belongs
+/// to — moving a handover from one person to another is two different events, and is done by
+/// deleting this one and recording it against the right person.
+/// </summary>
+public record UpdateContainerMovementRequest(
+    ContainerType Type, ContainerDirection Direction, DateTimeOffset Date, decimal Quantity, string? Notes);
+
+/// <summary>
 /// One kind of container's standing with one person.
 ///
 /// Two of the four are derived rather than re-typed, because the market already records them

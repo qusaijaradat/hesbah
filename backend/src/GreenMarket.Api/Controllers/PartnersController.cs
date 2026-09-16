@@ -127,6 +127,13 @@ public class PartnersController : ControllerBase
     public async Task<ActionResult<ContainerMovementDto>> CreateContainerMovement(int id, CreateContainerMovementRequest request) =>
         Ok(await _containerService.CreateAsync(id, request, CurrentUserId.Require(User)));
 
+    /// <summary>Corrects a movement in place. Its own permission — fixing yesterday's count is a
+    /// different trust from writing today's — and fully audited, which is what makes it safe.</summary>
+    [HttpPut("containers/{movementId:int}")]
+    [RequirePermission(PermissionKeys.BoxesEdit)]
+    public async Task<ActionResult<ContainerMovementDto>> UpdateContainerMovement(int movementId, UpdateContainerMovementRequest request) =>
+        Ok(await _containerService.UpdateAsync(movementId, request));
+
     [HttpDelete("containers/{movementId:int}")]
     [RequirePermission(PermissionKeys.BoxesDelete)]
     public async Task<IActionResult> DeleteContainerMovement(int movementId)

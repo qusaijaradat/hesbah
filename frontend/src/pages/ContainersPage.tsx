@@ -9,6 +9,7 @@ import { formatCount, formatDate, todayLocalDateString } from "../lib/format";
 import { useAuth } from "../auth/AuthContext";
 import type { ContainerBalanceDto, ContainerDirection, ContainerHolderDto, ContainerType, PartnerContainersDto } from "../types";
 import { CollapsibleRows } from "../components/CollapsibleRows";
+import { ContainerMovementEditDialog } from "../components/ContainerMovementEditDialog";
 
 /**
  * "الصناديق" — the crates the market lends out and expects back.
@@ -136,6 +137,8 @@ export function ContainersPage() {
 
           <MovementsTable
             movements={data.movements}
+            partnerName={data.partnerName}
+            canEdit={hasPermission("boxes.edit")}
             canDelete={canDelete}
             onDeleted={() => { refresh(data.partnerId); refreshHolders(); }}
           />
@@ -350,12 +353,16 @@ function MovementForm({ partnerId, onSaved }: { partnerId: number; onSaved: () =
 }
 
 function MovementsTable({
-  movements, canDelete, onDeleted,
+  movements, partnerName, canEdit, canDelete, onDeleted,
 }: {
   movements: PartnerContainersDto["movements"];
+  /** Shown on the edit form, which does not offer to change it — see the dialog. */
+  partnerName: string;
+  canEdit: boolean;
   canDelete: boolean;
   onDeleted: () => void;
 }) {
+  const [editing, setEditing] = useState<PartnerContainersDto["movements"][number] | null>(null);
   const pager = usePagination(movements);
   const [error, setError] = useState<string | null>(null);
 
@@ -375,9 +382,12 @@ function MovementsTable({
    * a button that exists on only one of them is a button half the market does not have.
    */
   function rowActions(m: PartnerContainersDto["movements"][number]) {
-    if (!canDelete) return null;
+    if (!canEdit && !canDelete) return null;
     return (
-      <button className="btn-link text-sm text-red-600 hover:underline" onClick={() => handleDelete(m.id)}>حذف</button>
+      <span className="flex flex-wrap gap-3">
+        {canEdit && <button className="btn-link text-sm text-brand-700 hover:underline" onClick={() => setEditing(m)}>تعديل</button>}
+        {canDelete && <button className="btn-link text-sm text-red-600 hover:underline" onClick={() => handleDelete(m.id)}>حذف</button>}
+      </span>
     );
   }
 
@@ -396,7 +406,7 @@ function MovementsTable({
           details={(m) => [
             { label: "التاريخ", value: formatDate(m.date) },
             { label: "ملاحظات", value: m.notes || "—" },
-            ...(canDelete ? [{ label: "", value: rowActions(m) }] : []),
+            ...(canEdit || canDelete ? [{ label: "", value: rowActions(m) }] : []),
           ]}
           empty="لا توجد حركات مسجّلة"
         />
@@ -406,11 +416,11 @@ function MovementsTable({
       {error && <div className="text-sm text-red-600 mx-4">{error}</div>}
       <table className="table-base">
         <thead>
-          <tr><th>التاريخ</th><th>النوع</th><th>الحركة</th><th>العدد</th><th>ملاحظات</th>{canDelete && <th></th>}</tr>
+          <tr><th>التاريخ</th><th>النوع</th><th>الحركة</th><th>العدد</th><th>ملاحظات</th>{(canEdit || canDelete) && <th></th>}</tr>
         </thead>
         <tbody>
           {movements.length === 0 ? (
-            <tr><td colSpan={canDelete ? 6 : 5} className="text-center text-gray-400 py-6">لا توجد حركات مسجّلة</td></tr>
+            <tr><td colSpan={(canEdit || canDelete) ? 6 : 5} className="text-center text-gray-400 py-6">لا توجد حركات مسجّلة</td></tr>
           ) : pager.pageRows.map((m) => (
             <tr key={m.id}>
               <td>{formatDate(m.date)}</td>
@@ -420,7 +430,7 @@ function MovementsTable({
               </td>
               <td className="font-medium">{m.quantity.toLocaleString("en-US")} {TYPE_UNIT[m.type]}</td>
               <td className="text-gray-600">{m.notes || "—"}</td>
-              {canDelete && <td>{rowActions(m)}</td>}
+              {(canEdit || canDelete) && <td>{rowActions(m)}</td>}
             </tr>
           ))}
         </tbody>
@@ -430,6 +440,15 @@ function MovementsTable({
         page={pager.page} pageSize={pager.pageSize} totalCount={pager.totalCount}
         itemLabel="حركة" onPageChange={pager.setPage} onPageSizeChange={pager.setPageSize}
       />
+
+      {editing && (
+        <ContainerMovementEditDialog
+          movement={editing}
+          partnerName={partnerName}
+          onClose={() => setEditing(null)}
+          onSaved={() => { setEditing(null); onDeleted(); }}
+        />
+      )}
     </div>
   );
 }

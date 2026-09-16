@@ -66,6 +66,12 @@ public class SacksController : ControllerBase
     public async Task<ActionResult<IReadOnlyList<SackMovementDto>>> Return(CreateSackMovementRequest request) =>
         Ok(await _sacks.CreateMovementAsync(ContainerDirection.In, request));
 
+    /// <summary>Corrects one recorded line. Its own permission, and fully audited.</summary>
+    [HttpPut("movements/{movementId:int}")]
+    [RequirePermission(PermissionKeys.SacksEdit)]
+    public async Task<ActionResult<SackMovementDto>> UpdateMovement(int movementId, UpdateSackMovementRequest request) =>
+        Ok(await _sacks.UpdateMovementAsync(movementId, request));
+
     [HttpDelete("movements/{movementId:int}")]
     [RequirePermission(PermissionKeys.SacksDelete)]
     public async Task<IActionResult> DeleteMovement(int movementId)

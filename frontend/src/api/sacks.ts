@@ -60,3 +60,18 @@ export async function printSacksOverviewPdf(filter: SacksFilter) {
   const { data } = await apiClient.get("/sacks/overview/print/pdf", { params: filter, responseType: "blob" });
   return data as Blob;
 }
+
+/**
+ * Corrects one recorded line — its kind, direction, date, count or note. Not the person: a
+ * handover recorded against the wrong man is a different event, deleted and recorded again.
+ */
+export async function updateSackMovement(movementId: number, payload: {
+  sackKindId: number | null;
+  direction: "Out" | "In";
+  date: string;
+  quantity: number;
+  notes?: string | null;
+}) {
+  const { data } = await apiClient.put<SackMovementDto>(`/sacks/movements/${movementId}`, payload);
+  return data;
+}

@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import {
-  createSackKind, listSackKinds, printSacksOverviewPdf, returnSacks, sacksOverview, updateSackKind, withdrawSacks,
+  createSackKind, deleteSackMovement, listSackKinds, printSacksOverviewPdf, returnSacks,
+  sacksOverview, updateSackKind, withdrawSacks,
 } from "../api/sacks";
 import type { SacksFilter } from "../api/sacks";
-import type { SackKindDto, SackLineInput, SacksOverviewDto } from "../types";
+import type { SackKindDto, SackLineInput, SackMovementDto, SacksOverviewDto } from "../types";
 import { apiErrorMessage } from "../api/client";
 import { createPartner } from "../api/partners";
 import { useAuth } from "../auth/AuthContext";
@@ -12,6 +13,7 @@ import { PdfActions } from "../components/PdfActions";
 import { PartnerLink } from "../components/RecordLinks";
 import { StatCard } from "../components/StatCard";
 import { CollapsibleRows } from "../components/CollapsibleRows";
+import { SackMovementEditDialog } from "../components/SackMovementEditDialog";
 import { formatDate, todayLocalDateString, buildWhatsAppLink } from "../lib/format";
 import { startOfDay, endOfDay } from "../lib/format";
 
@@ -168,7 +170,14 @@ export function SacksPage() {
         <>
           {tab === "overall" && <Totals data={data} />}
           {tab === "people" && <ByPartner data={data} />}
-          {tab === "log" && <Movements data={data} />}
+          {tab === "log" && (
+            <Movements
+              data={data} kinds={kinds}
+              canEdit={hasPermission("sacks.edit")}
+              canDelete={hasPermission("sacks.delete")}
+              onChanged={refresh}
+            />
+          )}
           {tab === "stock" && (
             <StockTable
               kinds={kinds}
@@ -647,9 +656,58 @@ function StockTable({ kinds, canEdit, onSaved, onError }: {
   );
 }
 
-function Movements({ data }: { data: SacksOverviewDto }) {
+/**
+ * The recorded lines, and the two things that can be done to one of them.
+ *
+ * Both were missing here. The delete existed in the API and on no screen; the edit did not exist
+ * at all, because a movement was once held to be uncorrectable on principle — a wrong one was to
+ * be deleted and retyped. The market asked for both, and the principle does not survive the audit
+ * interceptor: every field changed here is written to the log with its before and after, so an
+ * edit loses no history. It is delete-and-retype that loses the link between the two rows.
+ */
+function Movements({ data, kinds, canEdit, canDelete, onChanged }: {
+  data: SacksOverviewDto;
+  kinds: SackKindDto[];
+  canEdit: boolean;
+  canDelete: boolean;
+  onChanged: () => void;
+}) {
+  const [editing, setEditing] = useState<SackMovementDto | null>(null);
+  const [busyId, setBusyId] = useState<number | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function remove(m: SackMovementDto) {
+    if (!window.confirm(`حذف حركة ${m.sackKindName} (${m.quantity}) على ${m.partnerName}؟`)) return;
+    setBusyId(m.id);
+    setError(null);
+    try {
+      await deleteSackMovement(m.id);
+      onChanged();
+    } catch (err) {
+      setError(apiErrorMessage(err, "فشل الحذف"));
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  /** One definition, rendered by the desktop row and the phone's card. */
+  function rowActions(m: SackMovementDto) {
+    if (!canEdit && !canDelete) return null;
+    return (
+      <span className="flex flex-wrap gap-3">
+        {canEdit && <button className="btn-link text-brand-700 text-sm hover:underline" onClick={() => setEditing(m)}>تعديل</button>}
+        {canDelete && (
+          <button className="btn-link text-red-600 text-sm hover:underline" disabled={busyId === m.id} onClick={() => remove(m)}>
+            {busyId === m.id ? "..." : "حذف"}
+          </button>
+        )}
+      </span>
+    );
+  }
+
   return (
     <div className="card">
+      {error && <div className="text-sm text-red-600 bg-red-50 rounded-md p-2 m-3">{error}</div>}
       <div className="sm:hidden">
         <CollapsibleRows
           rows={data.movements}
@@ -663,6 +721,7 @@ function Movements({ data }: { data: SacksOverviewDto }) {
           details={(m) => [
             { label: "التاريخ", value: formatDate(m.date) },
             { label: "ملاحظات", value: m.notes || "—" },
+            ...(canEdit || canDelete ? [{ label: "", value: rowActions(m) }] : []),
           ]}
           empty="لا توجد حركات"
         />
@@ -670,7 +729,7 @@ function Movements({ data }: { data: SacksOverviewDto }) {
       <div className="hidden sm:block overflow-x-auto">
         <table className="table-base">
           <thead>
-            <tr><th>التاريخ</th><th>الشخص</th><th>النوع</th><th>الحركة</th><th>العدد</th><th>ملاحظات</th></tr>
+            <tr><th>التاريخ</th><th>الشخص</th><th>النوع</th><th>الحركة</th><th>العدد</th><th>ملاحظات</th>{(canEdit || canDelete) && <th></th>}</tr>
           </thead>
           <tbody>
             {data.movements.length === 0 ? (
@@ -685,11 +744,21 @@ function Movements({ data }: { data: SacksOverviewDto }) {
                 </td>
                 <td className="font-semibold">{m.quantity}</td>
                 <td className="text-gray-500 text-sm">{m.notes || "—"}</td>
+                {(canEdit || canDelete) && <td className="whitespace-nowrap">{rowActions(m)}</td>}
               </tr>
             ))}
           </tbody>
         </table>
       </div>
+
+      {editing && (
+        <SackMovementEditDialog
+          movement={editing}
+          kinds={kinds}
+          onClose={() => setEditing(null)}
+          onSaved={() => { setEditing(null); onChanged(); }}
+        />
+      )}
     </div>
   );
 }

@@ -26,6 +26,14 @@ public interface IContainerService
 
     Task<ContainerMovementDto> CreateAsync(int partnerId, CreateContainerMovementRequest request, int recordedByUserId);
 
+    /// <summary>
+    /// Corrects a movement in place. Every field but the person, for the reason on the request.
+    ///
+    /// Nothing recomputes afterwards because nothing is stored: every balance on this screen is
+    /// summed from these rows on each read, so fixing the row IS fixing the balance.
+    /// </summary>
+    Task<ContainerMovementDto> UpdateAsync(int movementId, UpdateContainerMovementRequest request);
+
     Task DeleteAsync(int movementId);
 
     /// <summary>
@@ -127,6 +135,30 @@ public class ContainerService : IContainerService
             RecordedByUserId = recordedByUserId
         };
         _db.ContainerMovements.Add(movement);
+        await _db.SaveChangesAsync();
+
+        return new ContainerMovementDto(movement.Id, movement.PartnerId, movement.Type, movement.Direction, movement.Date, movement.Quantity, movement.Notes);
+    }
+
+    public async Task<ContainerMovementDto> UpdateAsync(int movementId, UpdateContainerMovementRequest request)
+    {
+        if (request.Quantity <= 0)
+            throw new ValidationAppException("العدد يجب أن يكون أكبر من صفر.");
+        if (!Enum.IsDefined(request.Type))
+            throw new ValidationAppException("نوع غير معروف.");
+        if (!Enum.IsDefined(request.Direction))
+            throw new ValidationAppException("اتجاه غير معروف.");
+
+        var movement = await _db.ContainerMovements.SingleOrDefaultAsync(m => m.Id == movementId)
+            ?? throw new NotFoundAppException("ContainerMovement", movementId);
+
+        movement.Type = request.Type;
+        movement.Direction = request.Direction;
+        movement.Date = request.Date;
+        movement.Quantity = request.Quantity;
+        movement.Notes = request.Notes;
+        // The audit interceptor writes the before/after of every field touched here, which is what
+        // makes correcting in place safe rather than a quiet rewrite of a count.
         await _db.SaveChangesAsync();
 
         return new ContainerMovementDto(movement.Id, movement.PartnerId, movement.Type, movement.Direction, movement.Date, movement.Quantity, movement.Notes);

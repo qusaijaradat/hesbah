@@ -235,10 +235,20 @@ public static class PermissionKeys
     /// given/returned/remaining crate balance on the merchant's own account page.</summary>
     public const string BoxesView = "boxes.view";
     public const string BoxesCreate = "boxes.create";
-    // No BoxesEdit: a container movement is never edited. A wrong one is deleted and entered
-    // again, which leaves both the mistake and the correction in the audit trail rather than
-    // quietly rewriting a count. The key existed, granted nothing anywhere, and still showed on
-    // the roles screen as a capability someone could hand out.
+
+    /// <summary>
+    /// Correcting a movement in place.
+    ///
+    /// This used to be refused on principle — "a wrong one is deleted and entered again, which
+    /// leaves both the mistake and the correction in the audit trail". The market asked for it,
+    /// and the objection turns out not to hold here: ContainerMovement is an AuditableEntity and
+    /// the save interceptor writes a full before/after diff of every field that changed. Editing
+    /// loses no history; it is delete-and-retype that loses the connection between the two rows.
+    ///
+    /// Its own key rather than folded into Create, because fixing yesterday's count is a different
+    /// trust from writing today's.
+    /// </summary>
+    public const string BoxesEdit = "boxes.edit";
     public const string BoxesDelete = "boxes.delete";
 
     /// <summary>
@@ -249,11 +259,12 @@ public static class PermissionKeys
     /// crates screen, and a permission that hands out more than its name says is the kind nobody
     /// audits until it matters.
     ///
-    /// No SacksEdit, same reasoning as crates: a movement is never edited. A wrong one is deleted
-    /// and entered again, which leaves both the mistake and the correction in the audit trail.
+    /// Editing a movement is allowed here too — see BoxesEdit for why the old objection did not
+    /// survive contact with the audit interceptor.
     /// </summary>
     public const string SacksView = "sacks.view";
     public const string SacksCreate = "sacks.create";
+    public const string SacksEdit = "sacks.edit";
     public const string SacksDelete = "sacks.delete";
 
     public const string ReportsView = "reports.view";
@@ -308,8 +319,8 @@ public static class PermissionKeys
         ExpensesView, ExpensesCreate, ExpensesEdit, ExpensesDelete,
         EmployeesView, EmployeesCreate, EmployeesEdit, EmployeesDelete,
         FarmerGoodsView, FarmerGoodsCreate, FarmerGoodsEdit, FarmerGoodsDelete,
-        BoxesView, BoxesCreate, BoxesDelete,
-        SacksView, SacksCreate, SacksDelete,
+        BoxesView, BoxesCreate, BoxesEdit, BoxesDelete,
+        SacksView, SacksCreate, SacksEdit, SacksDelete,
         ReportsView, ReportsExport,
         SettingsView, SettingsEdit,
         UsersView, UsersCreate, UsersEdit, UsersSessions,

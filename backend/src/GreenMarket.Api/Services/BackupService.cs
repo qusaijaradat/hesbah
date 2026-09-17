@@ -66,6 +66,11 @@ public class BackupService : IBackupService
             await AddAsync(archive, "permissions", _db.Permissions, cancellationToken);
             await AddAsync(archive, "role_permissions", _db.RolePermissions, cancellationToken);
             await AddAsync(archive, "audit_logs", _db.AuditLogs, cancellationToken);
+            // Which ledger rows the one-time "move the balances onto the drivers" migration moved,
+            // and where each came from. Small, and the only record of a money move that is not
+            // derivable from anything else in this archive - restore without it and the migration
+            // could never be undone.
+            await AddAsync(archive, "ledger_migration_entries", _db.LedgerMigrationEntries, cancellationToken);
             // push_subscriptions is deliberately NOT here, and the omission is not an oversight of
             // the kind this file exists to prevent. It holds no business fact — no money, no name,
             // nothing any report reads — only which browsers agreed to be notified, each with the

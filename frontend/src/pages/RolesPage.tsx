@@ -67,6 +67,8 @@ const PERMISSION_LABELS: Record<string, string> = {
 
   "backup.download": "تنزيل نسخة احتياطية كاملة من البيانات",
 
+  "ledger.migrate": "تنفيذ نقل الأرصدة القديمة من الباعة للسواق (والتراجع عنه) — بيحرّك مصاري على كل الحسابات بضغطة وحدة",
+
   "roles.view": "إظهار الأدوار والصلاحيات",
   "roles.create": "إضافة دور",
   "roles.edit": "تعديل صلاحيات دور",
@@ -90,6 +92,7 @@ const GROUP_LABELS: Record<string, string> = {
   users: "المستخدمون",
   roles: "الأدوار والصلاحيات",
   audit: "سجل التعديلات",
+  ledger: "نقل الأرصدة",
 };
 
 // Keeps each group's checklist in a stable، predictable order (إظهار → إضافة → تعديل → حذف)

@@ -72,11 +72,20 @@ public class ReportService : IReportService
             })
             .ToList();
 
-        var commissionQuery = _db.FarmerTransactions.Where(t => t.Type == FarmerTransactionType.Sale);
+        // Commission is attributed to the person whose produce earned it — the invoice's SELLER —
+        // not to whoever the Sale row happens to sit on. Those are the same person only when the
+        // market brought the load itself; when an outside driver brought it, the row is on him
+        // (see InvoiceLedgerTarget), and grouping by the row's own FarmerId would credit every
+        // seller in this report with zero commission and hand the whole lot to the drivers.
+        //
+        // Still the STORED figure off the row, never re-derived here: it is what actually posted,
+        // rate changes and all. Only who it is counted against comes from the invoice.
+        var commissionQuery = _db.FarmerTransactions
+            .Where(t => t.Type == FarmerTransactionType.Sale && t.Invoice != null && t.Invoice.FarmerId != null);
         if (filter.DateFrom is not null) commissionQuery = commissionQuery.Where(t => t.Date >= filter.DateFrom);
         if (filter.DateTo is not null) commissionQuery = commissionQuery.Where(t => t.Date <= filter.DateTo);
-        if (filter.PartnerId is not null) commissionQuery = commissionQuery.Where(t => t.FarmerId == filter.PartnerId);
-        var commissionByFarmer = await commissionQuery.GroupBy(t => t.FarmerId)
+        if (filter.PartnerId is not null) commissionQuery = commissionQuery.Where(t => t.Invoice!.FarmerId == filter.PartnerId);
+        var commissionByFarmer = await commissionQuery.GroupBy(t => t.Invoice!.FarmerId!.Value)
             .Select(g => new { FarmerId = g.Key, Commission = g.Sum(t => t.Commission) })
             .ToDictionaryAsync(x => x.FarmerId, x => x.Commission);
 

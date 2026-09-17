@@ -310,6 +310,17 @@ public static class PermissionKeys
     /// anyone who merely has ReportsExport.</summary>
     public const string BackupDownload = "backup.download";
 
+    /// <summary>
+    /// Running the one-time move of historical balances from sellers onto the drivers who brought
+    /// their loads, and undoing it (see LedgerMigrationService).
+    ///
+    /// Its own key, and the heaviest one here. Every other permission governs one record at a time;
+    /// this one moves money across every seller and driver account in the system in a single press.
+    /// It belongs to whoever actually decided the market would settle this way — not to everyone who
+    /// may edit a setting, which is the screen it happens to live on.
+    /// </summary>
+    public const string LedgerMigrate = "ledger.migrate";
+
     public static readonly string[] All =
     {
         InvoicesCreate, InvoicesEdit, InvoicesCancel, InvoicesDelete, InvoicesReturns, InvoicesView,
@@ -326,7 +337,8 @@ public static class PermissionKeys
         UsersView, UsersCreate, UsersEdit, UsersSessions,
         RolesView, RolesCreate, RolesEdit, RolesDelete,
         AuditView,
-        BackupDownload
+        BackupDownload,
+        LedgerMigrate
     };
 }
 

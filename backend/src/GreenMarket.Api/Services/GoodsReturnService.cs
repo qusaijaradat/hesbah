@@ -22,8 +22,13 @@ public interface IGoodsReturnService
 public class GoodsReturnService : IGoodsReturnService
 {
     private readonly AppDbContext _db;
+    private readonly ISettingsService _settings;
 
-    public GoodsReturnService(AppDbContext db) => _db = db;
+    public GoodsReturnService(AppDbContext db, ISettingsService settings)
+    {
+        _db = db;
+        _settings = settings;
+    }
 
     public async Task<IReadOnlyList<GoodsReturnDto>> ListForInvoiceAsync(int invoiceId)
     {
@@ -181,14 +186,22 @@ public class GoodsReturnService : IGoodsReturnService
 
         RecomputeGrandTotal(invoice, invoice.Returns.Sum(r => r.TotalValue) + goodsReturn.TotalValue);
 
-        // Seller side. No farmer attached means there is no ledger to adjust — the buyer is still
-        // credited, the market simply absorbs it.
-        if (invoice.FarmerId is not null)
+        // Seller side — or the driver's, when the produce money on this invoice was handed to him
+        // instead. The credit has to land on the SAME account the sale did: put the sale on one
+        // person and the return on another and neither balance is right afterwards. Same rule,
+        // from the same place, as the sale itself (InvoiceService.CreateAsync).
+        //
+        // Null means nobody was owed for this produce in the first place — no seller and no
+        // outside driver — so there is no ledger to credit. The buyer is still credited and the
+        // market simply absorbs it.
+        var houseDriverId = await _settings.GetIntOrNullAsync(Setting.Keys.HouseDriverPartnerId);
+        var creditGoesTo = InvoiceLedgerTarget.SaleGoesTo(invoice.FarmerId, invoice.DriverId, houseDriverId);
+        if (creditGoesTo is not null)
         {
             var commissionOnReturn = CommissionCalculator.Calculate(goodsReturn.TotalValue, invoice.CommissionRateApplied).Commission;
             _db.FarmerTransactions.Add(new FarmerTransaction
             {
-                FarmerId = invoice.FarmerId.Value,
+                FarmerId = creditGoesTo.Value,
                 Type = FarmerTransactionType.Adjustment,
                 InvoiceId = invoice.Id,
                 Date = goodsReturn.Date,

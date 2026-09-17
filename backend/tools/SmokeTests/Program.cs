@@ -780,5 +780,62 @@ Console.WriteLine("== who the produce money is owed to (InvoiceLedgerTarget) =="
 }
 
 Console.WriteLine();
+Console.WriteLine("== moving the old balances onto the drivers (LedgerMigrationService) ==");
+{
+    // The migration decides what to move with exactly the same call the posting code uses, so what
+    // is modelled here is the real predicate, not a copy of it that can drift away from it.
+    const int house = 42;
+    var ledger = new List<(int InvoiceId, int Seller, int? Driver, decimal Amount, int OwnedBy)>
+    {
+        (1, 7, 9,     900m, 7),   // outside driver  -> moves
+        (2, 7, 9,     100m, 7),   // same pair again -> moves
+        (3, 8, null,  500m, 8),   // no driver       -> stays
+        (4, 8, house, 300m, 8),   // the market drove it -> stays
+        (5, 9, 9,     250m, 9),   // the seller drove his own load -> already right, stays
+    };
+
+    var moved = ledger
+        .Where(r => InvoiceLedgerTarget.SaleGoesTo(r.Seller, r.Driver, house) != r.Seller)
+        .ToList();
+
+    Check("only the loads an outside driver brought move",
+          moved.Count == 2 && moved.All(r => r.Driver == 9 && r.Seller == 7), $"got {moved.Count}");
+    Check("a load with no driver stays with its seller",
+          !moved.Any(r => r.InvoiceId == 3));
+    Check("a load the market drove stays with its seller",
+          !moved.Any(r => r.InvoiceId == 4));
+    Check("a seller who drove his own load is already where he belongs",
+          !moved.Any(r => r.InvoiceId == 5));
+
+    // The only property that really matters: money is not created or destroyed by moving it. What
+    // comes off the sellers is what lands on the drivers, to the agora.
+    var offSellers = moved.GroupBy(r => r.Seller).ToDictionary(g => g.Key, g => g.Sum(r => r.Amount));
+    var ontoDrivers = moved.GroupBy(r => r.Driver!.Value).ToDictionary(g => g.Key, g => g.Sum(r => r.Amount));
+    Check("what leaves the sellers is what arrives at the drivers",
+          offSellers.Values.Sum() == ontoDrivers.Values.Sum(), $"{offSellers.Values.Sum()} vs {ontoDrivers.Values.Sum()}");
+    Check("and it is the right figure",
+          ontoDrivers[9] == 1_000m, $"got {ontoDrivers[9]}");
+
+    // Run it twice and the second run finds nothing: once a row sits on the driver, the rule it is
+    // tested against says that is where it belongs. A migration that keeps finding work to do is
+    // one that moves the same money again every time somebody presses the button.
+    var after = ledger
+        .Select(r => moved.Any(m => m.InvoiceId == r.InvoiceId) ? r with { OwnedBy = r.Driver!.Value } : r)
+        .ToList();
+    var secondPass = after
+        .Where(r => InvoiceLedgerTarget.SaleGoesTo(r.Seller, r.Driver, house) != r.OwnedBy)
+        .ToList();
+    Check("running it a second time finds nothing left to move", secondPass.Count == 0, $"got {secondPass.Count}");
+
+    // And the undo is the recorded move read backwards, which returns every account to exactly
+    // where it started - not to where the rule guesses it was.
+    var undone = after
+        .Select(r => moved.Any(m => m.InvoiceId == r.InvoiceId) ? r with { OwnedBy = r.Seller } : r)
+        .ToList();
+    Check("undoing puts every row back on the account it came from",
+          undone.All(r => r.OwnedBy == ledger.Single(l => l.InvoiceId == r.InvoiceId).OwnedBy));
+}
+
+Console.WriteLine();
 Console.WriteLine($"RESULT: {passed} passed, {failed} failed");
 return failed == 0 ? 0 : 1;

@@ -36,6 +36,7 @@ public class AppDbContext : DbContext
     public DbSet<CompanyLogo> CompanyLogos => Set<CompanyLogo>();
     public DbSet<PushSubscription> PushSubscriptions => Set<PushSubscription>();
     public DbSet<UserSession> UserSessions => Set<UserSession>();
+    public DbSet<LedgerMigrationEntry> LedgerMigrationEntries => Set<LedgerMigrationEntry>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

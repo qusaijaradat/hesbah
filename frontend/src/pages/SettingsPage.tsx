@@ -8,6 +8,7 @@ import { useAuth } from "../auth/AuthContext";
 import { toMonochromePng } from "../lib/monochrome";
 import { MySessionsCard } from "../components/MySessionsCard";
 import { PushNotificationsCard } from "../components/PushNotificationsCard";
+import { LedgerMigrationCard } from "../components/LedgerMigrationCard";
 import { PartnerAutocomplete } from "../components/PartnerAutocomplete";
 import { getPartner } from "../api/partners";
 
@@ -251,6 +252,10 @@ export function SettingsPage() {
           </p>
         </div>
       )}
+      {/* Sits right under the backup card on purpose: the first thing it tells you to do is
+          take one, and the button for that is the paragraph above. */}
+      {hasPermission("ledger.migrate") && <LedgerMigrationCard />}
+
       {message && <div className="text-sm bg-brand-50 text-brand-800 rounded-md p-3 mb-4">{message}</div>}
 
       <div className="card p-4 mb-4">

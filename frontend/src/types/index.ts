@@ -932,3 +932,39 @@ export interface SacksOverviewDto {
   byPartner: SackPartnerKindDto[];
   movements: SackMovementDto[];
 }
+
+/**
+ * The one-time move of historical balances from sellers onto the drivers who brought their loads.
+ * See the backend's LedgerMigrationService — this is a read-only description of what would happen,
+ * or of what did and can still be undone.
+ */
+export interface LedgerMigrationPreviewDto {
+  canRun: boolean;
+  blocker?: string | null;
+  alreadyMigrated: boolean;
+  lastRunAt?: string | null;
+  houseDriverName?: string | null;
+  rowsToMove: number;
+  amountToMove: number;
+  invoicesAffected: number;
+  /** Losing the money on a forward run; getting it back on an undo. */
+  sellers: LedgerMigrationPartnerRow[];
+  drivers: LedgerMigrationPartnerRow[];
+  notes: string[];
+}
+
+export interface LedgerMigrationPartnerRow {
+  partnerId: number;
+  name: string;
+  rows: number;
+  amount: number;
+  balanceBefore: number;
+  balanceAfter: number;
+}
+
+export interface LedgerMigrationResultDto {
+  runId: string;
+  direction: string;
+  rowsMoved: number;
+  amountMoved: number;
+}

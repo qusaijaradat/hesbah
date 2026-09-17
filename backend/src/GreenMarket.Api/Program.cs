@@ -55,6 +55,7 @@ builder.Services.AddScoped<IEmployeeService, EmployeeService>();
 builder.Services.AddScoped<IGoodsService, GoodsService>();
 builder.Services.AddScoped<IReportService, ReportService>();
 builder.Services.AddScoped<ISettingsService, SettingsService>();
+builder.Services.AddScoped<ILedgerMigrationService, LedgerMigrationService>();
 builder.Services.AddScoped<ICompanyLogoService, CompanyLogoService>();
 builder.Services.AddScoped<IAuditLogService, AuditLogService>();
 builder.Services.AddScoped<IBackupService, BackupService>();
@@ -884,6 +885,34 @@ using (var scope = app.Services.CreateScope())
     catch (Exception ex)
     {
         app.Logger.LogError(ex, "Failed to create the box_returns table — recording/viewing a merchant's empty-crate returns will not work until this is fixed.");
+    }
+
+    // Same EnsureCreated gap as the tables above. This one is the record of a one-time balance
+    // migration: which ledger rows moved from a seller onto the driver who brought the load, and
+    // where each came from, so the move can be undone exactly rather than inferred back.
+    // Without the table the migration screen refuses to run at all — which is the right failure,
+    // since a money move with no way back is not one to perform on a hopeful afternoon.
+    try
+    {
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE TABLE IF NOT EXISTS ledger_migration_entries (
+                "Id" BIGSERIAL PRIMARY KEY,
+                "RunId" uuid NOT NULL,
+                "At" timestamp with time zone NOT NULL,
+                "RunByUserId" integer NULL,
+                "Direction" character varying(20) NOT NULL,
+                "FarmerTransactionId" integer NOT NULL,
+                "InvoiceId" integer NOT NULL,
+                "FromPartnerId" integer NOT NULL,
+                "ToPartnerId" integer NOT NULL,
+                "Amount" numeric(14,2) NOT NULL DEFAULT 0
+            );
+            CREATE INDEX IF NOT EXISTS ix_ledger_migration_entries_runid ON ledger_migration_entries ("RunId");
+            """);
+    }
+    catch (Exception ex)
+    {
+        app.Logger.LogError(ex, "Failed to create the ledger_migration_entries table — the one-time \"move balances onto the driver\" migration will refuse to run until this is fixed. Nothing else is affected.");
     }
 
     // Composite index matching the actual query pattern: every farmer/driver statement (كشف حساب)

@@ -54,6 +54,16 @@ Show("name suggestions restricted to a ROLE, not an exact type (PartnerService.S
 Show("partners list filtered by a role (PartnerService.ListAsync)",
     db.Partners.Where(p => p.Type != null && (p.Type.Value & PartnerType.Driver) == PartnerType.Driver));
 
+// The Sale rows a seller EARNED, which since the produce money started following the driver is no
+// longer the same set as the Sale rows that SIT on him. Grouping by a value reached through a
+// navigation is the part worth printing: if EF cannot translate it, the report quietly pulls every
+// ledger row in the system into memory to add up one column.
+Show("commission counted against the seller whose produce earned it (ReportService.FarmerReportAsync)",
+    db.FarmerTransactions
+        .Where(t => t.Type == FarmerTransactionType.Sale && t.Invoice != null && t.Invoice.FarmerId != null)
+        .GroupBy(t => t.Invoice!.FarmerId!.Value)
+        .Select(g => new { FarmerId = g.Key, Commission = g.Sum(t => t.Commission) }));
+
 void Show<T>(string label, IQueryable<T> query)
 {
     Console.WriteLine($"--- {label}");

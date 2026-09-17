@@ -8,6 +8,8 @@ import { useAuth } from "../auth/AuthContext";
 import { toMonochromePng } from "../lib/monochrome";
 import { MySessionsCard } from "../components/MySessionsCard";
 import { PushNotificationsCard } from "../components/PushNotificationsCard";
+import { PartnerAutocomplete } from "../components/PartnerAutocomplete";
+import { getPartner } from "../api/partners";
 
 const KEY_LABELS: Record<string, string> = {
   "commission.default_rate": "نسبة العمولة الافتراضية (مثال: 0.10 = 10%)",
@@ -21,7 +23,69 @@ const KEY_LABELS: Record<string, string> = {
   // worked out.
   "boxes.price": "سعر الصندوق الواحد (₪) — بتنحسب على المشتري تلقائيًا على كل فاتورة فيها أصناف بالصندوق",
   "boxes.driver_fee": "أجرة السائق عن كل صندوق (₪) — بتنعطى للسائق، والفرق بينها وبين سعر الصندوق يضل للمصلحة",
+  // The one setting that decides WHO the market owes for a load. Worth the long label.
+  "market.house_driver_partner_id":
+    "سائق المصلحة — الشخص اللي بتدخّله بخانة السائق لما تكون المصلحة هي اللي جابت البضاعة. لما يكون هو السائق، الرصيد بيضل عند البائع وما بتنحسب أجرة نقل. اتركه فارغًا وكل سائق بينحسب سائق برّاني",
 };
+
+/** The one setting that names a PERSON rather than holding a number or a piece of text. */
+const HOUSE_DRIVER_KEY = "market.house_driver_partner_id";
+
+/**
+ * Picks the partner record standing for the market’s own vehicle.
+ *
+ * The setting stores an id, and a box asking for one would be unusable: nobody knows that the
+ * market is partner 42, and a typo there would quietly start paying the wrong person. So the
+ * same name-picker used everywhere else chooses the person, and the id never appears on screen.
+ */
+function HouseDriverSetting({
+  value, canEdit, onSaved,
+}: {
+  value: string;
+  canEdit: boolean;
+  onSaved: (message: string) => void;
+}) {
+  const [partner, setPartner] = useState<{ id: number; name: string } | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  // The stored id on its own says nothing — the name has to be fetched to show who it is.
+  useEffect(() => {
+    const id = Number(value);
+    if (!Number.isFinite(id) || id <= 0) { setPartner(null); return; }
+    let cancelled = false;
+    getPartner(id)
+      .then((p) => { if (!cancelled) setPartner({ id: p.id, name: p.name }); })
+      // A person who was deleted after being set here: show the field empty rather than
+      // an error, since empty is exactly what the setting now means in practice.
+      .catch(() => { if (!cancelled) setPartner(null); });
+    return () => { cancelled = true; };
+  }, [value]);
+
+  async function choose(next: { id: number; name: string } | null) {
+    setPartner(next);
+    setBusy(true);
+    try {
+      await updateSetting(HOUSE_DRIVER_KEY, next ? String(next.id) : "");
+      onSaved(next ? `تم الحفظ — سائق المصلحة هو ${next.name}` : "تم الحفظ — ما فيه سائق مصلحة محدد");
+    } catch (err) {
+      onSaved(apiErrorMessage(err, "فشل الحفظ"));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className={busy ? "opacity-60" : undefined}>
+      <PartnerAutocomplete
+        label="سائق المصلحة"
+        labelHidden
+        value={partner}
+        onChange={(p) => { if (canEdit) void choose(p); }}
+        placeholder="ابحاث عن الشخص بالاسم..."
+      />
+    </div>
+  );
+}
 
 const MAX_LOGO_BYTES = 3 * 1024 * 1024;
 const ALLOWED_LOGO_TYPES = ["image/png", "image/jpeg", "image/webp"];
@@ -237,19 +301,23 @@ export function SettingsPage() {
         {settings.map((s) => (
           <div key={s.key} className="card p-4">
             <label className="label">{KEY_LABELS[s.key] ?? s.key}</label>
-            <div className="flex gap-2">
-              <input
-                className="input"
-                defaultValue={s.value}
-                disabled={!canEdit}
-                onChange={(e) => setEdited((prev) => ({ ...prev, [s.key]: e.target.value }))}
-              />
-              {canEdit && (
-                <button className="btn-primary shrink-0" disabled={saving === s.key} onClick={() => handleSave(s.key)}>
-                  {saving === s.key ? "..." : "حفظ"}
-                </button>
-              )}
-            </div>
+            {s.key === HOUSE_DRIVER_KEY ? (
+              <HouseDriverSetting value={s.value} canEdit={canEdit} onSaved={(m) => { setMessage(m); void refresh(); }} />
+            ) : (
+              <div className="flex gap-2">
+                <input
+                  className="input"
+                  defaultValue={s.value}
+                  disabled={!canEdit}
+                  onChange={(e) => setEdited((prev) => ({ ...prev, [s.key]: e.target.value }))}
+                />
+                {canEdit && (
+                  <button className="btn-primary shrink-0" disabled={saving === s.key} onClick={() => handleSave(s.key)}>
+                    {saving === s.key ? "..." : "حفظ"}
+                  </button>
+                )}
+              </div>
+            )}
             {s.description && <p className="text-xs text-gray-400 mt-1">{s.description}</p>}
           </div>
         ))}

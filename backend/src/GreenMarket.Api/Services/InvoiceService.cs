@@ -165,13 +165,18 @@ public class InvoiceService : IInvoiceService
             }
         }
 
-        // No farmer on this invoice → nothing to post to the farmer ledger (requirement doc
-        // §5/§6 only apply once a farmer is actually attached to the sale).
-        if (farmer is not null)
+        // WHO the produce money is owed to — the driver who brought the load, or the seller
+        // when the market brought it itself. One rule, in Domain.Services.InvoiceLedgerTarget,
+        // and the amount is unchanged either way: produce less commission less the transport,
+        // because the transport is owed to whoever hauled it and is added back on that side.
+        var houseDriverId = await _settings.GetIntOrNullAsync(Setting.Keys.HouseDriverPartnerId);
+        var saleGoesTo = InvoiceLedgerTarget.SaleGoesTo(farmer?.Id, driver?.Id, houseDriverId);
+
+        if (saleGoesTo is not null)
         {
             _db.FarmerTransactions.Add(new FarmerTransaction
             {
-                FarmerId = farmer.Id,
+                FarmerId = saleGoesTo.Value,
                 Type = FarmerTransactionType.Sale,
                 InvoiceId = invoice.Id,
                 Date = invoice.Date,
@@ -181,7 +186,10 @@ public class InvoiceService : IInvoiceService
                 // transport that brought it in. Wood and رسوم الصناديق are not in it — neither is
                 // the seller's to be paid for. See ToDto's NetDueToFarmer for the read side.
                 Amount = InvoiceCharge.ForSeller(totals.TotalValue, commissionResult.Commission, invoice.TransportFee),
-                Notes = $"تسجيل تلقائي من الفاتورة رقم {invoice.InvoiceNumber}"
+                // Whose produce this was, on the line, because on a driver's statement the
+                // amount is meaningless without it: one load is several sellers, and he has to
+                // hand each of them their own share out of the one payment he collected.
+                Notes = SaleLedgerNote(invoice.InvoiceNumber, farmer?.Name, saleGoesTo.Value != farmer?.Id)
             });
             await _db.SaveChangesAsync();
         }
@@ -193,7 +201,11 @@ public class InvoiceService : IInvoiceService
         // (سعر الخشب is NOT among them — the buyer pays it and the market keeps it, see MarketEarnings)
         // the merchant is separately charged for it) so the driver's account/statement/reports/manifest
         // automatically reflect both alongside the manual transport fee, without a separate ledger row.
-        if (driver is not null && (invoice.TransportFee > 0 || driverBoxFeeTotal > 0))
+        // Not when the driver IS the market: it cannot owe itself haulage or crate money. The
+        // same test that sent the produce money to the seller above sends nothing here.
+        if (driver is not null
+            && InvoiceLedgerTarget.IsOutsideDriver(driver.Id, houseDriverId)
+            && (invoice.TransportFee > 0 || driverBoxFeeTotal > 0))
         {
             _db.FarmerTransactions.Add(new FarmerTransaction
             {
@@ -302,7 +314,8 @@ public class InvoiceService : IInvoiceService
         }
 
         var previousMerchantId = invoice.MerchantId;
-        var previousFarmerId = invoice.FarmerId;
+        // No previousFarmerId: who the Sale row belongs to is read off the row itself now, since
+        // the invoice's seller is no longer the only thing that decides it.
         var previousDriverId = invoice.DriverId;
 
         invoice.Date = request.Date;
@@ -343,42 +356,49 @@ public class InvoiceService : IInvoiceService
         var existingSale = await _db.FarmerTransactions
             .SingleOrDefaultAsync(t => t.InvoiceId == invoice.Id && t.Type == FarmerTransactionType.Sale);
 
-        if (farmer is null)
+        // The same rule as CreateAsync decides who this row belongs to now. Keyed on the row's
+        // OWN FarmerId rather than on the invoice's previous farmer: the owner can change
+        // because the driver changed, or because the market's own driver was swapped for an
+        // outside one, with the seller never touched at all.
+        var houseDriverId = await _settings.GetIntOrNullAsync(Setting.Keys.HouseDriverPartnerId);
+        var saleGoesTo = InvoiceLedgerTarget.SaleGoesTo(farmer?.Id, driver?.Id, houseDriverId);
+        var forDriver = saleGoesTo is not null && saleGoesTo != farmer?.Id;
+
+        if (saleGoesTo is null)
         {
-            // Farmer removed from the invoice — nothing left to post to a farmer ledger.
+            // Nobody left to owe: no seller, and no outside driver either.
             if (existingSale is not null) _db.FarmerTransactions.Remove(existingSale);
         }
-        else if (existingSale is not null && previousFarmerId == farmer.Id)
+        else if (existingSale is not null && existingSale.FarmerId == saleGoesTo.Value)
         {
-            // Same farmer as before — just correct the figures on their existing ledger row.
+            // Same person as before — just correct the figures on their existing ledger row.
             // Same InvoiceCharge.ForSeller as CreateAsync — see its own comment.
             existingSale.Date = invoice.Date;
             existingSale.SaleValue = totals.TotalValue;
             existingSale.Commission = commissionResult.Commission;
             existingSale.Amount = InvoiceCharge.ForSeller(totals.TotalValue, commissionResult.Commission, invoice.TransportFee);
-            existingSale.Notes = $"Auto-generated from invoice {invoice.InvoiceNumber} (edited)";
+            existingSale.Notes = SaleLedgerNote(invoice.InvoiceNumber, farmer?.Name, forDriver, edited: true);
         }
         else
         {
-            // Farmer was added for the first time, or swapped for a different one — the old
-            // ledger row (if any) belongs to the wrong farmer now, so it's replaced outright
-            // rather than adjusted.
+            // First time, or it belongs to somebody else now — the old row is on the wrong
+            // person's ledger, so it is replaced outright rather than adjusted.
             if (existingSale is not null) _db.FarmerTransactions.Remove(existingSale);
             _db.FarmerTransactions.Add(new FarmerTransaction
             {
-                FarmerId = farmer.Id,
+                FarmerId = saleGoesTo.Value,
                 Type = FarmerTransactionType.Sale,
                 InvoiceId = invoice.Id,
                 Date = invoice.Date,
                 SaleValue = totals.TotalValue,
                 Commission = commissionResult.Commission,
                 Amount = InvoiceCharge.ForSeller(totals.TotalValue, commissionResult.Commission, invoice.TransportFee),
-                Notes = $"تسجيل تلقائي من الفاتورة رقم {invoice.InvoiceNumber} (بعد التعديل)"
+                Notes = SaleLedgerNote(invoice.InvoiceNumber, farmer?.Name, forDriver, edited: true),
             });
         }
 
         // Same sync as the farmer's Sale row above, mirrored for the driver's TransportFee row
-        // (previousDriverId was captured up front alongside previousFarmerId, before invoice.DriverId
+        // (previousDriverId was captured up front, before invoice.DriverId
         // got overwritten above). Extracted so UpdateAttributesAsync drives the identical rules —
         // "who is owed the transport, and how much" written out twice is exactly how a driver ends
         // up paid for an invoice he no longer has.
@@ -787,6 +807,13 @@ public class InvoiceService : IInvoiceService
         var existingTransportFee = await _db.FarmerTransactions
             .SingleOrDefaultAsync(t => t.InvoiceId == invoice.Id && t.Type == FarmerTransactionType.TransportFee);
 
+        // The market's own vehicle is entered in the driver field like any other, but it cannot be
+        // owed haulage or crate money by the market itself. Treated here as no driver at all, which
+        // is also what removes a stale row when a real driver is swapped for the market's own —
+        // the same test InvoiceLedgerTarget uses to keep the produce money on the seller.
+        var houseDriverId = await _settings.GetIntOrNullAsync(Setting.Keys.HouseDriverPartnerId);
+        if (!InvoiceLedgerTarget.IsOutsideDriver(driver?.Id, houseDriverId)) driver = null;
+
         if (driver is null || (invoice.TransportFee <= 0 && driverBoxFeeTotal <= 0))
         {
             // Driver removed, or the transport fee and box-handling fee both zeroed out — nothing
@@ -873,11 +900,34 @@ public class InvoiceService : IInvoiceService
         var driverBoxFeeTotal = invoice.Items.Sum(it => it.BoxQuantity) * invoice.DriverBoxFeeApplied;
         await SyncDriverTransportRowAsync(invoice, driver, previousDriverId, driverBoxFeeTotal);
 
-        // The seller's Sale row is dated by the invoice too. Its AMOUNT is untouched: nothing here
-        // changes what was sold or what it sold for.
+        // The Sale row is dated by the invoice too. Its AMOUNT is untouched: nothing here changes
+        // what was sold or what it sold for.
+        //
+        // WHO it is owed to can change, though, and only here does that happen without the seller
+        // being touched at all: since the produce money follows the driver, a bulk "change the
+        // driver" moves it off one person and onto another. Leave the row where it is and the old
+        // driver stays owed for a load he no longer brought.
         var sale = await _db.FarmerTransactions
             .SingleOrDefaultAsync(t => t.InvoiceId == invoice.Id && t.Type == FarmerTransactionType.Sale);
-        if (sale is not null) sale.Date = invoice.Date;
+        if (sale is not null)
+        {
+            sale.Date = invoice.Date;
+
+            var houseDriverId = await _settings.GetIntOrNullAsync(Setting.Keys.HouseDriverPartnerId);
+            var saleGoesTo = InvoiceLedgerTarget.SaleGoesTo(invoice.FarmerId, invoice.DriverId, houseDriverId);
+            if (saleGoesTo is null)
+            {
+                // The driver was cleared off an invoice that never named a seller — there is
+                // nobody left for the produce money to be owed to.
+                _db.FarmerTransactions.Remove(sale);
+            }
+            else if (sale.FarmerId != saleGoesTo.Value)
+            {
+                var seller = invoice.FarmerId is null ? null : await _db.Partners.FindAsync(invoice.FarmerId.Value);
+                sale.FarmerId = saleGoesTo.Value;
+                sale.Notes = SaleLedgerNote(invoice.InvoiceNumber, seller?.Name, saleGoesTo.Value != invoice.FarmerId, edited: true);
+            }
+        }
 
         await _db.SaveChangesAsync();
         return await GetAsync(invoice.Id);
@@ -968,6 +1018,22 @@ public class InvoiceService : IInvoiceService
         throw new ValidationAppException($"Either an existing {role} or a {role} name is required.");
     }
 
+
+    /// <summary>
+    /// What a Sale row says on the statement it lands on.
+    ///
+    /// On a DRIVER's statement the invoice number alone is not enough: one load is several
+    /// sellers, and the driver has to hand each of them their own share out of the single payment
+    /// he collected. So the seller is named on the line. On a seller's own statement naming him
+    /// again would only repeat whose page it is.
+    /// </summary>
+    private static string SaleLedgerNote(string invoiceNumber, string? sellerName, bool forDriver, bool edited = false)
+    {
+        var suffix = edited ? " (بعد التعديل)" : "";
+        return forDriver && !string.IsNullOrWhiteSpace(sellerName)
+            ? $"بضاعة {sellerName} — الفاتورة رقم {invoiceNumber}{suffix}"
+            : $"تسجيل تلقائي من الفاتورة رقم {invoiceNumber}{suffix}";
+    }
 
     /// <summary>Same resolution as <see cref="ResolvePartnerAsync"/>, but returns null instead of
     /// throwing when neither an Id nor a name is supplied — used for the seller/driver sides, which

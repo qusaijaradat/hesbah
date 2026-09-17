@@ -419,7 +419,10 @@ public class PartnerService : IPartnerService
         // one invoice (InvoiceLinkPicker on the Payments page) actually lives.
         var transactions = await _db.FarmerTransactions
             .Where(t => t.FarmerId == id)
-            .Include(t => t.Invoice)
+            // Invoice.Farmer too: a Sale row on a DRIVER’s account is somebody else’s produce,
+            // and the line is unreadable without saying whose — he has to hand each seller his
+            // own share out of the one payment he collected.
+            .Include(t => t.Invoice!).ThenInclude(i => i.Farmer)
             .Include(t => t.Payment!).ThenInclude(p => p.Invoice)
             .OrderBy(t => t.Date)
             .ToListAsync();
@@ -435,6 +438,14 @@ public class PartnerService : IPartnerService
                 t.Date,
                 t.Type switch
                 {
+                    // Whose produce it was, but only when that is somebody other than the person
+                    // whose page this is — on a seller’s own statement it would just repeat the
+                    // name at the top. Read off the invoice rather than off the row’s note, so it
+                    // follows a rename instead of freezing whatever was typed the day it posted.
+                    FarmerTransactionType.Sale when t.Invoice is not null
+                        && t.Invoice.Farmer is not null
+                        && t.Invoice.FarmerId != t.FarmerId
+                        => $"بيع بضاعة {t.Invoice.Farmer.Name} — فاتورة رقم {t.Invoice.InvoiceNumber}",
                     FarmerTransactionType.Sale => t.Invoice is not null ? $"بيع — فاتورة رقم {t.Invoice.InvoiceNumber}" : "بيع",
                     FarmerTransactionType.TransportFee => t.Invoice is not null ? $"أجرة نقل — فاتورة رقم {t.Invoice.InvoiceNumber}" : "أجرة نقل",
                     // An Adjustment tied to an invoice is a reversal the system posted itself

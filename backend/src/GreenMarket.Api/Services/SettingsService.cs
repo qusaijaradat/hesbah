@@ -12,6 +12,13 @@ public interface ISettingsService
 {
     Task<IReadOnlyList<SettingDto>> ListAsync();
     Task<decimal> GetDecimalAsync(string key, decimal fallback);
+
+    /// <summary>
+    /// A setting that holds a row id — today only the market's own driver record
+    /// (Setting.Keys.HouseDriverPartnerId). Null when it is unset, blank, or not a number,
+    /// which all mean the same thing: nobody has said which record it is.
+    /// </summary>
+    Task<int?> GetIntOrNullAsync(string key);
     Task<SettingDto> UpdateAsync(string key, string value, int updatedByUserId);
 }
 
@@ -23,6 +30,12 @@ public class SettingsService : ISettingsService
 
     public async Task<IReadOnlyList<SettingDto>> ListAsync() =>
         await _db.Settings.OrderBy(s => s.Key).Select(s => new SettingDto(s.Key, s.Value, s.Description)).ToListAsync();
+
+    public async Task<int?> GetIntOrNullAsync(string key)
+    {
+        var setting = await _db.Settings.FindAsync(key);
+        return int.TryParse(setting?.Value, out var id) && id > 0 ? id : null;
+    }
 
     public async Task<decimal> GetDecimalAsync(string key, decimal fallback)
     {

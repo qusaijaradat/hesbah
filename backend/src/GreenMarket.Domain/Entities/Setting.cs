@@ -60,5 +60,23 @@ public class Setting
         /// shown, itemized, and explained on "كشف أجرة نقل السائق" (ExportService.
         /// GenerateDriverManifestPdf). Entirely separate from the merchant-facing BoxPrice above.</summary>
         public const string DriverBoxFee = "boxes.driver_fee";
+
+        /// <summary>
+        /// The partner record standing for the market's own vehicle — the one entered in the
+        /// driver field, under the name "المصلحة", when the market brought the load itself.
+        ///
+        /// It decides who the produce money is owed to. A load an outside driver brought is settled
+        /// with that driver, who distributes it to his sellers; a load the market brought itself is
+        /// settled with the seller directly, and no haulage is owed at all because the market
+        /// cannot owe itself. See Domain.Services.InvoiceLedgerTarget.
+        ///
+        /// Stored as the partner's ID, not their name. Matching on "المصلحة" as text would move
+        /// real money the day somebody renames the record, types a different alef, or registers an
+        /// actual driver who happens to be called that.
+        ///
+        /// Empty means the market has not said which record it is — and then every named driver
+        /// counts as an outside one, which is what the system did before this existed.
+        /// </summary>
+        public const string HouseDriverPartnerId = "market.house_driver_partner_id";
     }
 }

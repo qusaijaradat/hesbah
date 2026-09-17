@@ -703,5 +703,54 @@ Console.WriteLine("== settling a seller who also buys (OffsetRules) ==");
 }
 
 Console.WriteLine();
+Console.WriteLine("== who the produce money is owed to (InvoiceLedgerTarget) ==");
+{
+    // The market hands ONE amount to the driver who brought the load, and he distributes it to the
+    // sellers whose produce it was. So the produce money is owed to the driver, not the seller —
+    // except when there is no outside driver to hand it to.
+    const int seller = 7, driver = 9, house = 42;
+
+    Check("an outside driver brought it => the money is owed to him",
+          InvoiceLedgerTarget.SaleGoesTo(seller, driver, house) == driver);
+    Check("no driver on the invoice => the money stays with the seller",
+          InvoiceLedgerTarget.SaleGoesTo(seller, null, house) == seller);
+    Check("the market brought it itself => the money stays with the seller",
+          InvoiceLedgerTarget.SaleGoesTo(seller, house, house) == seller);
+
+    // Before anyone fills the setting in, every driver is an outside driver — which is exactly how
+    // the system behaved when the market had no way to say which record was its own.
+    Check("no house driver configured => a named driver is an outside driver",
+          InvoiceLedgerTarget.SaleGoesTo(seller, driver, null) == driver);
+    Check("no house driver configured => even the house id is an outside driver",
+          InvoiceLedgerTarget.SaleGoesTo(seller, house, null) == house);
+
+    Check("a driver and no seller => still owed to the driver",
+          InvoiceLedgerTarget.SaleGoesTo(null, driver, house) == driver);
+    Check("no seller and no driver => nobody is owed anything",
+          InvoiceLedgerTarget.SaleGoesTo(null, null, house) is null);
+    Check("no seller and the market drove it => nobody is owed anything",
+          InvoiceLedgerTarget.SaleGoesTo(null, house, house) is null);
+
+    // The two answers have to move together: whoever is handed the produce money is also the one
+    // owed the haulage on top of it. If they ever disagreed, someone would be paid for the load and
+    // not for hauling it, and the difference would sit on nobody's account.
+    Check("owed the produce => owed the haulage",
+          InvoiceLedgerTarget.IsOutsideDriver(driver, house)
+          && InvoiceLedgerTarget.SaleGoesTo(seller, driver, house) == driver);
+    Check("the market is owed no haulage by itself",
+          !InvoiceLedgerTarget.IsOutsideDriver(house, house));
+    Check("an empty driver field is owed no haulage",
+          !InvoiceLedgerTarget.IsOutsideDriver(null, house));
+
+    // What the market pays out is the same either way — that is the point of the change. It settles
+    // with one person instead of several, and the total is untouched.
+    const decimal value = 10_000m, commission = 1_000m, transport = 300m, crates = 150m;
+    var driverTakes = InvoiceCharge.ForSeller(value, commission, transport)
+                    + InvoiceCharge.ForDriver(transport, crates);
+    Check("one payment to the driver = what the seller and the driver were paid separately",
+          driverTakes == value - commission + crates, $"got {driverTakes}");
+}
+
+Console.WriteLine();
 Console.WriteLine($"RESULT: {passed} passed, {failed} failed");
 return failed == 0 ? 0 : 1;

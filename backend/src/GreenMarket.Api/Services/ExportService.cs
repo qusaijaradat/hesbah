@@ -1530,7 +1530,10 @@ public class ExportService : IExportService
         // renders correctly — right-aligned text, and the item table's "الصنف" column as the
         // RIGHTMOST column (read first) — no matter what context it's ever called from.
         container.ContentFromRightToLeft()
-            .Border(1).BorderColor(PrintInk.Text).Padding(8)
+            // No border. The four cards on a sheet are cut apart, and the cut is the edge — a
+            // printed frame beside it is a second edge that never lines up with the first, so
+            // every invoice went out with a black line running crooked down one side of it.
+            .Padding(8)
             // Everything under the item table is pinned to the BOTTOM of the quarter, not left to
             // flow straight after the last row. Four invoices on one sheet have four different
             // numbers of lines, so the totals used to sit at four different heights and the eye had
@@ -1806,7 +1809,10 @@ public class ExportService : IExportService
         var group = part.Group;
         var isLastPart = part.Part == part.PartCount;
         container.ContentFromRightToLeft()
-            .Border(1).BorderColor(PrintInk.Text).Padding(8)
+            // No border. The four cards on a sheet are cut apart, and the cut is the edge — a
+            // printed frame beside it is a second edge that never lines up with the first, so
+            // every invoice went out with a black line running crooked down one side of it.
+            .Padding(8)
             // Same three-part card as InvoiceCard, and for the same reason: the totals belong on the
             // bottom edge of the quarter, not wherever a merged day's item list happens to run out.
             // A merged group is the longest list of all — it is every invoice a buyer took that day.

@@ -17,20 +17,28 @@ import { useAuth } from "../auth/AuthContext";
  *     link that would bounce them off ProtectedRoute.
  */
 
-/** The invoice this record belongs to. Renders "—" when there is no invoice attached. */
-export function InvoiceLink({ invoiceId, invoiceNumber, className = "" }: {
+/**
+ * The invoice this record belongs to. Renders "—" when there is no invoice attached.
+ *
+ * `label` replaces what the link SAYS without changing where it goes. It exists for the phone
+ * cards: a card's headline sits inside the button that opens the card, and a link nested in a
+ * button does not navigate — so on a phone the reference is a separate control beside the
+ * headline, reading "فتح" rather than repeating the number already printed next to it.
+ */
+export function InvoiceLink({ invoiceId, invoiceNumber, className = "", label }: {
   invoiceId?: number | null;
   invoiceNumber?: string | null;
   className?: string;
+  label?: React.ReactNode;
 }) {
   const { hasPermission } = useAuth();
 
   if (invoiceId == null || !invoiceNumber) return <span className="text-gray-500">—</span>;
-  if (!hasPermission("invoices.view")) return <span className={className}>{invoiceNumber}</span>;
+  if (!hasPermission("invoices.view")) return <span className={className}>{label ?? invoiceNumber}</span>;
 
   return (
     <Link to={`/invoices/${invoiceId}`} className={`text-brand-700 hover:underline ${className}`}>
-      {invoiceNumber}
+      {label ?? invoiceNumber}
     </Link>
   );
 }
@@ -43,21 +51,23 @@ export function InvoiceLink({ invoiceId, invoiceNumber, className = "" }: {
  * entirely separate everywhere else in the app — so the caller says which side this particular
  * reference is about rather than the component guessing from the partner's type.
  */
-export function PartnerLink({ partnerId, name, side, className = "" }: {
+export function PartnerLink({ partnerId, name, side, className = "", label }: {
   partnerId?: number | null;
   name?: string | null;
   side: "merchant" | "seller";
   className?: string;
+  /** Same destination, different words — see InvoiceLink's own note for why a phone needs it. */
+  label?: React.ReactNode;
 }) {
   const { hasPermission } = useAuth();
 
   if (!name) return <span className="text-gray-500">—</span>;
-  if (partnerId == null || !hasPermission("partners.view")) return <span className={className}>{name}</span>;
+  if (partnerId == null || !hasPermission("partners.view")) return <span className={className}>{label ?? name}</span>;
 
   const path = side === "merchant" ? "merchant-account" : "farmer-account";
   return (
     <Link to={`/partners/${partnerId}/${path}`} className={`text-brand-700 hover:underline ${className}`}>
-      {name}
+      {label ?? name}
     </Link>
   );
 }

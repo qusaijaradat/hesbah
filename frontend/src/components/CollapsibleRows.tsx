@@ -19,6 +19,16 @@ interface Props<T> {
    * opens the card means every attempt to tick one does two things.
    */
   leading?: (row: T) => React.ReactNode;
+  /**
+   * Rendered at the END of the closed card's line and, like `leading`, OUTSIDE the toggle — for
+   * the one thing a card almost always needs and a button cannot hold: a link to the record the
+   * row is about.
+   *
+   * An <a> inside a <button> is invalid HTML, and browsers act on that: the button's handler
+   * runs and the navigation is swallowed, so the reference silently does nothing on a phone
+   * while working perfectly in the table beside it. Putting it here is the fix.
+   */
+  trailing?: (row: T) => React.ReactNode;
   empty?: string;
 }
 
@@ -37,7 +47,7 @@ interface Props<T> {
  * Which means every screen using this renders both and hides one. That is the cost, and it is
  * accepted deliberately: the alternative is one layout that is a compromise on both.
  */
-export function CollapsibleRows<T>({ rows, rowKey, title, value, details, leading, empty }: Props<T>) {
+export function CollapsibleRows<T>({ rows, rowKey, title, value, details, leading, trailing, empty }: Props<T>) {
   const [open, setOpen] = useState<Set<string | number>>(new Set());
 
   function toggle(key: string | number) {
@@ -75,6 +85,9 @@ export function CollapsibleRows<T>({ rows, rowKey, title, value, details, leadin
               <span className="flex-1 min-w-0 break-words font-medium">{title(row)}</span>
               {value && <span className="font-semibold whitespace-nowrap">{value(row)}</span>}
             </button>
+            {/* Finger-sized on purpose: it sits against the card's edge, where a small target
+                is either missed or hits the toggle instead. */}
+            {trailing && <div className="pe-3 ps-1 py-2 text-sm whitespace-nowrap">{trailing(row)}</div>}
             </div>
             {isOpen && (
               <dl className="px-3 pb-3 ps-8 grid grid-cols-2 gap-x-3 gap-y-1 text-sm">

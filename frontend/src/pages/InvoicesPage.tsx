@@ -475,6 +475,13 @@ export function InvoicesPage() {
             leading={canDelete ? (inv) => (
               <input type="checkbox" checked={selection.selected.has(inv.id)} onChange={() => selection.toggleOne(inv.id)} />
             ) : undefined}
+            // The table opens an invoice by tapping its number. On the card the number is inside
+            // the toggle, where a link cannot work — so the way in is its own control at the end
+            // of the line. Without it the phone was the one place an invoice could not be opened
+            // from the list at all.
+            trailing={(inv) => (
+              <InvoiceLink invoiceId={inv.id} invoiceNumber={inv.invoiceNumber} label="فتح ↗" />
+            )}
             details={(inv) => [
               { label: "التاريخ", value: formatDate(inv.date) },
               { label: "البائع", value: inv.farmerName || "—" },

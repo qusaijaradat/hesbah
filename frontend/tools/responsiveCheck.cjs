@@ -133,6 +133,28 @@ for (const abs of walk(ROOT)) {
       fail(rel + ":" + (i + 1), "buttons-missing-on-phone",
         "the desktop table has buttons this card does not");
     }
+
+    // ---- 6. A reference inside the toggle is not a reference.
+    //
+    // `title` and `value` render INSIDE the button that opens the card. An <a> nested in a
+    // <button> is invalid HTML and browsers act on it: the button's handler runs, the navigation
+    // is swallowed, and the link sits there looking exactly like the working one in the table
+    // beside it. That is how every invoice number on the phone quietly stopped opening anything.
+    //
+    // Links belong in `leading`, `trailing` or `details`, all of which are outside the button.
+    // Read line by line, an attribute at a time. Matching the attribute's closing brace instead
+    // does not work: title/value hold arrow functions full of braces, and the first plausible end
+    // is nowhere near the real one.
+    let titleValue = "";
+    let inTitleValue = false;
+    for (const l of card.split("\n")) {
+      if (/^\s*[a-zA-Z]+=\{/.test(l)) inTitleValue = /^\s*(title|value)=\{/.test(l);
+      if (inTitleValue) titleValue += l;
+    }
+    if (/<(InvoiceLink|PartnerLink|Link)\b/.test(titleValue)) {
+      fail(rel + ":" + (i + 1), "link-inside-card-toggle",
+        "a link in title/value cannot navigate \u2014 move it to trailing/details");
+    }
   });
 }
 if (failures.length === 0) {

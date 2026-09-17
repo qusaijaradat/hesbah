@@ -35,13 +35,16 @@ export function GoodsGlobalStockCard({
         <CollapsibleRows
           rows={loading ? [] : pager.pageRows}
           rowKey={(r) => `${r.farmerId}-${r.itemName}`}
+          // The seller's name is plain text inside the toggle; the link to his account is the
+          // control at the end of the line, where tapping it actually goes somewhere.
           title={(r) => (
             <span>
               {r.itemName}
-              <span className="block text-xs text-gray-500">
-                <PartnerLink partnerId={r.farmerId} name={r.farmerName} side="seller" />
-              </span>
+              <span className="block text-xs text-gray-500">{r.farmerName}</span>
             </span>
+          )}
+          trailing={(r) => (
+            <PartnerLink partnerId={r.farmerId} name={r.farmerName} side="seller" label="فتح ↗" />
           )}
           value={(r) => (
             <span className={r.available < 0 ? "text-red-600" : ""}>{formatCount(r.available)}</span>

@@ -56,7 +56,10 @@ export function ChecksPage() {
   const { hasPermission } = useAuth();
   const canEdit = hasPermission("payments.edit");
   const [checks, setChecks] = useState<PaymentDto[]>([]);
-  const [statusFilter, setStatusFilter] = useState<CheckClearanceStatus | "">("");
+  // Opens on "قيد التحصيل", not on everything. This page is used to answer "شو لسّا ما انقبض"
+  // — a cleared or bounced cheque is history, and mixing it in means the answer has to be found
+  // rather than read. "كل الحالات" is one pick away in the dropdown.
+  const [statusFilter, setStatusFilter] = useState<CheckClearanceStatus | "">("Pending");
   // Defaults to the current month — opening the page should answer "لمين ومتى الشيكات هالشهر"
   // without picking anything first. "عرض كل الشهور" below switches this filter off entirely.
   const [monthFilter, setMonthFilter] = useState(() => todayLocalDateString().slice(0, 7));
@@ -212,11 +215,21 @@ export function ChecksPage() {
             rowKey={(c) => c.id}
             title={(c) => c.partnerName}
             value={(c) => formatCurrency(c.amount)}
+            trailing={(c) => (
+              <PartnerLink
+                partnerId={c.partnerId}
+                name={c.partnerName}
+                side={c.direction === "FromMerchant" ? "merchant" : "seller"}
+                label="فتح ↗"
+              />
+            )}
             details={(c) => [
               { label: "تاريخ الاستحقاق", value: c.checkDueDate ? formatDate(c.checkDueDate) : "—" },
               { label: "الاتجاه", value: PAYMENT_DIRECTION_LABELS[c.direction] },
               { label: "رقم الشيك", value: c.checkNumber || "—" },
-              { label: "الفاتورة", value: c.invoiceNumber || "—" },
+              // A reference is only a reference if it opens the thing. The detail list is outside
+              // the toggle, so a link here works — the same one the table shows.
+              { label: "الفاتورة", value: <InvoiceLink invoiceId={c.invoiceId} invoiceNumber={c.invoiceNumber} /> },
               { label: "الحالة", value: STATUS_LABELS[c.checkStatus ?? "Pending"] },
               { label: "تاريخ الصرف", value: c.checkClearedDate ? formatDate(c.checkClearedDate) : "—" },
               ...(canEdit ? [{ label: "", value: rowActions(c) }] : []),

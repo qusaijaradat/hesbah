@@ -483,11 +483,16 @@ function SectionTable({ section }: { section: RoleSection }) {
         <CollapsibleRows
           rows={section.loading ? [] : pager.pageRows}
           rowKey={(inv) => inv.id}
+          // Plain text inside the toggle, and the link as its own control at the end of the line
+          // — see CollapsibleRows' `trailing`.
           title={(inv) => (
             <span>
-              <InvoiceLink invoiceId={inv.id} invoiceNumber={inv.invoiceNumber} />
+              <span className="font-mono">{inv.invoiceNumber}</span>
               <span className="block text-xs text-gray-500">{formatDate(inv.date)} — {partyOf(inv)}</span>
             </span>
+          )}
+          trailing={(inv) => (
+            <InvoiceLink invoiceId={inv.id} invoiceNumber={inv.invoiceNumber} label="فتح ↗" />
           )}
           value={(inv) => {
             const remaining = remainingOf(inv);
@@ -1246,11 +1251,14 @@ export function BulkPrintPage() {
               rowKey={(g) => g.key}
               title={(g) => (
                 <span>
-                  <PartnerLink partnerId={g.merchantId} name={g.merchantName} side="merchant" />
+                  {g.merchantName}
                   <span className="block text-xs text-gray-500">{g.day}</span>
                 </span>
               )}
               value={(g) => formatCurrency(g.total)}
+              trailing={(g) => (
+                <PartnerLink partnerId={g.merchantId} name={g.merchantName} side="merchant" label="فتح ↗" />
+              )}
               details={(g) => [
                 { label: "عدد الفواتير", value: g.invoiceIds.length },
                 { label: "", value: (
@@ -1307,8 +1315,11 @@ export function BulkPrintPage() {
             <CollapsibleRows
               rows={farmerGroups}
               rowKey={(g) => g.farmerId}
-              title={(g) => <PartnerLink partnerId={g.farmerId} name={g.farmerName} side="seller" />}
+              title={(g) => g.farmerName}
               value={(g) => formatCurrency(g.total)}
+              trailing={(g) => (
+                <PartnerLink partnerId={g.farmerId} name={g.farmerName} side="seller" label="فتح ↗" />
+              )}
               details={(g) => [
                 { label: "عدد الفواتير", value: g.invoiceIds.length },
                 { label: "", value: (
@@ -1365,8 +1376,11 @@ export function BulkPrintPage() {
             <CollapsibleRows
               rows={driverGroups}
               rowKey={(g) => g.key}
-              title={(g) => <PartnerLink partnerId={g.driverId} name={g.driverName} side="seller" />}
+              title={(g) => g.driverName}
               value={(g) => formatCurrency(g.totalDriverDue)}
+              trailing={(g) => (
+                <PartnerLink partnerId={g.driverId} name={g.driverName} side="seller" label="فتح ↗" />
+              )}
               details={(g) => [
                 { label: "عدد الفواتير", value: g.invoiceIds.length },
                 { label: "", value: (

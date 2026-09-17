@@ -182,8 +182,13 @@ export function DashboardPage() {
         <CollapsibleRows
           rows={buyerPeriodChosen && !buyerLoading ? buyerMerchantGroups : []}
           rowKey={(g) => g.merchantId}
-          title={(g) => <PartnerLink partnerId={g.merchantId} name={g.merchantName} side="merchant" />}
+          // The name is plain text here and the link is the control beside it: inside the
+          // toggle it rendered as a link and did nothing when tapped.
+          title={(g) => g.merchantName}
           value={(g) => formatCurrency(g.subtotal)}
+          trailing={(g) => (
+            <PartnerLink partnerId={g.merchantId} name={g.merchantName} side="merchant" label="فتح ↗" />
+          )}
           details={(g) => g.items.map((item) => ({
             label: item.itemName,
             value: `${formatCount(item.totalQuantity)} / ${formatWeight(item.totalWeightKg)} — ${formatCurrency(item.totalValue)}`,

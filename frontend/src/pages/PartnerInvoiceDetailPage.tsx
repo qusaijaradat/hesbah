@@ -90,13 +90,18 @@ function InvoiceDetailView({ title, fetcher, printer }: {
             <CollapsibleRows
               rows={groups}
               rowKey={(g) => g.invoiceId}
+              // The number is plain text here and the link is its own control at the end of the
+              // line — inside the toggle it looked like a link and went nowhere.
               title={(g) => (
                 <span>
-                  <InvoiceLink invoiceId={g.invoiceId} invoiceNumber={g.invoiceNumber} className="font-mono text-sm" />
+                  <span className="font-mono text-sm">{g.invoiceNumber}</span>
                   <span className="block text-xs text-gray-500">{formatDate(g.date)}</span>
                 </span>
               )}
               value={(g) => formatCurrency(g.grandTotal)}
+              trailing={(g) => (
+                <InvoiceLink invoiceId={g.invoiceId} invoiceNumber={g.invoiceNumber} label="فتح ↗" />
+              )}
               details={(g) => [
                 ...g.items.map((line) => ({
                   label: line.itemName,

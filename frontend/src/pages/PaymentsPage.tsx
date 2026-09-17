@@ -223,10 +223,19 @@ function PaymentsTab({ canCreate, canEdit, canDelete }: { canCreate: boolean; ca
             leading={canDelete ? (p) => (
               <input type="checkbox" checked={selection.selected.has(p.id)} onChange={() => selection.toggleOne(p.id)} />
             ) : undefined}
+            trailing={(p) => (
+              <PartnerLink
+                partnerId={p.partnerId}
+                name={p.partnerName}
+                side={p.direction === "FromMerchant" ? "merchant" : "seller"}
+                label="فتح ↗"
+              />
+            )}
             details={(p) => [
               { label: "التاريخ", value: formatDate(p.date) },
               { label: "الاتجاه", value: PAYMENT_DIRECTION_LABELS[p.direction] },
-              { label: "الفاتورة", value: p.invoiceNumber || "—" },
+              // Outside the toggle, so it opens — see ChecksPage's own note.
+              { label: "الفاتورة", value: <InvoiceLink invoiceId={p.invoiceId} invoiceNumber={p.invoiceNumber} /> },
               { label: "طريقة الدفع", value: p.method || "—" },
               { label: "ملاحظات", value: p.notes || "—" },
               ...(canEdit || canDelete ? [{ label: "", value: rowActions(p) }] : []),

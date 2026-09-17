@@ -742,6 +742,34 @@ Console.WriteLine("== who the produce money is owed to (InvoiceLedgerTarget) =="
     Check("an empty driver field is owed no haulage",
           !InvoiceLedgerTarget.IsOutsideDriver(null, house));
 
+    // A whole load, the way the printed sheet lays it out: three sellers, one of them with two
+    // invoices, and one load with no seller named at all. The sheet adds up the per-seller nets and
+    // puts the haulage and the crate money on top; the ledger posts a Sale row per invoice and one
+    // TransportFee row. The two have to reach the same figure, or the driver settles from a sheet
+    // that disagrees with the account he is settled against.
+    var load = new[]
+    {
+        //  value, commission, transport, crates
+        (4_000m, 400m, 120m, 45m),
+        (1_500m, 150m,  60m, 15m),
+        (  900m,  90m,   0m, 12m),
+        (2_250m, 225m,  80m, 30m),
+    };
+    var sheetTotal = load.Sum(l => InvoiceCharge.ForSeller(l.Item1, l.Item2, l.Item3))
+                   + load.Sum(l => l.Item3)
+                   + load.Sum(l => l.Item4);
+    var ledgerTotal = load.Sum(l => InvoiceCharge.ForSeller(l.Item1, l.Item2, l.Item3))
+                    + load.Sum(l => InvoiceCharge.ForDriver(l.Item3, l.Item4));
+    Check("the printed sheet and the driver's ledger reach the same total",
+          sheetTotal == ledgerTotal, $"sheet {sheetTotal} vs ledger {ledgerTotal}");
+    Check("and that total is the produce less commission, plus the crate money",
+          sheetTotal == load.Sum(l => l.Item1 - l.Item2 + l.Item4), $"got {sheetTotal}");
+
+    // A load carried for nothing still settles: no haulage on top, and the sellers get their
+    // produce less commission with nothing deducted.
+    Check("no transport anywhere => the driver holds only the sellers’ money",
+          InvoiceCharge.ForSeller(900m, 90m, 0m) + InvoiceCharge.ForDriver(0m, 0m) == 810m);
+
     // What the market pays out is the same either way — that is the point of the change. It settles
     // with one person instead of several, and the total is untouched.
     const decimal value = 10_000m, commission = 1_000m, transport = 300m, crates = 150m;

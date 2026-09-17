@@ -4,6 +4,7 @@ using GreenMarket.Api.DTOs;
 using GreenMarket.Api.Services;
 using GreenMarket.Domain.Entities;
 using GreenMarket.Domain.Enums;
+using GreenMarket.Domain.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -164,7 +165,9 @@ public class InvoicesController : ControllerBase
 
         var invoices = await _invoiceService.GetManyAsync(ids);
         var company = await GetCompanyInfoAsync();
-        var bytes = _exportService.GenerateInvoicesBulkPdf(invoices, company, role);
+        var bytes = _exportService.GenerateInvoicesBulkPdf(
+            invoices, company, role,
+            await _settingsService.GetIntOrNullAsync(Setting.Keys.HouseDriverPartnerId));
         return File(bytes, "application/pdf", $"invoices-bulk-{role.ToString().ToLowerInvariant()}.pdf");
     }
 
@@ -233,7 +236,12 @@ public class InvoicesController : ControllerBase
         // balance means their CURRENT balance, not a batch-excluded figure like the merchant's).
         var previousBalance = driverId is not null ? (await _partnerService.GetFarmerAccountAsync(driverId.Value)).Remaining : 0;
         var company = await GetCompanyInfoAsync();
-        var bytes = _exportService.GenerateDriverManifestPdf(driverName, invoices, company, previousBalance);
+        // The same test the ledger uses, so the sheet he settles from and the account he is
+        // settled against always describe the same arrangement. For the market's own vehicle the
+        // produce money never left the sellers, and the sheet stays the haulage note it was.
+        var houseDriverId = await _settingsService.GetIntOrNullAsync(Setting.Keys.HouseDriverPartnerId);
+        var sellerMoneyGoesToDriver = InvoiceLedgerTarget.IsOutsideDriver(driverId, houseDriverId);
+        var bytes = _exportService.GenerateDriverManifestPdf(driverName, invoices, company, previousBalance, sellerMoneyGoesToDriver);
         return File(bytes, "application/pdf", "driver-manifest.pdf");
     }
 

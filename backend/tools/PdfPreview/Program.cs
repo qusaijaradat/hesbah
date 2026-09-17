@@ -106,9 +106,9 @@ Write("02-merchant-thermal.pdf", export.GenerateInvoicePdf(invoice, company, the
 Write("03-farmer.pdf", export.GenerateFarmerInvoicePdf(invoice, company, previousBalance: 320m));
 
 var four = new[] { invoice, invoice, invoice, invoice };
-Write("04-bulk-merchant.pdf", export.GenerateInvoicesBulkPdf(four, company, InvoicePrintRole.Merchant));
-Write("05-bulk-farmer.pdf", export.GenerateInvoicesBulkPdf(four, company, InvoicePrintRole.Farmer));
-Write("06-bulk-driver.pdf", export.GenerateInvoicesBulkPdf(four, company, InvoicePrintRole.Driver));
+Write("04-bulk-merchant.pdf", export.GenerateInvoicesBulkPdf(four, company, InvoicePrintRole.Merchant, houseDriverPartnerId: null));
+Write("05-bulk-farmer.pdf", export.GenerateInvoicesBulkPdf(four, company, InvoicePrintRole.Farmer, houseDriverPartnerId: null));
+Write("06-bulk-driver.pdf", export.GenerateInvoicesBulkPdf(four, company, InvoicePrintRole.Driver, houseDriverPartnerId: null));
 
 
 // A second, deliberately SHORTER invoice — one line against the first one's three.
@@ -223,16 +223,33 @@ Same("seller-driver total is the two sides added",
      InvoiceCharge.ForSellerDriver(ownLoad.TotalValue, ownLoad.Commission, ownLoad.TransportFee, ownLoad.DriverBoxFeeTotal),
      ownLoad.NetDueToFarmer + ownLoad.DriverDue);
 Write("13-bulk-driver-who-is-the-seller.pdf",
-    export.GenerateInvoicesBulkPdf(new[] { ownLoad, ownLoad }, company, InvoicePrintRole.Driver));
+    export.GenerateInvoicesBulkPdf(new[] { ownLoad, ownLoad }, company, InvoicePrintRole.Driver, houseDriverPartnerId: null));
 
 Write("12-bulk-spilled-invoice.pdf",
-    export.GenerateInvoicesBulkPdf(new[] { longInvoice with { Items = floodItems } }, company, InvoicePrintRole.Merchant));
+    export.GenerateInvoicesBulkPdf(new[] { longInvoice with { Items = floodItems } }, company, InvoicePrintRole.Merchant, houseDriverPartnerId: null));
 
 Write("11-bulk-mixed-lengths.pdf",
     export.GenerateInvoicesBulkPdf(
-        new[] { invoice, shortInvoice, longInvoice, shortInvoice }, company, InvoicePrintRole.Merchant));
+        new[] { invoice, shortInvoice, longInvoice, shortInvoice }, company, InvoicePrintRole.Merchant, houseDriverPartnerId: null));
 
-Write("07-driver-manifest.pdf", export.GenerateDriverManifestPdf("السائق خالد", new[] { invoice, invoice }, company, previousBalance: 140m));
+// The market's own vehicle brought it: the produce money never left the sellers, so this stays
+// the haulage note it always was.
+Write("07-driver-manifest.pdf",
+    export.GenerateDriverManifestPdf("السائق خالد", new[] { invoice, invoice }, company, previousBalance: 140m,
+                                     sellerMoneyGoesToDriver: false));
+
+// An outside driver: one load, three sellers, and he hands each of them their own share out of
+// the single amount he collects. Two loads for the same seller so the grouping has something to
+// group, and one with no seller named at all — the money for it went to him like any other.
+var otherSeller = invoice with { FarmerId = 21, FarmerName = "المزارع أبو زياد", MerchantName = "محل النجاح" };
+var noSeller = shortInvoice with { FarmerId = null, FarmerName = null, MerchantName = "بسطة السوق" };
+var driverLoad = new[] { invoice, shortInvoice, otherSeller, noSeller };
+Same("the sheet's own addition is what the market pays out",
+     driverLoad.Sum(i => i.NetDueToFarmer) + driverLoad.Sum(i => i.TransportFee) + driverLoad.Sum(i => i.DriverBoxFeeTotal),
+     driverLoad.Sum(i => i.TotalValue - i.Commission + i.DriverBoxFeeTotal));
+Write("16-driver-invoice.pdf",
+    export.GenerateDriverManifestPdf("السائق خالد", driverLoad, company, previousBalance: 140m,
+                                     sellerMoneyGoesToDriver: true));
 
 var statementLines = new List<StatementLineDto>
 {

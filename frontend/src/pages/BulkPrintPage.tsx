@@ -1155,7 +1155,7 @@ export function BulkPrintPage() {
               the section's own print button really does produce a per-invoice "فاتورة سائق", the
               old label was pointing at the wrong document. */}
           <h2 className="font-semibold mb-1">طباعة كشف السائق (مجمّع للفترة)</h2>
-          <p className="text-xs text-gray-500 mb-3">استخدم حقل "تصفية حسب سائق" أعلاه لاختيار السائق — بيلمّ له تلقائيًا كل فواتيره ضمن الفترة المحددة أعلاه بكشف أجرة نقل واحد. لطباعة فواتير السائق نفسها (فاتورة لكل فاتورة) استخدم زر الطباعة أسفل الجدول.</p>
+          <p className="text-xs text-gray-500 mb-3">استخدم حقل "تصفية حسب سائق" أعلاه لاختيار السائق — بيلمّ له تلقائيًا كل فواتيره ضمن الفترة المحددة أعلاه بكشف واحد: كل بائع وقديش إله على حدا، وبالآخر أجرة النقل والصناديق والإجمالي المقبوض. لطباعة فواتير السائق نفسها (فاتورة لكل فاتورة) استخدم زر الطباعة أسفل الجدول.</p>
           <PdfActions
             fetchPdf={buildDriverStandalonePdf}
             fileName={`driver-manifest-${driverSection.partnerPick?.name ?? ""}.pdf`}
@@ -1360,7 +1360,7 @@ export function BulkPrintPage() {
 
       {activeTab === "Driver" && driverGroups.length > 0 && whatsAppReady && (
         <div className="card">
-          <div className="px-4 pt-4 pb-1 text-sm font-semibold text-gray-700">تجميع حسب السائق — كشف أجرة نقل مجمّع لكل سائق</div>
+          <div className="px-4 pt-4 pb-1 text-sm font-semibold text-gray-700">تجميع حسب السائق — كشف مجمّع لكل سائق (تفصيل الباعة + أجرة النقل والصناديق)</div>
           <div className="sm:hidden">
             <CollapsibleRows
               rows={driverGroups}

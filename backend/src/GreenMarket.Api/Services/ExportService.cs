@@ -75,11 +75,18 @@ public interface IExportService
     byte[] MarketReportToExcel(IReadOnlyList<MarketReportRow> rows);
     byte[] AgingReportToExcel(IReadOnlyList<AgingReportRow> rows);
 
-    byte[] GenerateInvoicePdf(InvoiceDto invoice, CompanyInfo company, bool thermalWidth);
+    /// <param name="thermalWidth">80mm roll instead of A4.</param>
+    /// <remarks>
+    /// Takes no CompanyInfo: this document carries no letterhead. The market prints it one to a
+    /// sheet, on paper that already has its own heading, so the block repeated what was printed
+    /// under it and cost the top third of the page. Putting it back means adding the parameter
+    /// here and a header block in the body — and the caller loading the logo again.
+    /// </remarks>
+    byte[] GenerateInvoicePdf(InvoiceDto invoice, bool thermalWidth);
 
     /// <summary>"نسخة البائع" print button (only shown when the invoice has a farmer attached) —
     /// see GenerateFarmerInvoicePdf's own doc comment.</summary>
-    byte[] GenerateFarmerInvoicePdf(InvoiceDto invoice, CompanyInfo company, decimal previousBalance);
+    byte[] GenerateFarmerInvoicePdf(InvoiceDto invoice, decimal previousBalance);
 
     /// <summary>The three bulk-print sections all go through here, each asking for its OWN
     /// side.s copy of the same invoices — see InvoiceCard for what each role shows.</summary>
@@ -301,7 +308,7 @@ public class ExportService : IExportService
     /// Deliberately shows no commission line (§5) and no invoice number — the market doesn't
     /// want its internal invoice numbering to appear on the printed page at all.
     /// </summary>
-    public byte[] GenerateInvoicePdf(InvoiceDto invoice, CompanyInfo company, bool thermalWidth)
+    public byte[] GenerateInvoicePdf(InvoiceDto invoice, bool thermalWidth)
     {
         var document = Document.Create(container =>
         {
@@ -314,7 +321,12 @@ public class ExportService : IExportService
                 else
                     page.Size(PageSizes.A4);
 
-                page.Margin(thermalWidth ? 8 : 30);
+                // Tight at the top, because the letterhead that used to sit there is gone and the
+                // paper is printed one invoice to a sheet — every millimetre above the first line
+                // is a millimetre of a sheet that holds one document.
+                page.MarginTop(thermalWidth ? 6 : 12);
+                page.MarginBottom(thermalWidth ? 8 : 24);
+                page.MarginHorizontal(thermalWidth ? 8 : 30);
                 // Bigger than it was (9/11). This is read across a counter in a market, often by
                 // someone who is not going to hold it up to their face to do it.
                 page.DefaultTextStyle(x => x.FontSize(thermalWidth ? 10 : 13).FontFamily(PdfFontFamily));
@@ -323,23 +335,13 @@ public class ExportService : IExportService
                 // and right-to-left, matching how an Arabic reader scans the page — the item
                 // table's "الصنف" column in particular ends up as the RIGHTMOST column (read
                 // first) instead of the leftmost, with the numeric columns proceeding to its left.
+                // No company letterhead. The market prints these one to a sheet, on paper that
+                // already carries its own heading — so the block repeated the page it was printed
+                // on and cost the top third of it. What stays is the invoice's own three facts:
+                // what it is, when, and who it is for.
                 page.Header().ContentFromRightToLeft().Column(col =>
                 {
-                    // Letterhead order requested: logo first (on its own, centered), then name /
-                    // registration number / phone stacked directly under it, each on its own line
-                    // — see CompanyHeaderBlock for the logo-on-top-of-stacked-text layout.
-                    CompanyHeaderBlock(col, company, thermalWidth ? 40f : 64f, textCol =>
-                    {
-                        textCol.Item().AlignCenter().Text(company.Name).Bold().FontSize(thermalWidth ? 12 : 18);
-                        if (!thermalWidth && !string.IsNullOrWhiteSpace(company.Address))
-                            textCol.Item().AlignCenter().Text(company.Address).FontSize(9).FontColor(PrintInk.Secondary);
-                        if (!thermalWidth && !string.IsNullOrWhiteSpace(company.RegistrationNumber))
-                            textCol.Item().AlignCenter().Text($"رقم السجل: {company.RegistrationNumber}").FontSize(9);
-                        if (!string.IsNullOrWhiteSpace(company.Phone))
-                            textCol.Item().AlignCenter().Text($"هاتف: {company.Phone}").FontSize(thermalWidth ? 8 : 9);
-                    });
-                    col.Item().PaddingTop(6).LineHorizontal(1).LineColor(PrintInk.Text);
-                    col.Item().PaddingTop(6).Text("فاتورة مشتري").Bold().FontSize(thermalWidth ? 11 : 15);
+                    col.Item().Text("فاتورة مشتري").Bold().FontSize(thermalWidth ? 11 : 15);
                     col.Item().PaddingTop(2).Text($"التاريخ: {invoice.Date:yyyy-MM-dd}").FontSize(thermalWidth ? 10 : 12);
                     // Named here AND in the boxed block at the foot of the page. The header names
                     // the addressee while the eye is at the top; the block is what is still on
@@ -464,31 +466,23 @@ public class ExportService : IExportService
     /// previousBalance here is the farmer's OWN account balance right now (same كشف حساب
     /// Remaining their account page shows), never the merchant-side PreviousBalance on InvoiceDto.
     /// </summary>
-    public byte[] GenerateFarmerInvoicePdf(InvoiceDto invoice, CompanyInfo company, decimal previousBalance)
+    public byte[] GenerateFarmerInvoicePdf(InvoiceDto invoice, decimal previousBalance)
     {
         var document = Document.Create(container =>
         {
             container.Page(page =>
             {
                 page.Size(PageSizes.A4);
-                page.Margin(30);
+                // Same as the buyer's copy: no letterhead, and tight at the top.
+                page.MarginTop(12);
+                page.MarginBottom(24);
+                page.MarginHorizontal(30);
                 // Same bump as the buyer's copy — see its own note.
                 page.DefaultTextStyle(x => x.FontSize(13).FontFamily(PdfFontFamily));
 
                 page.Header().ContentFromRightToLeft().Column(col =>
                 {
-                    CompanyHeaderBlock(col, company, 64f, textCol =>
-                    {
-                        textCol.Item().AlignCenter().Text(company.Name).Bold().FontSize(18);
-                        if (!string.IsNullOrWhiteSpace(company.Address))
-                            textCol.Item().AlignCenter().Text(company.Address).FontSize(9).FontColor(PrintInk.Secondary);
-                        if (!string.IsNullOrWhiteSpace(company.RegistrationNumber))
-                            textCol.Item().AlignCenter().Text($"رقم السجل: {company.RegistrationNumber}").FontSize(9);
-                        if (!string.IsNullOrWhiteSpace(company.Phone))
-                            textCol.Item().AlignCenter().Text($"هاتف: {company.Phone}").FontSize(9);
-                    });
-                    col.Item().PaddingTop(6).LineHorizontal(1).LineColor(PrintInk.Text);
-                    col.Item().PaddingTop(6).Text("فاتورة بائع").Bold().FontSize(13);
+                    col.Item().Text("فاتورة بائع").Bold().FontSize(13);
                     col.Item().PaddingTop(2).Text($"التاريخ: {invoice.Date:yyyy-MM-dd}").FontSize(11);
                     // "المطلوب إلى", not "البائع" — the addressee is named the same way on every
                     // invoice so a reader finds it in the same place, but the direction follows the

@@ -100,8 +100,7 @@ public class InvoicesController : ControllerBase
     public async Task<IActionResult> Pdf(int id, [FromQuery] bool thermal = false)
     {
         var invoice = await _invoiceService.GetAsync(id);
-        var company = await GetCompanyInfoAsync();
-        var bytes = _exportService.GenerateInvoicePdf(invoice, company, thermal);
+        var bytes = _exportService.GenerateInvoicePdf(invoice, thermal);
         return File(bytes, "application/pdf", $"{invoice.InvoiceNumber}.pdf");
     }
 
@@ -118,8 +117,7 @@ public class InvoicesController : ControllerBase
             return BadRequest(new { error = "لا يوجد بائع مرتبط بهذه الفاتورة." });
 
         var previousBalance = (await _partnerService.GetFarmerAccountAsync(invoice.FarmerId.Value)).Remaining;
-        var company = await GetCompanyInfoAsync();
-        var bytes = _exportService.GenerateFarmerInvoicePdf(invoice, company, previousBalance);
+        var bytes = _exportService.GenerateFarmerInvoicePdf(invoice, previousBalance);
         return File(bytes, "application/pdf", $"{invoice.InvoiceNumber}-farmer-copy.pdf");
     }
 

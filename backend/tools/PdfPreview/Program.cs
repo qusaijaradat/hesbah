@@ -101,9 +101,9 @@ Same("buyer - seller - driver == market",
 
 var export = new ExportService();
 
-Write("01-merchant-a4.pdf", export.GenerateInvoicePdf(invoice, thermalWidth: false));
-Write("02-merchant-thermal.pdf", export.GenerateInvoicePdf(invoice, thermalWidth: true));
-Write("03-farmer.pdf", export.GenerateFarmerInvoicePdf(invoice, previousBalance: 320m));
+Write("01-merchant-a4.pdf", export.GenerateInvoicePdf(invoice, company, thermalWidth: false));
+Write("02-merchant-thermal.pdf", export.GenerateInvoicePdf(invoice, company, thermalWidth: true));
+Write("03-farmer.pdf", export.GenerateFarmerInvoicePdf(invoice, company, previousBalance: 320m));
 
 var four = new[] { invoice, invoice, invoice, invoice };
 Write("04-bulk-merchant.pdf", export.GenerateInvoicesBulkPdf(four, company, InvoicePrintRole.Merchant));

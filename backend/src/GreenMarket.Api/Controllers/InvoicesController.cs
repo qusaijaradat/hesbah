@@ -37,6 +37,16 @@ public class InvoicesController : ControllerBase
     [RequirePermission(PermissionKeys.InvoicesView)]
     public async Task<ActionResult> List([FromQuery] InvoiceFilterRequest filter) => Ok(await _invoiceService.ListAsync(filter));
 
+    /// <summary>
+    /// The four paper books an invoice can be marked as coming from, served rather than written
+    /// into the screen as well: the backend REFUSES a name it does not know, so a dropdown holding
+    /// its own copy would be one typo away from an option that cannot be saved. See
+    /// Domain.Services.SourceBooks — including why this is temporary.
+    /// </summary>
+    [HttpGet("source-books")]
+    [RequirePermission(PermissionKeys.InvoicesView)]
+    public ActionResult<IReadOnlyList<string>> SourceBooks() => Ok(GreenMarket.Domain.Services.SourceBooks.All);
+
     [HttpGet("{id:int}")]
     [RequirePermission(PermissionKeys.InvoicesView)]
     public async Task<ActionResult<InvoiceDto>> Get(int id) => Ok(await _invoiceService.GetAsync(id));

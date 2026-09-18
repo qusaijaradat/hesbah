@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { PartnerAutocomplete } from "../components/PartnerAutocomplete";
 import { ItemAutocomplete } from "../components/ItemAutocomplete";
 import { createInvoice } from "../api/invoices";
+import { SourceBookSelect } from "../components/SourceBookSelect";
 import { apiErrorMessage } from "../api/client";
 import { formatCurrency, todayLocalDateString } from "../lib/format";
 import { lineTotalOf } from "../lib/invoiceCharge";
@@ -77,6 +78,9 @@ function emptyRow(): Row {
 
 export function QuickEntryPage() {
   const [date, setDate] = useState(() => todayLocalDateString());
+  // A page belongs to one book, so this is picked once here rather than per row — and it stays
+  // picked across saves, because the next page is usually out of the same book.
+  const [sourceBook, setSourceBook] = useState("");
   const [rows, setRows] = useState<Row[]>(() => Array.from({ length: 8 }, emptyRow));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -235,6 +239,8 @@ export function QuickEntryPage() {
           // Invoice-level, so it is read once from the group rather than off `head` — the audit
           // has already refused to save a group whose rows disagree about it.
           transportFee: groupTransportFee(group),
+          // One book per page, picked once at the top — this screen IS a page of one of them.
+          sourceBook: sourceBook || undefined,
           items: group.map((r) => ({
             itemName: r.itemName.trim(),
             quantity: num(r.quantity),
@@ -279,6 +285,11 @@ export function QuickEntryPage() {
         <div>
           <label className="label">تاريخ الصفحة</label>
           <input type="date" className="input" value={date} onChange={(e) => setDate(e.target.value)} />
+        </div>
+        {/* Beside the date, and for the same reason: both describe the PAGE being typed, not
+            any one row on it. Every invoice this screen saves gets it. */}
+        <div className="w-full sm:w-40">
+          <SourceBookSelect value={sourceBook} onChange={setSourceBook} label="الدفتر" />
         </div>
         <div className="text-sm text-gray-600">
           <div>أسطر معبّاية: <span className="font-semibold text-gray-900">{live.length}</span></div>

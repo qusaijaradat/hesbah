@@ -54,6 +54,7 @@ var invoice = new InvoiceDto(
     PaidAmount: 500m, RemainingAmount: 647.69m, PaymentStatus: InvoicePaymentStatus.Partial,
     MarketProfit: 168.87m,
     HasUnpricedItems: false,
+    SourceBook: null,
     Items: items,
     Returns: new List<GoodsReturnDto>());
 
@@ -142,6 +143,7 @@ var shortInvoice = new InvoiceDto(
     PaidAmount: 0m, RemainingAmount: 55m, PaymentStatus: InvoicePaymentStatus.Unpaid,
     MarketProfit: shortMarketProfit,
     HasUnpricedItems: false,
+    SourceBook: null,
     Items: shortItems,
     Returns: new List<GoodsReturnDto>());
 
@@ -195,6 +197,7 @@ var longInvoice = new InvoiceDto(
     PaidAmount: 0m, RemainingAmount: 330m, PaymentStatus: InvoicePaymentStatus.Unpaid,
     MarketProfit: longMarketProfit,
     HasUnpricedItems: false,
+    SourceBook: null,
     Items: longItems,
     Returns: new List<GoodsReturnDto>());
 

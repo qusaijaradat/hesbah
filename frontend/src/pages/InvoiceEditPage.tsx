@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { PartnerAutocomplete } from "../components/PartnerAutocomplete";
+import { SourceBookSelect } from "../components/SourceBookSelect";
 import { ItemAutocomplete } from "../components/ItemAutocomplete";
 import { InvoicePaymentsEditor } from "../components/InvoicePaymentsEditor";
 import type { InvoicePaymentsEditorHandle } from "../components/InvoicePaymentsEditor";
@@ -86,6 +87,7 @@ export function InvoiceEditPage() {
   const [driverText, setDriverText] = useState("");
   // Optional flat transport/delivery fee for the whole invoice ("أجرة النقل").
   const [transportFee, setTransportFee] = useState("");
+  const [sourceBook, setSourceBook] = useState("");
 
   const [rows, setRows] = useState<Row[]>([]);
   // What this invoice CHARGED the buyer before this edit — captured once when it loads, not
@@ -123,6 +125,7 @@ export function InvoiceEditPage() {
         setDriverText(invoice.driverName);
       }
       setTransportFee(invoice.transportFee > 0 ? String(invoice.transportFee) : "");
+      setSourceBook(invoice.sourceBook ?? "");
 
       setRows(invoice.items.map((it) => ({
         itemName: it.itemName,
@@ -225,6 +228,7 @@ export function InvoiceEditPage() {
         driverId: driver?.id,
         driverName: driver ? undefined : (driverName || undefined),
         transportFee: transportFeeValue,
+        sourceBook: sourceBook || null,
 
         items,
       });
@@ -416,6 +420,11 @@ export function InvoiceEditPage() {
           <label className="label">أجرة النقل (₪، اختياري)</label>
           <input className="input" type="number" min="0" step="0.01" value={transportFee}
             onChange={(e) => setTransportFee(e.target.value)} placeholder="اتركه فارغًا إن لم يوجد" />
+        </div>
+        {/* Which paper book this came off, during the changeover. Beside أجرة النقل because
+            both are facts about the invoice rather than about a line on it. */}
+        <div className="max-w-xs">
+          <SourceBookSelect value={sourceBook} onChange={setSourceBook} />
         </div>
         <div className="flex flex-wrap gap-4 justify-between text-sm">
           {totalWeight > 0 && (

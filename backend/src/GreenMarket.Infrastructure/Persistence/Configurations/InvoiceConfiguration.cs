@@ -10,6 +10,8 @@ public class InvoiceConfiguration : IEntityTypeConfiguration<Invoice>
     {
         builder.ToTable("invoices");
         builder.Property(x => x.InvoiceNumber).HasMaxLength(50).IsRequired();
+        // One of four names (Domain.Services.SourceBooks), so 30 is room to spare.
+        builder.Property(x => x.SourceBook).HasMaxLength(30);
         builder.HasIndex(x => x.InvoiceNumber).IsUnique();
 
         builder.Property(x => x.TotalWeightKg).HasColumnType("numeric(14,3)");

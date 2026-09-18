@@ -6,6 +6,17 @@ import type { FarmerGoodsDto, GoodsReturnDto, InvoiceDto, InvoiceFilter, Invoice
 // otherwise send in a bracket form ASP.NET Core doesn't bind — see serializeQueryParams.
 const filterSerializer = { serialize: serializeQueryParams };
 
+/**
+ * The four paper books an invoice can be marked as coming from.
+ *
+ * Fetched rather than written out here as well: the server refuses a name it does not know, so
+ * a second copy in the dropdown would be one typo away from an option nobody can save.
+ */
+export async function getSourceBooks() {
+  const { data } = await apiClient.get<string[]>("/invoices/source-books");
+  return data;
+}
+
 export async function listInvoices(filter: InvoiceFilter) {
   const { data } = await apiClient.get<PagedResult<InvoiceListItemDto>>("/invoices", {
     params: filter,
@@ -25,6 +36,8 @@ export async function createInvoice(payload: {
   farmerId?: number; farmerName?: string;
   driverId?: number; driverName?: string;
   transportFee?: number;
+  /** One of getSourceBooks() — the server refuses anything else. */
+  sourceBook?: string | null;
 
   items: InvoiceItemInput[];
 }) {
@@ -38,6 +51,8 @@ export async function updateInvoice(id: number, payload: {
   farmerId?: number; farmerName?: string;
   driverId?: number; driverName?: string;
   transportFee?: number;
+  /** One of getSourceBooks() — the server refuses anything else. */
+  sourceBook?: string | null;
 
   items: InvoiceItemInput[];
 }) {

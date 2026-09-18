@@ -303,6 +303,14 @@ export interface InvoiceDto {
   marketProfit: number;
   /** Any line still at price 0 — goods that went out before being priced. */
   hasUnpricedItems: boolean;
+  /**
+   * "الدفتر" — which of the four paper books this invoice was copied in from, or null when
+   * it was typed straight into the system. Temporary, for the changeover off the books: goods
+   * often go out before they are priced, and when the figures need checking the question is which
+   * book to open. Carries no money and is never printed. The four names come from the server
+   * (getSourceBooks), because the server refuses one it does not know.
+   */
+  sourceBook?: string | null;
   items: InvoiceItemDto[];
   returns: GoodsReturnDto[];
 }
@@ -363,6 +371,8 @@ export interface InvoiceListItemDto {
   paymentStatus: InvoicePaymentStatus;
   /** Any line still at price 0 — goods that went out before being priced. */
   hasUnpricedItems: boolean;
+  /** Which paper book this came from, so the column can be read without opening each row. */
+  sourceBook?: string | null;
 }
 
 /** Where an invoice stands against what has actually been collected on it — see backend
@@ -393,6 +403,8 @@ export interface GoodsReturnDto {
 }
 
 export interface InvoiceFilter {
+  /** "الدفتر" — exact match on one of the four books. */
+  sourceBook?: string;
   dateFrom?: string;
   dateTo?: string;
   merchantId?: number;

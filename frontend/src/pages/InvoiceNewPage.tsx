@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { PartnerAutocomplete } from "../components/PartnerAutocomplete";
+import { SourceBookSelect } from "../components/SourceBookSelect";
 import { ItemAutocomplete } from "../components/ItemAutocomplete";
 import { createInvoice, getInvoice } from "../api/invoices";
 
@@ -80,6 +81,9 @@ export function InvoiceNewPage() {
   const [driverText, setDriverText] = useState("");
   // Optional flat transport/delivery fee for the whole invoice ("أجرة النقل").
   const [transportFee, setTransportFee] = useState("");
+  // "الدفتر" — deliberately NOT cleared by resetForm below: somebody typing a page of one
+  // book types the whole page, and re-picking it per invoice is the step that gets skipped.
+  const [sourceBook, setSourceBook] = useState("");
 
 
   const [rows, setRows] = useState<Row[]>([emptyRow()]);
@@ -229,6 +233,7 @@ export function InvoiceNewPage() {
         driverId: driver?.id,
         driverName: driver ? undefined : (driverName || undefined),
         transportFee: transportFeeValue,
+        sourceBook: sourceBook || undefined,
 
         items,
       });
@@ -424,6 +429,11 @@ export function InvoiceNewPage() {
             onChange={(e) => setTransportFee(e.target.value)} placeholder="اتركه فارغًا إن لم يوجد" />
         </div>
 
+        {/* Which paper book this came off, during the changeover. Beside أجرة النقل because
+            both are facts about the invoice rather than about a line on it. */}
+        <div className="max-w-xs">
+          <SourceBookSelect value={sourceBook} onChange={setSourceBook} />
+        </div>
 
         <div className="flex flex-wrap gap-4 justify-between text-sm">
           {totalWeight > 0 && (

@@ -66,6 +66,11 @@ public class InvoiceService : IInvoiceService
         if (request.TransportFee < 0)
             throw new ValidationAppException("أجرة النقل لا يمكن أن تكون قيمة سالبة.");
 
+        // Refused rather than stored: a fifth spelling of a book name is a row the filter for that
+        // book will never find, which is the one thing this field exists to do.
+        if (!SourceBooks.IsValid(request.SourceBook))
+            throw new ValidationAppException($"الدفتر غير معروف. الخيارات: {string.Join("، ", SourceBooks.All)}");
+
 
         var merchant = await ResolvePartnerAsync(request.MerchantId, request.MerchantName, PartnerType.Merchant, "merchant");
         // Seller (Farmer) and Driver are both optional and independent of each other — an invoice
@@ -105,6 +110,7 @@ public class InvoiceService : IInvoiceService
             FarmerId = farmer?.Id,
             DriverId = driver?.Id,
             TransportFee = request.TransportFee,
+            SourceBook = SourceBooks.Normalize(request.SourceBook),
             Status = InvoiceStatus.Active,
             TotalWeightKg = totals.TotalWeightKg,
             TotalValue = totals.TotalValue,
@@ -242,6 +248,11 @@ public class InvoiceService : IInvoiceService
         if (request.TransportFee < 0)
             throw new ValidationAppException("أجرة النقل لا يمكن أن تكون قيمة سالبة.");
 
+        // Refused rather than stored: a fifth spelling of a book name is a row the filter for that
+        // book will never find, which is the one thing this field exists to do.
+        if (!SourceBooks.IsValid(request.SourceBook))
+            throw new ValidationAppException($"الدفتر غير معروف. الخيارات: {string.Join("، ", SourceBooks.All)}");
+
 
 
         var invoice = await _db.Invoices.Include(i => i.Items)
@@ -323,6 +334,7 @@ public class InvoiceService : IInvoiceService
         invoice.FarmerId = farmer?.Id;
         invoice.DriverId = driver?.Id;
         invoice.TransportFee = request.TransportFee;
+        invoice.SourceBook = SourceBooks.Normalize(request.SourceBook);
         invoice.TotalWeightKg = totals.TotalWeightKg;
         invoice.TotalValue = totals.TotalValue;
         invoice.CommissionRateApplied = commissionRate;
@@ -588,6 +600,11 @@ public class InvoiceService : IInvoiceService
         if (!string.IsNullOrWhiteSpace(filter.ItemName))
             query = query.Where(i => i.Items.Any(it => it.ItemName.Contains(filter.ItemName)));
 
+        // Exact match, not Contains: these are four fixed names, and a partial one would be a
+        // filter that quietly answers a different question than the one asked.
+        if (!string.IsNullOrWhiteSpace(filter.SourceBook))
+            query = query.Where(i => i.SourceBook == filter.SourceBook);
+
         var total = await query.CountAsync();
         // ItemsSummary is built in-memory (not string.Join'd inside the SQL projection below) —
         // Distinct() over a correlated collection doesn't reliably translate through the Npgsql EF
@@ -622,6 +639,7 @@ public class InvoiceService : IInvoiceService
                     .Where(pm => pm.CheckStatus == null || pm.CheckStatus == CheckClearanceStatus.Cleared)
                     .Sum(pm => (decimal?)pm.Amount) ?? 0,
                 HasUnpricedItems = i.Items.Any(it => it.PricePerUnit == 0),
+                i.SourceBook,
                 ItemNames = i.Items.Select(it => it.ItemName).ToList()
             })
             .ToListAsync();
@@ -674,7 +692,8 @@ public class InvoiceService : IInvoiceService
                 x.PaidAmount <= 0 ? InvoicePaymentStatus.Unpaid
                     : x.PaidAmount >= x.GrandTotal ? InvoicePaymentStatus.Paid
                     : InvoicePaymentStatus.Partial,
-                x.HasUnpricedItems);
+                x.HasUnpricedItems,
+                x.SourceBook);
         }).ToList();
 
         return new PagedResult<InvoiceListItemDto> { Items = items, TotalCount = total, Page = filter.Page, PageSize = filter.PageSize };
@@ -1151,6 +1170,7 @@ public class InvoiceService : IInvoiceService
                 i.TransportFee, woodTotal, hasDriver: i.DriverId != null)
                 - MarketEarnings.CommissionCreditOnReturn(returnsTotal, i.CommissionRateApplied),
             i.Items.Any(it => it.PricePerUnit == 0),
+            i.SourceBook,
             i.Items.Select(it => new InvoiceItemDto(
                 it.Id, it.ItemName, it.Quantity, it.WeightKg, it.PricePerUnit,
                 it.BoxQuantity, it.CartonQuantity, it.WoodPrice, it.LineTotal)).ToList(),

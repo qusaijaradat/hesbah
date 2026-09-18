@@ -887,6 +887,22 @@ using (var scope = app.Services.CreateScope())
         app.Logger.LogError(ex, "Failed to create the box_returns table — recording/viewing a merchant's empty-crate returns will not work until this is fixed.");
     }
 
+    // EnsureCreated does not add a column to a table that already exists, so a new field on an
+    // existing entity needs its own guard exactly like a new table does. This one records which of
+    // the four paper books an invoice was copied in from during the changeover — no money, no
+    // calculation, and null for everything already entered, which is correct: those were entered
+    // before anyone was tracking it.
+    try
+    {
+        await db.Database.ExecuteSqlRawAsync("""
+            ALTER TABLE invoices ADD COLUMN IF NOT EXISTS "SourceBook" character varying(30) NULL;
+            """);
+    }
+    catch (Exception ex)
+    {
+        app.Logger.LogError(ex, "Failed to add the SourceBook column to invoices — the \"الدفتر\" field on an invoice will not work until this is fixed. Nothing else is affected.");
+    }
+
     // Same EnsureCreated gap as the tables above. This one is the record of a one-time balance
     // migration: which ledger rows moved from a seller onto the driver who brought the load, and
     // where each came from, so the move can be undone exactly rather than inferred back.

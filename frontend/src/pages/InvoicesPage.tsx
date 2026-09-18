@@ -13,6 +13,7 @@ import { TablePagination } from "../components/TablePagination";
 import { CollapsibleRows } from "../components/CollapsibleRows";
 import { runBulkDelete, summarizeBulkDelete } from "../lib/bulkDelete";
 import { InvoiceLink, PartnerLink } from "../components/RecordLinks";
+import { SourceBookSelect } from "../components/SourceBookSelect";
 import { PartnerAutocomplete } from "../components/PartnerAutocomplete";
 import { BulkEditDialog } from "../components/BulkEditDialog";
 import type { BulkEditField } from "../components/BulkEditDialog";
@@ -399,6 +400,14 @@ export function InvoicesPage() {
             <option value="Paid">مدفوعة</option>
           </select>
         </div>
+        {/* The whole reason the field is recorded: an invoice priced days after the goods went
+            out is checked against its own book, and that means listing that book. */}
+        <SourceBookSelect
+          value={filter.sourceBook ?? ""}
+          onChange={(book) => setFilter((f) => ({ ...f, sourceBook: book || undefined, page: 1 }))}
+          label="الدفتر"
+          includeAny
+        />
         <div className="flex items-end">
           {/* The work queue for goods that went out before being priced — without it an unpriced
               invoice can sit forgotten indefinitely. */}
@@ -497,6 +506,7 @@ export function InvoicesPage() {
                 ),
               },
               { label: "الحالة", value: STATUS_LABELS[inv.status] ?? inv.status },
+              { label: "الدفتر", value: inv.sourceBook || "—" },
               { label: "", value: rowActions(inv) },
             ]}
             empty="لا توجد فواتير"
@@ -528,14 +538,15 @@ export function InvoicesPage() {
               <th>الإجمالي</th>
               <th>حالة الدفع</th>
               <th>الحالة</th>
+              <th>الدفتر</th>
               <th></th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={canDelete ? 13 : 12} className="text-center text-gray-400 py-6">جاري التحميل...</td></tr>
+              <tr><td colSpan={canDelete ? 14 : 13} className="text-center text-gray-400 py-6">جاري التحميل...</td></tr>
             ) : rows.length === 0 ? (
-              <tr><td colSpan={canDelete ? 13 : 12} className="text-center text-gray-400 py-6">لا توجد فواتير</td></tr>
+              <tr><td colSpan={canDelete ? 14 : 13} className="text-center text-gray-400 py-6">لا توجد فواتير</td></tr>
             ) : (
               rows.map((inv) => (
                 <tr key={inv.id}>
@@ -585,6 +596,7 @@ export function InvoicesPage() {
                       {STATUS_LABELS[inv.status]}
                     </span>
                   </td>
+                  <td className="text-gray-600">{inv.sourceBook || "—"}</td>
                   <td>{rowActions(inv)}</td>
                 </tr>
               ))

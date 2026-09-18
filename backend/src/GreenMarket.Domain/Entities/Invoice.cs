@@ -106,6 +106,15 @@ public class Invoice : AuditableEntity
     /// </summary>
     public decimal GrandTotal { get; set; }
 
+    /// <summary>
+    /// Which of the four paper books this invoice was copied in from, or null when it was typed
+    /// straight into the system. See Services.SourceBooks — including why this is temporary.
+    ///
+    /// Carries no money and enters no calculation. It exists so that an invoice priced days after
+    /// the goods went out can be checked against the page it came from without opening all four.
+    /// </summary>
+    public string? SourceBook { get; set; }
+
     public int? CancelledByUserId { get; set; }
     public DateTimeOffset? CancelledAt { get; set; }
     public string? CancellationReason { get; set; }

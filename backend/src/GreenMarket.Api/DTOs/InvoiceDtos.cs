@@ -36,7 +36,11 @@ public record CreateInvoiceRequest(
     int? DriverId,
     string? DriverName,
     IReadOnlyList<InvoiceItemInput> Items,
-    decimal TransportFee = 0);
+    decimal TransportFee = 0,
+    /// <summary>Optional, and one of Domain.Services.SourceBooks — which paper book this was
+    /// copied in from. Anything else is refused rather than stored, so the filter keeps
+    /// working.</summary>
+    string? SourceBook = null);
 
 /// <summary>
 /// The only two things a bulk edit on the invoices table may change. Deliberately not a subset of
@@ -125,6 +129,9 @@ public record InvoiceDto(
     decimal MarketProfit,
     // True when any line is still at price 0 — goods that went out before being priced.
     bool HasUnpricedItems,
+    // Which paper book this was copied in from, during the changeover off them. Null for an
+    // invoice typed straight in. Never printed — it is a note to the market, not to a customer.
+    string? SourceBook,
     IReadOnlyList<InvoiceItemDto> Items,
     IReadOnlyList<GoodsReturnDto> Returns);
 
@@ -184,7 +191,10 @@ public record InvoiceListItemDto(
     decimal DriverBoxFeeTotal, decimal DriverDue,
     decimal ReturnsTotal,
     decimal PaidAmount, decimal RemainingAmount, InvoicePaymentStatus PaymentStatus,
-    bool HasUnpricedItems);
+    bool HasUnpricedItems,
+    // On the list row so the column can be read and filtered without opening each invoice —
+    // which is the entire point of recording it.
+    string? SourceBook);
 
 /// <summary>Requirement doc §7 filters: date range, merchant, farmer/driver, item, user, invoice number, weight, amount.</summary>
 public class InvoiceFilterRequest
@@ -241,6 +251,11 @@ public class InvoiceFilterRequest
     /// false is the opposite and NOT a synonym for null: exclude them. The print screens set it,
     /// because an invoice with a line at price 0 has no total worth handing to anybody.</summary>
     public bool? HasUnpricedItems { get; set; }
+
+    /// <summary>"الدفتر" — narrows to invoices copied in from one of the four paper books
+    /// (Domain.Services.SourceBooks). The reason the field is recorded at all: an invoice priced
+    /// days later is checked against its own book, and that means listing that book's invoices.</summary>
+    public string? SourceBook { get; set; }
 
     public string? ItemName { get; set; }
     public int? CreatedByUserId { get; set; }

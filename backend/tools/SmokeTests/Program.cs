@@ -837,5 +837,32 @@ Console.WriteLine("== moving the old balances onto the drivers (LedgerMigrationS
 }
 
 Console.WriteLine();
+Console.WriteLine("== which paper book an invoice came from (SourceBooks) ==");
+{
+    // Four names, and the point of validating them is the filter: a fifth spelling is a row that
+    // the search for that book will never find, on the one field whose whole job is to be searched.
+    Check("the four books are accepted", SourceBooks.All.All(SourceBooks.IsValid));
+    Check("there are four of them", SourceBooks.All.Length == 4);
+    Check("no duplicates", SourceBooks.All.Distinct().Count() == SourceBooks.All.Length);
+
+    Check("not recorded is valid — the field is optional", SourceBooks.IsValid(null));
+    Check("and so is blank", SourceBooks.IsValid(""));
+    Check("and whitespace", SourceBooks.IsValid("   "));
+
+    Check("a name that is not one of them is refused", !SourceBooks.IsValid("محمد"));
+    // A stray space is the same book to a reader, so it is accepted and trimmed on the way in —
+    // not refused. IsValid asks the same question Normalize answers, which is why the two cannot
+    // disagree about a value the way a validate-then-store pair would.
+    Check("a stray space is still the book", SourceBooks.IsValid("طارق "));
+    Check("and so is a partial one", !SourceBooks.IsValid("أبو"));
+
+    // Normalize is what makes the near miss a non-issue for anyone typing through the screen:
+    // it trims first, so a stray space is stored as the real name rather than refused at the door.
+    Check("trimming turns a stray space back into the book", SourceBooks.Normalize(" طارق ") == SourceBooks.Tareq);
+    Check("blank stores as nothing, not as an empty string", SourceBooks.Normalize("   ") is null);
+    Check("and null stays null", SourceBooks.Normalize(null) is null);
+}
+
+Console.WriteLine();
 Console.WriteLine($"RESULT: {passed} passed, {failed} failed");
 return failed == 0 ? 0 : 1;

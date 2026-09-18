@@ -111,7 +111,9 @@ public interface IExportService
     /// see GenerateAccountStatementPdf's own doc comment.</summary>
     /// <param name="dateFrom">Printed in the header when the statement covers a period, so a sheet
     /// showing part of an account can never be mistaken for the whole of it.</param>
-    byte[] GenerateAccountStatementPdf(string partnerName, string title, IReadOnlyList<StatementLineDto> lines, decimal remaining, CompanyInfo company, DateTimeOffset? dateFrom = null, DateTimeOffset? dateTo = null);
+    /// <param name="detail">The goods behind the figures, printed under the running balance. Null
+    /// or empty prints the statement exactly as it was before.</param>
+    byte[] GenerateAccountStatementPdf(string partnerName, string title, IReadOnlyList<StatementLineDto> lines, decimal remaining, CompanyInfo company, DateTimeOffset? dateFrom = null, DateTimeOffset? dateTo = null, StatementDetailDto? detail = null);
 
     /// <summary>"قيمة الديون" drill-down print button — see GenerateInvoiceDetailPdf's own doc comment.</summary>
     byte[] GenerateInvoiceDetailPdf(string partnerName, string title, IReadOnlyList<PartnerInvoiceItemLineDto> lines, CompanyInfo company);
@@ -2411,7 +2413,7 @@ public class ExportService : IExportService
     /// partner's two independent statements are two separate print buttons, matching their two
     /// separate on-screen كشف حساب pages.
     /// </summary>
-    public byte[] GenerateAccountStatementPdf(string partnerName, string title, IReadOnlyList<StatementLineDto> lines, decimal remaining, CompanyInfo company, DateTimeOffset? dateFrom = null, DateTimeOffset? dateTo = null)
+    public byte[] GenerateAccountStatementPdf(string partnerName, string title, IReadOnlyList<StatementLineDto> lines, decimal remaining, CompanyInfo company, DateTimeOffset? dateFrom = null, DateTimeOffset? dateTo = null, StatementDetailDto? detail = null)
     {
         var forPeriod = dateFrom is not null || dateTo is not null;
         // What moved DURING the period, either way — the brought-forward line is not movement, it
@@ -2448,7 +2450,9 @@ public class ExportService : IExportService
                     col.Item().Text($"تاريخ الطباعة: {DateTimeOffset.Now:yyyy-MM-dd}").FontSize(9).FontColor(PrintInk.Secondary);
                 });
 
-                page.Content().ContentFromRightToLeft().PaddingVertical(10).Table(table =>
+                page.Content().ContentFromRightToLeft().PaddingVertical(10).Column(body =>
+                {
+                body.Item().Table(table =>
                 {
                     table.ColumnsDefinition(columns =>
                     {
@@ -2485,6 +2489,17 @@ public class ExportService : IExportService
                     }
                 });
 
+                // The goods behind the figures. Under the balance rather than instead of it: the
+                // running column is what the account IS, and the detail is what the argument at
+                // the counter is actually about — which day, which item, at what price.
+                if (detail is not null)
+                {
+                    StatementItemsSection(body, "تفاصيل المشتريات", detail.BuyerItems);
+                    StatementItemsSection(body, "تفاصيل البضاعة المباعة", detail.SellerItems);
+                    StatementDriverSection(body, detail.DriverSellers);
+                }
+                });
+
                 page.Footer().ContentFromRightToLeft().Column(col =>
                 {
                     col.Item().LineHorizontal(1).LineColor(PrintInk.Text);
@@ -2507,6 +2522,114 @@ public class ExportService : IExportService
         });
 
         return document.GeneratePdf();
+    }
+
+    /// <summary>
+    /// One item line per row, under a printed كشف حساب — the day, the invoice it came off, the
+    /// goods, the price and what it came to.
+    ///
+    /// Same shape for a buyer and a seller on purpose. What they are reading is the same question
+    /// asked from two sides ("هاي الطن بندورة بكم وأي يوم"), and two tables that differed would be
+    /// two things to keep right.
+    /// </summary>
+    private static void StatementItemsSection(ColumnDescriptor body, string title, IReadOnlyList<StatementDetailLine> lines)
+    {
+        if (lines.Count == 0) return;
+
+        body.Item().PaddingTop(14).Text(title).Bold().FontSize(12);
+        body.Item().PaddingTop(4).Table(table =>
+        {
+            table.ColumnsDefinition(columns =>
+            {
+                columns.RelativeColumn(2);   // التاريخ
+                columns.RelativeColumn(3);   // الفاتورة
+                columns.RelativeColumn(3);   // الصنف
+                columns.RelativeColumn(2);   // العدد
+                columns.RelativeColumn(2);   // الوزن
+                columns.RelativeColumn(2);   // السعر
+                columns.RelativeColumn(2);   // الإجمالي
+            });
+
+            table.Header(header =>
+            {
+                header.Cell().Element(HeaderCell).AlignRight().Text("التاريخ");
+                header.Cell().Element(HeaderCell).AlignRight().Text("الفاتورة");
+                header.Cell().Element(HeaderCell).AlignRight().Text("الصنف");
+                header.Cell().Element(HeaderCell).AlignRight().Text("العدد");
+                header.Cell().Element(HeaderCell).AlignRight().Text("الوزن");
+                header.Cell().Element(HeaderCell).AlignRight().Text("السعر");
+                header.Cell().Element(HeaderCell).AlignRight().Text("الإجمالي");
+            });
+
+            for (var i = 0; i < lines.Count; i++)
+            {
+                var line = lines[i];
+                var shaded = i % 2 == 1;
+                // A line still at price 0 went out before it was priced. Said in words rather than
+                // printed as a zero, which reads as "free".
+                var unpriced = line.PricePerUnit == 0;
+                table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text($"{line.Date:yyyy-MM-dd}");
+                table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(line.InvoiceNumber).FontSize(8);
+                table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(line.ItemName);
+                table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(CountCell(line.Quantity));
+                table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(WeightCell(line.WeightKg));
+                table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(unpriced ? "غير مسعّر" : line.PricePerUnit.ToString("0.##"));
+                table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(unpriced ? "غير مسعّر" : line.LineTotal.ToString("0.##"));
+            }
+        });
+
+        body.Item().PaddingTop(3).AlignRight()
+            .Text($"مجموع الأصناف: ₪ {lines.Sum(l => l.LineTotal):0.##}").Bold().FontSize(10);
+    }
+
+    /// <summary>
+    /// A driver's detail: the PEOPLE he carried for, not the goods.
+    ///
+    /// He earns أجرة نقل per invoice and أجرة صناديق per crate, never a price per item, so a
+    /// per-item table on his sheet would put a price against goods he was not paid per item for.
+    /// </summary>
+    private static void StatementDriverSection(ColumnDescriptor body, IReadOnlyList<StatementDriverRow> rows)
+    {
+        if (rows.Count == 0) return;
+
+        body.Item().PaddingTop(14).Text("الباعة اللي نقل إلهم").Bold().FontSize(12);
+        body.Item().PaddingTop(4).Table(table =>
+        {
+            table.ColumnsDefinition(columns =>
+            {
+                columns.RelativeColumn(5);   // البائع
+                columns.RelativeColumn(2);   // فواتير
+                columns.RelativeColumn(2);   // الصناديق
+                columns.RelativeColumn(3);   // أجرة النقل
+                columns.RelativeColumn(3);   // أجرة الصناديق
+                columns.RelativeColumn(3);   // الإجمالي
+            });
+
+            table.Header(header =>
+            {
+                header.Cell().Element(HeaderCell).AlignRight().Text("البائع");
+                header.Cell().Element(HeaderCell).AlignRight().Text("فواتير");
+                header.Cell().Element(HeaderCell).AlignRight().Text("الصناديق");
+                header.Cell().Element(HeaderCell).AlignRight().Text("أجرة النقل");
+                header.Cell().Element(HeaderCell).AlignRight().Text("أجرة الصناديق");
+                header.Cell().Element(HeaderCell).AlignRight().Text("الإجمالي");
+            });
+
+            for (var i = 0; i < rows.Count; i++)
+            {
+                var row = rows[i];
+                var shaded = i % 2 == 1;
+                table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(row.SellerName);
+                table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(row.Invoices.ToString());
+                table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(row.Boxes > 0 ? row.Boxes.ToString("0.###") : "—");
+                table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(row.TransportFee.ToString("0.##"));
+                table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(row.BoxFee.ToString("0.##"));
+                table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text($"₪ {(row.TransportFee + row.BoxFee):0.##}").Bold();
+            }
+        });
+
+        body.Item().PaddingTop(3).AlignRight()
+            .Text($"إجمالي أجرة النقل والصناديق: ₪ {rows.Sum(r => r.TransportFee + r.BoxFee):0.##}").Bold().FontSize(10);
     }
 
     /// <summary>Same "التفاصيل" join as PartnerAccountPage.tsx's own StatementLineDetails component —

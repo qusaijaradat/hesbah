@@ -83,6 +83,39 @@ public record StatementLineDto(
 public record PartnerDebtRow(int PartnerId, string Name, decimal OldDebt, decimal CurrentDebt, decimal Remaining);
 
 /// <summary>
+/// What sits UNDER the running balance on a printed كشف حساب: the goods behind the figures.
+///
+/// A statement of invoice totals answers "كم عليه" and nothing else. The argument at the counter
+/// is never about the total — it is about which day, which item, at what price — and until now the
+/// only place that detail existed was the bulk-print screen, which nobody opens to settle with one
+/// person standing in front of them.
+///
+/// Each list is empty unless it applies to the side being printed, so a plain buyer's sheet
+/// carries one extra section and a driver's carries a different one.
+/// </summary>
+public record StatementDetailDto(
+    IReadOnlyList<StatementDetailLine> BuyerItems,
+    IReadOnlyList<StatementDetailLine> SellerItems,
+    IReadOnlyList<StatementDriverRow> DriverSellers);
+
+/// <summary>One item line off one invoice — the day, the goods, the price and what it came to.</summary>
+/// <param name="WeightKg">Null on a line sold by the box rather than by weight, and printed as
+/// "—" rather than as a zero: those are different facts.</param>
+public record StatementDetailLine(
+    DateTimeOffset Date, string InvoiceNumber, string ItemName,
+    decimal Quantity, decimal? WeightKg, decimal PricePerUnit, decimal LineTotal);
+
+/// <summary>
+/// One seller a driver carried for, on the driver's own statement.
+///
+/// A driver has no per-item price — he earns أجرة نقل per invoice and أجرة صناديق per crate — so
+/// his detail is not a list of goods but a list of PEOPLE: whose produce he brought, how many
+/// crates, and what he earned on it.
+/// </summary>
+public record StatementDriverRow(
+    string SellerName, int Invoices, decimal Boxes, decimal TransportFee, decimal BoxFee);
+
+/// <summary>
 /// Everyone with a non-zero balance right now, in the two sections the market actually has.
 ///
 /// باعة and سواق are ONE list because they are one account: both post to the same ledger, and

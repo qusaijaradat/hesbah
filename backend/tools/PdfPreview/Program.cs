@@ -300,6 +300,25 @@ Write("17-account-statement-period.pdf",
         },
         1_829.19m, company, DateTimeOffset.Now.AddDays(-5), DateTimeOffset.Now));
 
+// The seller/driver sheet with its detail underneath: what he sold item by item, and the sellers
+// he carried for with the haulage and the crate money on each.
+var statementDetail = new StatementDetailDto(
+    Array.Empty<StatementDetailLine>(),
+    new List<StatementDetailLine>
+    {
+        new(DateTimeOffset.Now.AddDays(-9), "INV-2026-000031", "بندورة", 12m, 120.5m, 3.5m, 421.75m),
+        new(DateTimeOffset.Now.AddDays(-9), "INV-2026-000031", "خيار", 40m, null, 12m, 480m),
+        new(DateTimeOffset.Now, "INV-2026-000042", "باذنجان", 30m, 75.25m, 0m, 0m),
+    },
+    new List<StatementDriverRow>
+    {
+        new("المزارع أبو زياد", 3, 52m, 240m, 26m),
+        new("المزارع سامي حسن", 1, 10m, 80m, 5m),
+    });
+Write("22-account-statement-detailed.pdf",
+    export.GenerateAccountStatementPdf("المزارع سامي حسن", "كشف حساب بائع", statementLines, 1_829.19m, company,
+        null, null, statementDetail));
+
 Write("08-account-statement.pdf",
     export.GenerateAccountStatementPdf("محل أبو عمار للخضار", "كشف حساب مشتري", statementLines, 1829.19m, company));
 

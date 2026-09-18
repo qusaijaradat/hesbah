@@ -152,8 +152,12 @@ public class PartnersController : ControllerBase
     public async Task<IActionResult> MerchantAccountPrintPdf(int id, [FromQuery] DateTimeOffset? dateFrom, [FromQuery] DateTimeOffset? dateTo)
     {
         var account = await _partnerService.GetMerchantAccountAsync(id, dateFrom, dateTo);
+        // The goods behind the figures, over the same window — which day, which item, at what
+        // price. That is what the conversation at the counter is about; the totals above it are
+        // only ever the summary of it.
+        var detail = await _partnerService.GetStatementDetailAsync(id, buyerSide: true, dateFrom, dateTo);
         var company = await GetCompanyInfoAsync();
-        var bytes = _exportService.GenerateAccountStatementPdf(account.Name, "كشف حساب مشتري", account.Statement, account.Remaining, company, dateFrom, dateTo);
+        var bytes = _exportService.GenerateAccountStatementPdf(account.Name, "كشف حساب مشتري", account.Statement, account.Remaining, company, dateFrom, dateTo, detail);
         return File(bytes, "application/pdf", "account-statement.pdf");
     }
 
@@ -170,8 +174,12 @@ public class PartnersController : ControllerBase
     {
         var account = await _partnerService.GetFarmerAccountAsync(id, dateFrom, dateTo);
         var roleLabel = PartnerRoles.Has(account.Type, PartnerType.Driver) && !PartnerRoles.Has(account.Type, PartnerType.Farmer) ? "سائق" : "بائع";
+        // What he sold, item by item, AND — for anyone who also drives — the sellers he carried
+        // for with the haulage and the crate money on each. Both sections print only when they
+        // have rows, so a plain seller and a plain driver each get theirs and not the other's.
+        var detail = await _partnerService.GetStatementDetailAsync(id, buyerSide: false, dateFrom, dateTo);
         var company = await GetCompanyInfoAsync();
-        var bytes = _exportService.GenerateAccountStatementPdf(account.Name, $"كشف حساب {roleLabel}", account.Statement, account.Remaining, company, dateFrom, dateTo);
+        var bytes = _exportService.GenerateAccountStatementPdf(account.Name, $"كشف حساب {roleLabel}", account.Statement, account.Remaining, company, dateFrom, dateTo, detail);
         return File(bytes, "application/pdf", "account-statement.pdf");
     }
 

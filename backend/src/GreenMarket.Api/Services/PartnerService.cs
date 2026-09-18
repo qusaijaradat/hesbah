@@ -68,6 +68,11 @@ public interface IPartnerService
     /// <summary>Both take an optional date range that narrows the STATEMENT to a period — see
     /// the implementations. Omitting it is what every caller but the print buttons does.</summary>
     Task<MerchantAccountDto> GetMerchantAccountAsync(int id, DateTimeOffset? dateFrom = null, DateTimeOffset? dateTo = null);
+
+    /// <summary>The goods behind the figures, for the printed كشف حساب — see StatementDetailDto.</summary>
+    /// <param name="buyerSide">Which of the person's two accounts is being printed. Only that
+    /// side is queried: a man who both sells and buys has two statements, and each shows its own.</param>
+    Task<StatementDetailDto> GetStatementDetailAsync(int partnerId, bool buyerSide, DateTimeOffset? dateFrom, DateTimeOffset? dateTo);
     Task<FarmerAccountDto> GetFarmerAccountAsync(int id, DateTimeOffset? dateFrom = null, DateTimeOffset? dateTo = null);
 
     /// <summary>The "قيمة الدين" overview page: everyone with a non-zero balance right now, split
@@ -522,6 +527,72 @@ public class PartnerService : IPartnerService
     /// <summary>See the interface doc comment. Farmer/driver ledger and merchant ledger are each
     /// aggregated in a handful of grouped queries (not one query per partner), matching the exact
     /// same Remaining formula as GetFarmerAccountAsync / GetMerchantAccountAsync.</summary>
+    public async Task<StatementDetailDto> GetStatementDetailAsync(
+        int partnerId, bool buyerSide, DateTimeOffset? dateFrom, DateTimeOffset? dateTo)
+    {
+        // Active only, and the same date window the statement above it covers, so the two halves
+        // of one sheet describe the same period.
+        IQueryable<Invoice> Scoped(IQueryable<Invoice> q)
+        {
+            q = q.Where(i => i.Status == InvoiceStatus.Active);
+            if (dateFrom is not null) q = q.Where(i => i.Date >= dateFrom);
+            if (dateTo is not null) q = q.Where(i => i.Date <= dateTo);
+            return q;
+        }
+
+        var empty = Array.Empty<StatementDetailLine>();
+
+        // Flattened in memory, not by a translated SelectMany. EF cannot order by a column of a
+        // type it is projecting into inside the flatten — EfCheck prints the refusal — and the same
+        // "materialize the invoices, then flatten" shape is what InvoiceService.GetFarmerStatement
+        // already uses, for the same reason: the per-invoice ordering then provably carries
+        // through to the item rows.
+        async Task<List<StatementDetailLine>> LinesAsync(IQueryable<Invoice> invoices)
+        {
+            var rows = await Scoped(invoices)
+                .Include(i => i.Items)
+                .OrderBy(i => i.Date).ThenBy(i => i.InvoiceNumber)
+                .ToListAsync();
+            return rows
+                .SelectMany(i => i.Items.Select(it => new StatementDetailLine(
+                    i.Date, i.InvoiceNumber, it.ItemName,
+                    it.Quantity, it.WeightKg, it.PricePerUnit, it.LineTotal)))
+                .ToList();
+        }
+
+        if (buyerSide)
+            return new StatementDetailDto(
+                await LinesAsync(_db.Invoices.Where(i => i.MerchantId == partnerId)),
+                empty, Array.Empty<StatementDriverRow>());
+
+        var sold = await LinesAsync(_db.Invoices.Where(i => i.FarmerId == partnerId));
+
+        // Whose produce he carried, not what was in it. A driver earns أجرة نقل per invoice and
+        // أجرة صناديق per crate, so a per-item table on his sheet would price goods he was never
+        // paid per item for. Materialized before grouping: the crate fee is an invoice-level rate
+        // times a per-item count, which is not one SQL aggregate.
+        var drove = await Scoped(_db.Invoices.Where(i => i.DriverId == partnerId))
+            .Select(i => new
+            {
+                SellerName = i.Farmer != null ? i.Farmer.Name : null,
+                i.TransportFee,
+                // The invoice's OWN locked-in rate, never today's setting — the rule every reading
+                // of a past invoice in this codebase follows.
+                BoxFee = i.Items.Sum(it => it.BoxQuantity) * i.DriverBoxFeeApplied,
+                Boxes = i.Items.Sum(it => it.BoxQuantity)
+            })
+            .ToListAsync();
+
+        var driverRows = drove
+            .GroupBy(x => x.SellerName ?? "بدون بائع")
+            .Select(g => new StatementDriverRow(
+                g.Key, g.Count(), g.Sum(x => x.Boxes), g.Sum(x => x.TransportFee), g.Sum(x => x.BoxFee)))
+            .OrderByDescending(r => r.TransportFee + r.BoxFee)
+            .ToList();
+
+        return new StatementDetailDto(empty, sold, driverRows);
+    }
+
     public async Task<DebtsOverviewDto> GetDebtsOverviewAsync()
     {
         var partners = await _db.Partners

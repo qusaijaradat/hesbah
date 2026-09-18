@@ -64,6 +64,31 @@ Show("commission counted against the seller whose produce earned it (ReportServi
         .GroupBy(t => t.Invoice!.FarmerId!.Value)
         .Select(g => new { FarmerId = g.Key, Commission = g.Sum(t => t.Commission) }));
 
+// The invoices behind the item detail printed under a كشف حساب.
+//
+// This is the query AFTER a fix this tool paid for itself with. Flattening the items with a
+// translated SelectMany and then ordering by a column of the projected record is refused by EF at
+// RUNTIME — it compiles perfectly — so the first person to print a statement would have got an
+// exception. The lines are flattened in memory now; this prints what actually goes to the database.
+Show("invoices behind a printed account statement’s item detail (PartnerService.GetStatementDetailAsync)",
+    db.Invoices
+        .Where(i => i.MerchantId == 7 && i.Status == InvoiceStatus.Active)
+        .Include(i => i.Items)
+        .OrderBy(i => i.Date).ThenBy(i => i.InvoiceNumber));
+
+// And the driver half: whose produce he carried, with the crate fee — an invoice-level rate times a
+// per-item count, which is why it is computed here and grouped afterwards rather than in SQL.
+Show("a driver’s sellers under his statement (PartnerService.GetStatementDetailAsync)",
+    db.Invoices
+        .Where(i => i.DriverId == 11 && i.Status == InvoiceStatus.Active)
+        .Select(i => new
+        {
+            SellerName = i.Farmer != null ? i.Farmer.Name : null,
+            i.TransportFee,
+            BoxFee = i.Items.Sum(it => it.BoxQuantity) * i.DriverBoxFeeApplied,
+            Boxes = i.Items.Sum(it => it.BoxQuantity)
+        }));
+
 void Show<T>(string label, IQueryable<T> query)
 {
     Console.WriteLine($"--- {label}");

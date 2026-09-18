@@ -6,6 +6,9 @@
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
   <ItemGroup>
+    <!-- Api, not just Infrastructure: some of the queries worth printing project into the DTOs the
+         API returns, and checking a rewritten copy of a query is checking the copy. -->
+    <ProjectReference Include="..\..\src\GreenMarket.Api\GreenMarket.Api.csproj" />
     <ProjectReference Include="..\..\src\GreenMarket.Infrastructure\GreenMarket.Infrastructure.csproj" />
   </ItemGroup>
 </Project>

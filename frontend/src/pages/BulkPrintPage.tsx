@@ -598,7 +598,7 @@ function SectionPrintBar({ section }: { section: RoleSection }) {
         printLabel={section.role === "Merchant"
           ? "🖨️ طباعة فواتير مشتري (فاتورة مجمّعة لكل مشتري/يوم — 4 بالصفحة)"
           : section.role === "Driver"
-          ? "🖨️ طباعة فاتورة السائق (ورقة لكل سائق — سطر لكل بائع)"
+          ? "🖨️ طباعة فاتورة السائق (سطر لكل بائع — 4 بالصفحة)"
           : `🖨️ طباعة فواتير ${ROLE_LABEL[section.role]} (فاتورة ${ROLE_LABEL[section.role]} — 4 بالصفحة)`}
       />
     </div>

@@ -283,6 +283,17 @@ Write("21-payment-receipt-seller-check.pdf",
             DateTimeOffset.Now.AddDays(30), "88231", CheckClearanceStatus.Pending, null, null),
         company));
 
+// A driver who carried for more sellers than a quarter page holds: the rest spills onto a second
+// card, and only the last one carries the المجموع row and the addition.
+var manySellers = Enumerable.Range(1, 8)
+    .Select(n => invoice with { FarmerId = 100 + n, FarmerName = $"بائع رقم {n}" })
+    .ToList();
+Write("23-driver-invoice-spilled.pdf",
+    export.GenerateDriverManifestPdf(new[]
+    {
+        new DriverManifest("السائق عبد الحليم", manySellers, 0m, SellerMoneyGoesToDriver: true),
+    }, company));
+
 // The سند قبض for one expense — two copies on the sheet, one for each side.
 Write("18-expense-receipt.pdf",
     export.GenerateExpenseReceiptPdf(

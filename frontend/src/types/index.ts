@@ -984,3 +984,28 @@ export interface LedgerMigrationResultDto {
   rowsMoved: number;
   amountMoved: number;
 }
+
+/**
+ * What a photographed ledger page came back as — see the backend's Services.Ask.PageReader.
+ *
+ * Every field on a row is nullable because a cell the reader could not make out comes back empty
+ * rather than as a plausible number: a blank box is a question somebody answers, an invented price
+ * is a wrong invoice nobody catches.
+ */
+export interface PageReadResult {
+  rows: PageReadRow[];
+  /** What it could not manage, in Arabic. Empty when the page was clear. Always shown. */
+  note: string;
+}
+
+export interface PageReadRow {
+  merchant?: string | null;
+  farmer?: string | null;
+  driver?: string | null;
+  itemName?: string | null;
+  quantity?: number | null;
+  weightKg?: number | null;
+  pricePerUnit?: number | null;
+  woodPrice?: number | null;
+  transportFee?: number | null;
+}

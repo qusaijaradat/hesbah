@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { shareFile } from "../lib/share";
 import { hasTouch } from "../lib/platform";
+import { pageReadStatus, readPage } from "../api/pageRead";
+import { apiErrorMessage } from "../api/client";
+import type { PageReadRow } from "../types";
 
 interface Props {
   /**
@@ -16,6 +19,14 @@ interface Props {
   placeholder: string;
   /** The line under the box: what to say, in the words of the screen it sits on. */
   hint: React.ReactNode;
+  /**
+   * Called with the rows read off a photographed page, for the caller to put into its own
+   * form. Omit it and the "اقرأ الصورة" button does not appear — a screen with nowhere to put
+   * rows should not offer to produce them.
+   *
+   * Returns a message when it could not use them, the same contract as onSentence.
+   */
+  onRows?: (rows: PageReadRow[]) => string | null;
 }
 
 /**
@@ -30,12 +41,27 @@ interface Props {
  * read BY A PERSON while they enter the rows, and can be shared on in one tap to something that
  * can read it.
  */
-export function CaptureBar({ onSentence, placeholder, hint }: Props) {
+export function CaptureBar({ onSentence, placeholder, hint, onRows }: Props) {
   const [said, setSaid] = useState("");
   const [note, setNote] = useState<string | null>(null);
   const [page, setPage] = useState<{ file: File; url: string } | null>(null);
   const [big, setBig] = useState(false);
   const camera = useRef<HTMLInputElement | null>(null);
+  const [reading, setReading] = useState(false);
+  // What the reader said it was unsure about, kept on screen beside the rows it produced.
+  const [readNote, setReadNote] = useState<string | null>(null);
+  // Whether the server has a key at all. Null until asked; the button stays hidden either way
+  // until the answer is yes, so nobody is offered a button that can only fail.
+  const [canRead, setCanRead] = useState(false);
+
+  useEffect(() => {
+    if (!onRows) return;
+    let cancelled = false;
+    pageReadStatus()
+      .then((ok) => { if (!cancelled) setCanRead(ok); })
+      .catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [onRows]);
 
   // The object URL is the only thing here that outlives a render, so it is the only thing to clean
   // up. Without this, photographing ten pages in a session leaks ten images.
@@ -56,6 +82,29 @@ export function CaptureBar({ onSentence, placeholder, hint }: Props) {
       return { file, url: URL.createObjectURL(file) };
     });
     setNote(null);
+  }
+
+  async function read() {
+    if (!page || !onRows) return;
+    setReading(true);
+    setNote(null);
+    setReadNote(null);
+    try {
+      const result = await readPage(page.file);
+      if (result.rows.length === 0) {
+        setNote(result.note || "ما قدرت أقرأ أي سطر من الصورة.");
+        return;
+      }
+      const problem = onRows(result.rows);
+      if (problem) { setNote(problem); return; }
+      // Said even when it read everything, because "قرأ 12 سطر" is the number to check against
+      // the page still in your hand before you trust the form.
+      setReadNote(`قرأ ${result.rows.length} سطر — راجعهم قبل الحفظ.${result.note ? " " + result.note : ""}`);
+    } catch (err) {
+      setNote(apiErrorMessage(err, "فشلت قراءة الصورة"));
+    } finally {
+      setReading(false);
+    }
   }
 
   async function share() {
@@ -102,6 +151,16 @@ export function CaptureBar({ onSentence, placeholder, hint }: Props) {
             <button className="btn-link text-brand-700 hover:underline" onClick={() => setBig((v) => !v)}>
               {big ? "تصغير" : "تكبير"}
             </button>
+            {/* Only when the screen has somewhere to put rows AND the server can read one. */}
+            {onRows && canRead && (
+              <button
+                className="btn-link text-brand-700 hover:underline font-semibold disabled:opacity-50"
+                disabled={reading}
+                onClick={() => void read()}
+              >
+                {reading ? "بيقرأ الصفحة..." : "✨ اقرأ الصورة"}
+              </button>
+            )}
             <button className="btn-link text-brand-700 hover:underline" onClick={share}>مشاركة الصورة</button>
             <button
               className="btn-link text-red-600 hover:underline ms-auto"
@@ -118,8 +177,15 @@ export function CaptureBar({ onSentence, placeholder, hint }: Props) {
             className={`w-full object-contain rounded border border-gray-200 cursor-zoom-in ${big ? "max-h-[80vh]" : "max-h-56"}`}
             onClick={() => setBig((v) => !v)}
           />
+          {readNote && (
+            <div className="text-xs text-brand-900 bg-brand-50 border border-brand-200 rounded-md p-2 mt-2">
+              {readNote}
+            </div>
+          )}
           <p className="text-xs text-gray-500 mt-2">
-            الصورة بتضل قدامك وأنت بتعبّي، وما بتنرفع ولا بتنحفظ بأي مكان.
+            {onRows && canRead
+              ? "الصورة بتضل قدامك وأنت بتعبّي، وما بتنحفظ عنّا. «اقرأ الصورة» ببعثها لتنقرأ وبيعبّي الأسطر — وبضل لازم تراجعهم قبل الحفظ، والخانة اللي ما انقرأت بتضل فاضية."
+              : "الصورة بتضل قدامك وأنت بتعبّي، وما بتنرفع ولا بتنحفظ بأي مكان."}
           </p>
         </div>
       )}

@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { PartnerAutocomplete } from "../components/PartnerAutocomplete";
 import { ItemAutocomplete } from "../components/ItemAutocomplete";
 import { createInvoice } from "../api/invoices";
+import type { PageReadRow } from "../types";
 import { SourceBookSelect } from "../components/SourceBookSelect";
 import { apiErrorMessage } from "../api/client";
 import { formatCurrency, todayLocalDateString } from "../lib/format";
@@ -193,6 +194,41 @@ export function QuickEntryPage() {
     return null;
   }
 
+  /**
+   * The rows read off a photographed page.
+   *
+   * They REPLACE what is on screen rather than appending, because this screen is one page of
+   * the book at a time and the photo is that page: appending would leave somebody scrolling to
+   * find which twelve of twenty-four rows came from the picture in their hand.
+   *
+   * Names arrive as text, never as a picked partner — the same as dictation. The autocomplete
+   * resolves a typed name on save exactly as it does for a typed one, so a name the reader got
+   * slightly wrong is corrected in the box rather than silently attached to the wrong account.
+   *
+   * A field that could not be read arrives null and lands as an empty box, which is the point:
+   * an empty box is a question, and a number invented to fill it is an invoice nobody catches.
+   */
+  function fillFromPage(read: PageReadRow[]): string | null {
+    const num = (v: number | null | undefined) => (v == null ? "" : String(v));
+    const filled: Row[] = read.map((r) => ({
+      ...emptyRow(),
+      merchantText: r.merchant ?? "",
+      farmerText: r.farmer ?? "",
+      driverText: r.driver ?? "",
+      itemName: r.itemName ?? "",
+      quantity: num(r.quantity),
+      weightKg: num(r.weightKg),
+      pricePerUnit: num(r.pricePerUnit),
+      woodPrice: num(r.woodPrice),
+      transportFee: num(r.transportFee),
+    }));
+    // Two spare rows underneath, the same as everywhere else here: the page usually has one
+    // more line than the photo caught.
+    setRows([...filled, ...Array.from({ length: 2 }, emptyRow)]);
+    setSaved(null);
+    return null;
+  }
+
   const live = rows.filter((r) => !isBlank(r));
   const findings = useMemo(() => auditRows(rows), [rows]);
   const errors = findings.filter((f) => f.severity === "error");
@@ -323,12 +359,13 @@ export function QuickEntryPage() {
       {/* Both ways in, on every screen that takes rows off paper — see components/CaptureBar. */}
       <CaptureBar
         onSentence={addSpokenRow}
+        onRows={fillFromPage}
         placeholder="قول أو اكتب السطر: أبو علي بندورة عدد ٢٠ بسعر ٣٫٥ صناديق ١٠"
         hint={<>
           على الجوال اضغط زر المايك 🎤 اللي على لوحة المفاتيح وأملِ السطر — بيشتغل على أندرويد وآيفون.
           قول كلمة <span className="font-semibold">عدد</span> و<span className="font-semibold">سعر</span>
           و<span className="font-semibold">صناديق</span> قبل أرقامها، لأن الرقم اللي بدون كلمة قبله بينترك فاضي بدل ما ينحزر.
-          وصوّر الصفحة لتضل قدامك وأنت بتعبّي، أو شاركها لحدا يقرأها ورجّع الأسطر بـ«لصق من سكان».
+          أو صوّر الصفحة واضغط <span className="font-semibold">«اقرأ الصورة»</span> ليعبّي الأسطر لحاله — وراجعهم قبل الحفظ.
         </>}
       />
 

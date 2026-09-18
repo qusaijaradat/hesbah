@@ -48,6 +48,7 @@ builder.Services.AddScoped<ISackService, SackService>();
 // "اسأل" — the planner is a singleton because it holds one HTTP client and reads its key once at
 // startup; the service that runs the chosen query is scoped like every other service here.
 builder.Services.AddSingleton<IAskPlanner, AskPlanner>();
+builder.Services.AddScoped<IPageReader, PageReader>();
 builder.Services.AddScoped<IAskService, AskService>();
 builder.Services.AddScoped<IGoodsReturnService, GoodsReturnService>();
 builder.Services.AddScoped<IExpenseService, ExpenseService>();

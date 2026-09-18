@@ -143,14 +143,17 @@ public class PartnersController : ControllerBase
     }
 
     /// <summary>"كشف حساب" print button on the مشتري account page — see
-    /// ExportService.GenerateAccountStatementPdf's own doc comment.</summary>
+    /// ExportService.GenerateAccountStatementPdf's own doc comment.
+    ///
+    /// Both dates are optional and independent: neither prints the whole account exactly as
+    /// before, either one narrows it to a period with a brought-forward opening line.</summary>
     [HttpGet("{id:int}/merchant-account/print/pdf")]
     [RequirePermission(PermissionKeys.PartnersView)]
-    public async Task<IActionResult> MerchantAccountPrintPdf(int id)
+    public async Task<IActionResult> MerchantAccountPrintPdf(int id, [FromQuery] DateTimeOffset? dateFrom, [FromQuery] DateTimeOffset? dateTo)
     {
-        var account = await _partnerService.GetMerchantAccountAsync(id);
+        var account = await _partnerService.GetMerchantAccountAsync(id, dateFrom, dateTo);
         var company = await GetCompanyInfoAsync();
-        var bytes = _exportService.GenerateAccountStatementPdf(account.Name, "كشف حساب مشتري", account.Statement, account.Remaining, company);
+        var bytes = _exportService.GenerateAccountStatementPdf(account.Name, "كشف حساب مشتري", account.Statement, account.Remaining, company, dateFrom, dateTo);
         return File(bytes, "application/pdf", "account-statement.pdf");
     }
 
@@ -163,12 +166,12 @@ public class PartnersController : ControllerBase
     /// FarmerAccountPage.tsx's own roleLabel.</summary>
     [HttpGet("{id:int}/farmer-account/print/pdf")]
     [RequirePermission(PermissionKeys.PartnersView)]
-    public async Task<IActionResult> FarmerAccountPrintPdf(int id)
+    public async Task<IActionResult> FarmerAccountPrintPdf(int id, [FromQuery] DateTimeOffset? dateFrom, [FromQuery] DateTimeOffset? dateTo)
     {
-        var account = await _partnerService.GetFarmerAccountAsync(id);
+        var account = await _partnerService.GetFarmerAccountAsync(id, dateFrom, dateTo);
         var roleLabel = PartnerRoles.Has(account.Type, PartnerType.Driver) && !PartnerRoles.Has(account.Type, PartnerType.Farmer) ? "سائق" : "بائع";
         var company = await GetCompanyInfoAsync();
-        var bytes = _exportService.GenerateAccountStatementPdf(account.Name, $"كشف حساب {roleLabel}", account.Statement, account.Remaining, company);
+        var bytes = _exportService.GenerateAccountStatementPdf(account.Name, $"كشف حساب {roleLabel}", account.Statement, account.Remaining, company, dateFrom, dateTo);
         return File(bytes, "application/pdf", "account-statement.pdf");
     }
 

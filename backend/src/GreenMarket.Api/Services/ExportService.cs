@@ -109,7 +109,9 @@ public interface IExportService
 
     /// <summary>"كشف حساب" print button on a partner's own farmer/driver/merchant account page —
     /// see GenerateAccountStatementPdf's own doc comment.</summary>
-    byte[] GenerateAccountStatementPdf(string partnerName, string title, IReadOnlyList<StatementLineDto> lines, decimal remaining, CompanyInfo company);
+    /// <param name="dateFrom">Printed in the header when the statement covers a period, so a sheet
+    /// showing part of an account can never be mistaken for the whole of it.</param>
+    byte[] GenerateAccountStatementPdf(string partnerName, string title, IReadOnlyList<StatementLineDto> lines, decimal remaining, CompanyInfo company, DateTimeOffset? dateFrom = null, DateTimeOffset? dateTo = null);
 
     /// <summary>"قيمة الديون" drill-down print button — see GenerateInvoiceDetailPdf's own doc comment.</summary>
     byte[] GenerateInvoiceDetailPdf(string partnerName, string title, IReadOnlyList<PartnerInvoiceItemLineDto> lines, CompanyInfo company);
@@ -2405,8 +2407,16 @@ public class ExportService : IExportService
     /// partner's two independent statements are two separate print buttons, matching their two
     /// separate on-screen كشف حساب pages.
     /// </summary>
-    public byte[] GenerateAccountStatementPdf(string partnerName, string title, IReadOnlyList<StatementLineDto> lines, decimal remaining, CompanyInfo company)
+    public byte[] GenerateAccountStatementPdf(string partnerName, string title, IReadOnlyList<StatementLineDto> lines, decimal remaining, CompanyInfo company, DateTimeOffset? dateFrom = null, DateTimeOffset? dateTo = null)
     {
+        var forPeriod = dateFrom is not null || dateTo is not null;
+        // What moved DURING the period, either way — the brought-forward line is not movement, it
+        // is where the period started, so it is excluded from both. Without these two the reader
+        // can see an opening figure and a closing figure and has to subtract to learn what
+        // happened in between, which is the question the period was chosen to answer.
+        var movement = lines.Where(l => l.Description != AccountStatementBuilder.BroughtForwardDescription).ToList();
+        var charged = movement.Where(l => l.Amount > 0).Sum(l => l.Amount);
+        var paid = movement.Where(l => l.Amount < 0).Sum(l => -l.Amount);
         var document = Document.Create(container =>
         {
             container.Page(page =>
@@ -2424,6 +2434,12 @@ public class ExportService : IExportService
                     col.Item().PaddingTop(6).LineHorizontal(1).LineColor(PrintInk.Text);
                     col.Item().PaddingTop(6).AlignCenter().Text(title).Bold().FontSize(14);
                     col.Item().Text($"الاسم: {partnerName}").FontSize(12);
+                    if (forPeriod)
+                    {
+                        var from = dateFrom is not null ? dateFrom.Value.ToString("yyyy-MM-dd") : "البداية";
+                        var to = dateTo is not null ? dateTo.Value.ToString("yyyy-MM-dd") : "اليوم";
+                        col.Item().Text($"الفترة: من {from} إلى {to}").FontSize(10);
+                    }
 
                     col.Item().Text($"تاريخ الطباعة: {DateTimeOffset.Now:yyyy-MM-dd}").FontSize(9).FontColor(PrintInk.Secondary);
                 });
@@ -2450,7 +2466,7 @@ public class ExportService : IExportService
 
                     if (lines.Count == 0)
                     {
-                        table.Cell().ColumnSpan(5).Element(c => DataCell(c, false)).AlignCenter().Text("لا توجد حركات").FontColor(PrintInk.Secondary);
+                        table.Cell().ColumnSpan(5).Element(c => DataCell(c, false)).AlignCenter().Text(forPeriod ? "ما في حركات بهالفترة" : "لا توجد حركات").FontColor(PrintInk.Secondary);
                     }
 
                     for (var i = 0; i < lines.Count; i++)
@@ -2468,7 +2484,13 @@ public class ExportService : IExportService
                 page.Footer().ContentFromRightToLeft().Column(col =>
                 {
                     col.Item().LineHorizontal(1).LineColor(PrintInk.Text);
-                    col.Item().PaddingTop(4).AlignRight().Text($"الرصيد الحالي (المتبقي): ₪ {remaining:0.##}").Bold().FontSize(13);
+                    if (charged > 0)
+                        col.Item().PaddingTop(2).AlignRight().Text($"إجمالي الحركة (عليه): ₪ {charged:0.##}").FontSize(10);
+                    if (paid > 0)
+                        col.Item().AlignRight().Text($"إجمالي المدفوع/المخصوم: ₪ {paid:0.##}").FontSize(10);
+                    col.Item().PaddingTop(4).AlignRight()
+                        .Text(forPeriod ? $"الرصيد بآخر الفترة: ₪ {remaining:0.##}" : $"الرصيد الحالي (المتبقي): ₪ {remaining:0.##}")
+                        .Bold().FontSize(13);
                     col.Item().PaddingTop(2).AlignCenter().Text(x =>
                     {
                         x.Span("صفحة ");

@@ -65,8 +65,10 @@ public interface IPartnerService
     /// </summary>
     Task<AdjustmentDto> CreateAdjustmentAsync(int partnerId, CreateAdjustmentRequest request);
 
-    Task<MerchantAccountDto> GetMerchantAccountAsync(int id);
-    Task<FarmerAccountDto> GetFarmerAccountAsync(int id);
+    /// <summary>Both take an optional date range that narrows the STATEMENT to a period — see
+    /// the implementations. Omitting it is what every caller but the print buttons does.</summary>
+    Task<MerchantAccountDto> GetMerchantAccountAsync(int id, DateTimeOffset? dateFrom = null, DateTimeOffset? dateTo = null);
+    Task<FarmerAccountDto> GetFarmerAccountAsync(int id, DateTimeOffset? dateFrom = null, DateTimeOffset? dateTo = null);
 
     /// <summary>The "قيمة الدين" overview page: everyone with a non-zero balance right now, split
     /// into بائع/سائق/مشتري. Uses the exact same Remaining formulas as GetFarmerAccountAsync /
@@ -348,7 +350,12 @@ public class PartnerService : IPartnerService
     }
 
     /// <summary>Requirement doc §6: merchant account = invoices, total purchases, paid, remaining + statement.</summary>
-    public async Task<MerchantAccountDto> GetMerchantAccountAsync(int id)
+    /// <param name="dateFrom">Optional. Narrows the STATEMENT to a period — everything before it
+    /// collapses into one brought-forward line, everything after <paramref name="dateTo"/> is
+    /// dropped, and Remaining becomes the balance at the end of the period rather than today (see
+    /// AccountStatementBuilder.Slice). The other totals on the DTO stay all-time: they describe the
+    /// account, not the window. Every caller that passes nothing gets exactly what it always got.</param>
+    public async Task<MerchantAccountDto> GetMerchantAccountAsync(int id, DateTimeOffset? dateFrom = null, DateTimeOffset? dateTo = null)
     {
         var partner = await _db.Partners.FindAsync(id) ?? throw new NotFoundAppException("Partner", id);
 
@@ -393,10 +400,16 @@ public class PartnerService : IPartnerService
             }));
 
         var openingBalance = partner.OpeningBalance ?? 0;
-        var statement = AccountStatementBuilder.Build(entries, openingBalance, partner.CreatedAt);
+        var statement = AccountStatementBuilder.Slice(
+            AccountStatementBuilder.Build(entries, openingBalance, partner.CreatedAt), dateFrom, dateTo);
         var totalPurchases = invoices.Sum(i => i.GrandTotal);
         var totalPaid = payments.Where(p => PaymentRules.CountsTowardBalance(p.CheckStatus)).Sum(p => p.Amount);
-        var remaining = PartnerBalance.ForBuyer(openingBalance, totalPurchases, totalPaid);
+        // All-time unless a period was asked for, and then it is the statement's own last line —
+        // read off the page rather than computed a second way, so the closing figure and the
+        // column above it cannot disagree.
+        var remaining = dateFrom is null && dateTo is null
+            ? PartnerBalance.ForBuyer(openingBalance, totalPurchases, totalPaid)
+            : statement.Count > 0 ? statement[^1].RunningBalance : 0m;
 
         // Containers (crates, sacks) used to be computed here and carried on this DTO. They moved
         // to their own service and screen once sellers and drivers needed them too and once there
@@ -409,7 +422,8 @@ public class PartnerService : IPartnerService
     }
 
     /// <summary>Requirement doc §6: farmer account = value sold, commission, due, paid, remaining + statement.</summary>
-    public async Task<FarmerAccountDto> GetFarmerAccountAsync(int id)
+    /// <param name="dateFrom">Optional, and exactly as on GetMerchantAccountAsync — see its note.</param>
+    public async Task<FarmerAccountDto> GetFarmerAccountAsync(int id, DateTimeOffset? dateFrom = null, DateTimeOffset? dateTo = null)
     {
         var partner = await _db.Partners.FindAsync(id) ?? throw new NotFoundAppException("Partner", id);
 
@@ -473,7 +487,8 @@ public class PartnerService : IPartnerService
         });
 
         var openingBalance = partner.OpeningBalance ?? 0;
-        var statement = AccountStatementBuilder.Build(entries, openingBalance, partner.CreatedAt);
+        var statement = AccountStatementBuilder.Slice(
+            AccountStatementBuilder.Build(entries, openingBalance, partner.CreatedAt), dateFrom, dateTo);
 
         var totalSales = transactions.Where(t => t.Type == FarmerTransactionType.Sale).Sum(t => t.SaleValue);
         var totalCommission = transactions.Where(t => t.Type == FarmerTransactionType.Sale).Sum(t => t.Commission);
@@ -491,7 +506,11 @@ public class PartnerService : IPartnerService
         // exactly the kind of mismatch a detailed, invoice-traceable statement must never have.
         // Summing every transaction's own (already correctly signed) Amount is the same computation
         // AccountStatementBuilder.Build does internally, so this always matches the statement below.
-        var remaining = PartnerBalance.ForSeller(openingBalance, transactions.Sum(t => t.Amount));
+        // All-time unless a period was asked for, and then it is the statement's own last line —
+        // read off the page rather than computed a second way. Same reasoning as the buyer side.
+        var remaining = dateFrom is null && dateTo is null
+            ? PartnerBalance.ForSeller(openingBalance, transactions.Sum(t => t.Amount))
+            : statement.Count > 0 ? statement[^1].RunningBalance : 0m;
 
         return new FarmerAccountDto(
             partner.Id, partner.Name, partner.Type,

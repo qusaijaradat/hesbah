@@ -71,4 +71,48 @@ public static class AccountStatementBuilder
 
     public static decimal RunningBalance(IEnumerable<Entry> entries) =>
         entries.Sum(e => e.SignedAmount);
+
+    /// <summary>What the collapsed pre-period line is called on a statement for a date range.</summary>
+    public const string BroughtForwardDescription = "رصيد ما قبل الفترة (مرحّل)";
+
+    /// <summary>
+    /// The same statement, narrowed to a date range.
+    ///
+    /// Somebody asking for "الكشف من أول الشهر" wants this month's movements — but a list of
+    /// movements with the earlier ones simply deleted is not a statement, it is a statement whose
+    /// first number comes from nowhere. So everything before the range collapses into ONE line
+    /// carrying the balance as it stood, and the column adds up from there exactly as it did
+    /// before. Everything after the range is dropped, which makes the last line the balance as at
+    /// the end of the period rather than today.
+    ///
+    /// Sliced AFTER the running balance is computed, never by re-running the sum over fewer rows:
+    /// the figures on the page are then the same figures the full statement shows, and a line
+    /// cannot read differently depending on which window somebody printed.
+    ///
+    /// A range that catches nothing still returns the brought-forward line when there is a balance
+    /// to bring forward. "ما في حركة وعليه ألفين" is an answer; an empty page is not.
+    /// </summary>
+    /// <param name="from">Inclusive. Null means "from the beginning" and collapses nothing.</param>
+    /// <param name="to">Inclusive. Null means "up to now" and drops nothing.</param>
+    public static IReadOnlyList<StatementLine> Slice(
+        IReadOnlyList<StatementLine> lines, DateTimeOffset? from, DateTimeOffset? to)
+    {
+        if (from is null && to is null) return lines;
+
+        var upToEnd = to is null ? lines : lines.Where(l => l.Date <= to.Value).ToList();
+        if (from is null) return upToEnd;
+
+        var before = upToEnd.Where(l => l.Date < from.Value).ToList();
+        var inside = upToEnd.Where(l => l.Date >= from.Value).ToList();
+
+        // The balance the period opens on: whatever the last line before it left behind. Zero only
+        // when nothing at all preceded the period, and then there is nothing to carry.
+        var broughtForward = before.Count > 0 ? before[^1].RunningBalance : 0m;
+        if (broughtForward == 0m) return inside;
+
+        var opening = new StatementLine(
+            from.Value, BroughtForwardDescription, broughtForward, broughtForward,
+            null, null, null, null, null, null);
+        return new[] { opening }.Concat(inside).ToList();
+    }
 }

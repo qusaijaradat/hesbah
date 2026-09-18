@@ -44,8 +44,18 @@ export async function getMerchantAccount(id: number) {
 
 /** "كشف حساب" print button on the مشتري account page — same numbers as getMerchantAccount above,
  * rendered as one printable PDF (see ExportService.GenerateAccountStatementPdf). */
-export async function printMerchantAccountPdf(id: number) {
-  const { data } = await apiClient.get(`/partners/${id}/merchant-account/print/pdf`, { responseType: "blob" });
+/**
+ * The printed "كشف حساب".
+ *
+ * Both dates are optional and independent. With neither, the whole account prints exactly as it
+ * always did; with either, the sheet covers that period and opens on a "رصيد ما قبل الفترة"
+ * line so the running column still adds up (backend AccountStatementBuilder.Slice).
+ */
+export async function printMerchantAccountPdf(id: number, dateFrom?: string, dateTo?: string) {
+  const { data } = await apiClient.get(`/partners/${id}/merchant-account/print/pdf`, {
+    params: { dateFrom, dateTo },
+    responseType: "blob",
+  });
   return data as Blob;
 }
 
@@ -54,9 +64,12 @@ export async function getFarmerAccount(id: number) {
   return data;
 }
 
-/** بائع/سائق-side counterpart of printMerchantAccountPdf above. */
-export async function printFarmerAccountPdf(id: number) {
-  const { data } = await apiClient.get(`/partners/${id}/farmer-account/print/pdf`, { responseType: "blob" });
+/** بائع/سائق-side counterpart of printMerchantAccountPdf above, period and all. */
+export async function printFarmerAccountPdf(id: number, dateFrom?: string, dateTo?: string) {
+  const { data } = await apiClient.get(`/partners/${id}/farmer-account/print/pdf`, {
+    params: { dateFrom, dateTo },
+    responseType: "blob",
+  });
   return data as Blob;
 }
 

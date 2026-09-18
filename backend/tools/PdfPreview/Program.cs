@@ -260,6 +260,17 @@ var statementLines = new List<StatementLineDto>
     new(DateTimeOffset.Now.AddDays(-4), "دفعة", -700m, 500m, null, null, null, null, "شيك", "شيك رقم 88231"),
     new(DateTimeOffset.Now, "فاتورة", 1329.19m, 1829.19m, 101, "INV-2026-000042", 1108.69m, 110.87m, null, null),
 };
+// The same account narrowed to a period: it opens on what the earlier movements left behind,
+// rather than on a figure with nothing above it.
+Write("17-account-statement-period.pdf",
+    export.GenerateAccountStatementPdf("محل أبو عمار للخضار", "كشف حساب مشتري",
+        new List<StatementLineDto>
+        {
+            new(DateTimeOffset.Now.AddDays(-5), AccountStatementBuilder.BroughtForwardDescription, 500m, 500m, null, null, null, null, null, null),
+            statementLines[2],
+        },
+        1_829.19m, company, DateTimeOffset.Now.AddDays(-5), DateTimeOffset.Now));
+
 Write("08-account-statement.pdf",
     export.GenerateAccountStatementPdf("محل أبو عمار للخضار", "كشف حساب مشتري", statementLines, 1829.19m, company));
 

@@ -863,5 +863,61 @@ Console.WriteLine("== which paper book an invoice came from (SourceBooks) ==");
 }
 
 Console.WriteLine();
+Console.WriteLine("== a statement for a period (AccountStatementBuilder.Slice) ==");
+{
+    // Four movements across two months, and the running balance the full statement shows.
+    var day = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
+    var full = AccountStatementBuilder.Build(new[]
+    {
+        new AccountStatementBuilder.Entry(day,             "فاتورة 1", 1_000m),
+        new AccountStatementBuilder.Entry(day.AddDays(10), "دفعة",     -400m),
+        new AccountStatementBuilder.Entry(day.AddDays(40), "فاتورة 2", 2_500m),
+        new AccountStatementBuilder.Entry(day.AddDays(50), "دفعة",   -1_000m),
+    });
+    Check("the full statement closes on the real balance",
+          full[^1].RunningBalance == 2_100m, $"got {full[^1].RunningBalance}");
+
+    // February only. The two January lines collapse into one, and the column has to keep adding
+    // up from where they left it — a period statement whose first number comes from nowhere is
+    // the failure this exists to prevent.
+    var feb = AccountStatementBuilder.Slice(full, day.AddDays(31), day.AddDays(59));
+    Check("the period opens on a brought-forward line",
+          feb[0].Description == AccountStatementBuilder.BroughtForwardDescription);
+    Check("...carrying exactly what January left behind",
+          feb[0].RunningBalance == 600m, $"got {feb[0].RunningBalance}");
+    Check("and only February’s own movements follow it", feb.Count == 3, $"got {feb.Count}");
+    Check("the column still adds up",
+          feb[^1].RunningBalance == 2_100m, $"got {feb[^1].RunningBalance}");
+    // The identity that makes the sliced page trustworthy: opening + what moved = closing.
+    var moved = feb.Skip(1).Sum(l => l.SignedAmount);
+    Check("opening + the period’s movement = the closing balance",
+          feb[0].RunningBalance + moved == feb[^1].RunningBalance);
+
+    // Cutting the end makes the last line the balance AS AT that date, not today.
+    var toMidFeb = AccountStatementBuilder.Slice(full, null, day.AddDays(45));
+    Check("an end date closes the statement on that date’s balance",
+          toMidFeb[^1].RunningBalance == 3_100m, $"got {toMidFeb[^1].RunningBalance}");
+    Check("and drops what came after it", toMidFeb.Count == 3, $"got {toMidFeb.Count}");
+
+    // A quiet month is an answer, not an empty page: he moved nothing and still owes 2,100.
+    var quiet = AccountStatementBuilder.Slice(full, day.AddDays(200), day.AddDays(230));
+    Check("a period with no movement still says what the balance is",
+          quiet.Count == 1 && quiet[0].RunningBalance == 2_100m, $"got {quiet.Count} line(s)");
+
+    // Nothing before the period => nothing to carry, and no line inventing a zero.
+    var fromStart = AccountStatementBuilder.Slice(full, day, day.AddDays(20));
+    Check("a period starting at the beginning carries nothing forward",
+          fromStart.Count == 2 && fromStart[0].Description == "فاتورة 1", $"got {fromStart.Count}");
+
+    Check("no range at all returns the statement untouched",
+          ReferenceEquals(AccountStatementBuilder.Slice(full, null, null), full));
+
+    // The slice reads the running balance that was already computed; it never re-sums a subset.
+    // If it did, every figure on a period sheet would differ from the same figure on the full one.
+    Check("a line reads the same whichever window it is printed in",
+          feb[1].RunningBalance == full[2].RunningBalance && feb[1].Description == full[2].Description);
+}
+
+Console.WriteLine();
 Console.WriteLine($"RESULT: {passed} passed, {failed} failed");
 return failed == 0 ? 0 : 1;

@@ -11,10 +11,10 @@ import type { FarmerAccountDto, MerchantAccountDto, StatementLineDto } from "../
 import { formatCurrency, formatDate, partnerHasRole } from "../lib/format";
 import { StatCard } from "../components/StatCard";
 import { useAuth } from "../auth/AuthContext";
-import { PdfActions } from "../components/PdfActions";
 import { CollapsibleRows } from "../components/CollapsibleRows";
 import { OtherSideNotice } from "../components/OtherSideNotice";
 import { SettlementCard } from "../components/SettlementCard";
+import { AccountStatementPrint } from "../components/AccountStatementPrint";
 
 
 
@@ -42,8 +42,15 @@ export function FarmerAccountPage() {
       <Link to="/partners" className="text-sm text-brand-700 hover:underline">← رجوع إلى القائمة</Link>
       <div className="flex items-start justify-between flex-wrap gap-3 mt-2 mb-6">
         <h1 className="text-2xl font-bold">كشف حساب {roleLabel}: {account.name}</h1>
-        <PdfActions fetchPdf={() => printFarmerAccountPdf(Number(id))} fileName={`account-${id}.pdf`} shareTitle="كشف حساب" />
       </div>
+
+      {/* The print button moved down here, out of the title row, because it now carries a period
+          with it and two date fields have no business sitting beside a heading. */}
+      <AccountStatementPrint
+        roleLabel={roleLabel}
+        fetchPdf={(from, to) => printFarmerAccountPdf(Number(id), from, to)}
+        fileName={`account-${id}.pdf`}
+      />
 
       {/* A seller who also buys. Standing here you could pay him everything he is owed and never
           learn he owed the market on the other page — see components/OtherSideNotice. */}
@@ -190,8 +197,13 @@ export function MerchantAccountPage() {
       <Link to="/partners" className="text-sm text-brand-700 hover:underline">← رجوع إلى القائمة</Link>
       <div className="flex items-start justify-between flex-wrap gap-3 mt-2 mb-6">
         <h1 className="text-2xl font-bold">كشف حساب مشتري: {account.name}</h1>
-        <PdfActions fetchPdf={() => printMerchantAccountPdf(Number(id))} fileName={`account-${id}.pdf`} shareTitle="كشف حساب" />
       </div>
+
+      <AccountStatementPrint
+        roleLabel="مشتري"
+        fetchPdf={(from, to) => printMerchantAccountPdf(Number(id), from, to)}
+        fileName={`account-${id}.pdf`}
+      />
 
       <OtherSideNotice partnerId={Number(id)} side="merchant" />
 

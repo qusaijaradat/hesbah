@@ -82,13 +82,21 @@ public record StatementLineDto(
 /// </summary>
 public record PartnerDebtRow(int PartnerId, string Name, decimal OldDebt, decimal CurrentDebt, decimal Remaining);
 
-/// <summary>Requirement: a single page with 3 sections (بائع/سائق/مشتري) listing everyone who
-/// currently has a non-zero balance. A partner of type Both appears in BOTH Farmers (their farmer-side
-/// ledger) and Merchants (their merchant-side ledger) with their own independent Remaining in each —
-/// same convention as the two separate "كشف حساب" links already shown for a Both partner.</summary>
+/// <summary>
+/// Everyone with a non-zero balance right now, in the two sections the market actually has.
+///
+/// باعة and سواق are ONE list because they are one account: both post to the same ledger, and
+/// the man who brings his own produce and drives it has a single balance between the two roles.
+/// They used to be listed separately, which showed that man twice with the same figure — read as
+/// two debts by anyone adding the page up, and double-counted outright by whatever concatenated
+/// the lists.
+///
+/// A partner who also BUYS still appears in both sections, and that is not the same mistake: his
+/// buyer balance is a genuinely different account, computed from his invoices and payments, and
+/// he has two "كشف حساب" pages for exactly that reason.
+/// </summary>
 public record DebtsOverviewDto(
-    IReadOnlyList<PartnerDebtRow> Farmers,
-    IReadOnlyList<PartnerDebtRow> Drivers,
+    IReadOnlyList<PartnerDebtRow> Sellers,
     IReadOnlyList<PartnerDebtRow> Merchants);
 
 /// <summary>

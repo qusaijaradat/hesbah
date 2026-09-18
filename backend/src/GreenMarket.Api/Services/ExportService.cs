@@ -630,14 +630,17 @@ public class ExportService : IExportService
     /// </summary>
     private sealed record CardPart(InvoiceDto Invoice, IReadOnlyList<InvoiceItemDto> Items, int Part, int PartCount);
 
-    private static List<CardPart> SplitIntoCards(IReadOnlyList<InvoiceDto> invoices)
+    /// <param name="showsNoItems">Invoices whose card carries no item table — a driver's copy,
+    /// which is a settlement summary and not an itemised bill. Splitting those by item count
+    /// would print an invoice of thirty lines as three identical cards with nothing on them.</param>
+    private static List<CardPart> SplitIntoCards(IReadOnlyList<InvoiceDto> invoices, Func<InvoiceDto, bool>? showsNoItems = null)
     {
         var parts = new List<CardPart>();
         foreach (var invoice in invoices)
         {
             // An invoice with no lines at all still prints one card — it is still an invoice, and
             // a zero-length run would silently drop it from the sheet.
-            var chunks = invoice.Items.Count == 0
+            var chunks = invoice.Items.Count == 0 || showsNoItems?.Invoke(invoice) == true
                 ? new List<IReadOnlyList<InvoiceItemDto>> { Array.Empty<InvoiceItemDto>() }
                 : invoice.Items
                     .Select((item, i) => (item, i))
@@ -653,7 +656,11 @@ public class ExportService : IExportService
 
     public byte[] GenerateInvoicesBulkPdf(IReadOnlyList<InvoiceDto> invoices, CompanyInfo company, InvoicePrintRole role, int? houseDriverPartnerId)
     {
-        var parts = SplitIntoCards(invoices);
+        // A driver holding the produce money gets a summary, not a bill — no item table, so no
+        // reason to split his card by item count.
+        var parts = SplitIntoCards(invoices, invoice =>
+            role == InvoicePrintRole.Driver
+            && InvoiceLedgerTarget.IsOutsideDriver(invoice.DriverId, houseDriverPartnerId));
         return QuadrantGridPdf(parts.Count, (container, index) =>
             InvoiceCard(container, parts[index], company, role, houseDriverPartnerId));
     }
@@ -876,28 +883,39 @@ public class ExportService : IExportService
                 {
                     table.ColumnsDefinition(columns =>
                     {
-                        if (sellerMoneyGoesToDriver) columns.RelativeColumn(3);
-                        columns.RelativeColumn(3);
-                        columns.RelativeColumn(2);
-                        columns.RelativeColumn(2);
-                        columns.RelativeColumn(2);
-                        columns.RelativeColumn(2);
-                        if (sellerMoneyGoesToDriver) columns.RelativeColumn(2);
+                        if (sellerMoneyGoesToDriver)
+                        {
+                            columns.RelativeColumn(5);   // البائع
+                            columns.RelativeColumn(2);   // الصناديق
+                            columns.RelativeColumn(2);   // عدد الفواتير
+                            columns.RelativeColumn(3);   // المستحق له
+                        }
+                        else
+                        {
+                            columns.RelativeColumn(3);
+                            columns.RelativeColumn(2);
+                            columns.RelativeColumn(2);
+                            columns.RelativeColumn(2);
+                            columns.RelativeColumn(2);
+                            columns.RelativeColumn(2);
+                        }
                     });
 
                     table.Header(header =>
                     {
                         if (sellerMoneyGoesToDriver)
                         {
-                            // Whose produce, then what it came to and what comes off it. The last
-                            // column is the only figure he actually hands over.
+                            // One line per person, and the only figure on it is the one he is handed.
+                            // The sale value and the commission were here and are gone: the amount is
+                            // already net of both, and what the driver is doing with this sheet is
+                            // paying people, not explaining the market's cut to them. The seller who
+                            // wants that detail has his own statement, which carries all of it.
                             header.Cell().Element(HeaderCell).AlignRight().Text("البائع");
-                            header.Cell().Element(HeaderCell).AlignRight().Text("المشتري");
-                            header.Cell().Element(HeaderCell).AlignRight().Text("العدد/الوزن");
-                            header.Cell().Element(HeaderCell).AlignRight().Text("قيمة البضاعة");
-                            header.Cell().Element(HeaderCell).AlignRight().Text("العمولة");
-                            header.Cell().Element(HeaderCell).AlignRight().Text("أجرة النقل");
-                            header.Cell().Element(HeaderCell).AlignRight().Text("الصافي للبائع");
+                            // The crates are a count he hands over physically, alongside the money —
+                            // the one other thing that has to be right per person at the handover.
+                            header.Cell().Element(HeaderCell).AlignRight().Text("الصناديق");
+                            header.Cell().Element(HeaderCell).AlignRight().Text("فواتير");
+                            header.Cell().Element(HeaderCell).AlignRight().Text("المستحق له");
                         }
                         else
                         {
@@ -912,39 +930,20 @@ public class ExportService : IExportService
 
                     if (sellerMoneyGoesToDriver)
                     {
-                        var shaded = false;
-                        foreach (var group in sellerGroups)
+                        for (var g = 0; g < sellerGroups.Count; g++)
                         {
+                            var group = sellerGroups[g];
+                            var shaded = g % 2 == 1;
                             // A load with no seller named still belongs on the sheet: the money for
                             // it went to the driver like any other, and leaving it off would make
                             // the rows stop adding up to the total he is handed.
                             var sellerName = string.IsNullOrWhiteSpace(group.Key.Name) ? "بدون بائع" : group.Key.Name!;
-                            var first = true;
-                            foreach (var invoice in group)
-                            {
-                                var cellShade = shaded;
-                                var showName = first;
-                                var boxCount = invoice.Items.Sum(it => it.BoxQuantity);
-                                // The name once per group, not once per row - repeating it down the
-                                // column is what makes a grouped sheet unreadable.
-                                table.Cell().Element(c => DataCell(c, cellShade)).AlignRight().Text(showName ? sellerName : "");
-                                table.Cell().Element(c => DataCell(c, cellShade)).AlignRight().Text(invoice.MerchantName);
-                                table.Cell().Element(c => DataCell(c, cellShade)).AlignRight().Text(boxCount > 0 ? boxCount.ToString("0.###") : WeightText(invoice.TotalWeightKg));
-                                table.Cell().Element(c => DataCell(c, cellShade)).AlignRight().Text(invoice.TotalValue.ToString("0.##"));
-                                table.Cell().Element(c => DataCell(c, cellShade)).AlignRight().Text(invoice.Commission > 0 ? $"− {invoice.Commission:0.##}" : "—");
-                                table.Cell().Element(c => DataCell(c, cellShade)).AlignRight().Text(invoice.TransportFee > 0 ? $"− {invoice.TransportFee:0.##}" : "—");
-                                table.Cell().Element(c => DataCell(c, cellShade)).AlignRight().Text(invoice.NetDueToFarmer.ToString("0.##"));
-                                first = false;
-                                shaded = !shaded;
-                            }
-
-                            // The figure he actually counts out to this person.
-                            var groupNet = group.Sum(i => i.NetDueToFarmer);
-                            table.Cell().ColumnSpan(6).Element(c => DataCell(c, true)).AlignRight()
-                                .Text($"المستحق لـ {sellerName}").Bold();
-                            table.Cell().Element(c => DataCell(c, true)).AlignRight()
-                                .Text($"₪ {groupNet:0.##}").Bold();
-                            shaded = false;
+                            var groupBoxes = group.Sum(i => i.Items.Sum(it => it.BoxQuantity));
+                            table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(sellerName).Bold();
+                            table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(groupBoxes > 0 ? groupBoxes.ToString("0.###") : "—");
+                            table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(group.Count().ToString());
+                            table.Cell().Element(c => DataCell(c, shaded)).AlignRight()
+                                .Text($"₪ {group.Sum(i => i.NetDueToFarmer):0.##}").Bold();
                         }
                     }
                     else
@@ -1737,8 +1736,15 @@ public class ExportService : IExportService
             // does not sell them, and he has no per-item price at all. But when the driver IS the
             // seller, he does: that produce is his, and a card that priced none of it would be
             // asking him to take the one figure at the bottom on trust.
+            // Nothing at all when the driver is holding somebody else's money: what he needs is
+            // the name and the figure, and الصنف/الوزن/السعر are the seller's business with the
+            // market, not his. The empty middle still stretches, which keeps the totals pinned to
+            // the bottom edge where every other card has them.
             card.Content().ExtendVertical().Column(col =>
-                CardItemsTable(col, part.Items, isDriverCopy: role == InvoicePrintRole.Driver && !driverCarriesProduce));
+            {
+                if (driverCarriesProduce) return;
+                CardItemsTable(col, part.Items, isDriverCopy: role == InvoicePrintRole.Driver);
+            });
 
             card.After().Column(col =>
             {
@@ -1778,17 +1784,15 @@ public class ExportService : IExportService
                         // is every outside driver, because the produce money is handed to him.
                         var alsoTheSeller = driverCarriesProduce;
 
-                        // Cargo, not money — and only when there is room for it. A card where the
-                        // same person is also the seller has two sides of money to itemise below,
-                        // and the quarter page cannot hold both that and the cargo counts.
-                        if (!alsoTheSeller)
-                        {
-                            var totalBoxes = invoice.Items.Sum(it => it.BoxQuantity);
-                            if (totalBoxes > 0)
-                                col.Item().AlignRight().Text($"إجمالي الصناديق: {totalBoxes:0.###}").FontSize(8);
-                            if (invoice.TotalWeightKg > 0)
-                                col.Item().AlignRight().Text($"إجمالي الوزن: {invoice.TotalWeightKg:0.###} كغم").FontSize(8);
-                        }
+                        // The crate count is on every driver copy: it is what he physically hands
+                        // over, and on the card that carries no item table it is the only cargo
+                        // figure left. The weight only when there is room — a card with two sides of
+                        // money to state cannot hold both.
+                        var totalBoxes = invoice.Items.Sum(it => it.BoxQuantity);
+                        if (totalBoxes > 0)
+                            col.Item().AlignRight().Text($"إجمالي الصناديق: {totalBoxes:0.###}").FontSize(8);
+                        if (!alsoTheSeller && invoice.TotalWeightKg > 0)
+                            col.Item().AlignRight().Text($"إجمالي الوزن: {invoice.TotalWeightKg:0.###} كغم").FontSize(8);
 
                         // Same three components, in the same order, as GenerateDriverManifestPdf's
                         // footer — أجرة النقل + أجرة الصناديق + سعر الخشب (the driver is paid the full
@@ -1814,23 +1818,17 @@ public class ExportService : IExportService
                         // a figure nobody can check.
                         if (alsoTheSeller)
                         {
-                            // The labels follow WHOSE produce it is. His own, and it reads as his
-                            // seller side; somebody else's, and it reads as money he is holding for a
-                            // named person — which is the only way the bottom line means anything to
-                            // the seller standing in front of him.
-                            var salesLabel = otherSellerName is null ? "المبيعات (كبائع)" : $"قيمة بضاعة {otherSellerName}";
-                            var netLabel = otherSellerName is null ? "الصافي كبائع" : $"المستحق لـ {otherSellerName}";
-                            col.Item().AlignRight().Text($"المستحق كسائق: ₪ {driverDue:0.##}").FontSize(9);
+                            // What the driver needs off this card is one sentence: this person, this
+                            // much. The sale value and the commission used to be printed above it —
+                            // correct, and noise: the figure is already net of both, and the man
+                            // being paid is not being shown the market's cut on the driver's sheet.
+                            // A seller who wants that detail has his own statement, which has it.
+                            var netLabel = otherSellerName is null ? "المستحق لك كبائع" : $"المستحق لـ {otherSellerName}";
+                            col.Item().AlignRight().Text($"{netLabel}: ₪ {invoice.NetDueToFarmer:0.##}").Bold().FontSize(11);
                             col.Item().PaddingTop(2).LineHorizontal(0.5f).LineColor(PrintInk.Text);
-                            col.Item().AlignRight().Text($"{salesLabel}: ₪ {invoice.TotalValue:0.##}").FontSize(9);
-                            col.Item().AlignRight().Text($"العمولة ({invoice.CommissionRateApplied:0.##%}): - ₪ {invoice.Commission:0.##}").FontSize(8).FontColor(PrintInk.Deduction);
-                            // Printed only when there is one — on an invoice he carried for nothing,
-                            // a zero line on both sides is two lines saying nothing twice.
-                            if (invoice.TransportFee > 0)
-                                col.Item().AlignRight().Text($"أجرة النقل (تُخصم من البائع): - ₪ {invoice.TransportFee:0.##}").FontSize(8).FontColor(PrintInk.Deduction);
-                            col.Item().AlignRight().Text($"{netLabel}: ₪ {invoice.NetDueToFarmer:0.##}").FontSize(9);
+                            col.Item().AlignRight().Text($"المستحق لك كسائق: ₪ {driverDue:0.##}").FontSize(9);
                             col.Item().PaddingTop(2).AlignRight()
-                                .Text($"الإجمالي المقبوض: ₪ {InvoiceCharge.ForSellerDriver(invoice.TotalValue, invoice.Commission, invoice.TransportFee, invoice.DriverBoxFeeTotal):0.##}")
+                                .Text($"الإجمالي : ₪ {InvoiceCharge.ForSellerDriver(invoice.TotalValue, invoice.Commission, invoice.TransportFee, invoice.DriverBoxFeeTotal):0.##}")
                                 .Bold().FontSize(14);
                             break;
                         }
@@ -2320,8 +2318,7 @@ public class ExportService : IExportService
                 page.Content().ContentFromRightToLeft().PaddingVertical(10).Column(col =>
                 {
                     col.Spacing(16);
-                    DebtsOverviewSection(col.Item(), "الباعة", data.Farmers, "عليه للسوق", "له من السوق");
-                    DebtsOverviewSection(col.Item(), "السائقين", data.Drivers, "عليه للسوق", "له من السوق");
+                    DebtsOverviewSection(col.Item(), "الباعة والسواق", data.Sellers, "عليه للسوق", "له من السوق");
                     DebtsOverviewSection(col.Item(), "المشترين", data.Merchants, "عليه دين للسوق", "له رصيد زائد (دفع أكتر)");
                 });
 

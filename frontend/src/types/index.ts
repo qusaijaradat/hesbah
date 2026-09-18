@@ -785,8 +785,12 @@ export interface PartnerDebtRow {
 }
 
 export interface DebtsOverviewDto {
-  farmers: PartnerDebtRow[];
-  drivers: PartnerDebtRow[];
+  /**
+   * باعة and سواق together, because they are one account: both post to the same ledger, and
+   * the man who brings his own produce and drives it has a single balance between the two roles.
+   * Listing them apart showed him twice, with the same figure.
+   */
+  sellers: PartnerDebtRow[];
   merchants: PartnerDebtRow[];
 }
 

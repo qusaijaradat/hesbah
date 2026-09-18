@@ -186,7 +186,9 @@ public class AskService : IAskService
     private async Task<AskAnswerDto> TopCreditors(AskPlan plan, int limit)
     {
         var debts = await _partners.GetDebtsOverviewAsync();
-        var rows = debts.Farmers.Concat(debts.Drivers)
+        // One list now. Concatenating the two counted the man who sells AND drives twice, with the
+        // same ledger balance, which is how he could be both first and second in this answer.
+        var rows = debts.Sellers
             .Where(r => r.Remaining > 0)
             .OrderByDescending(r => r.Remaining).Take(limit)
             .Select(r => new AskRowDto(r.Name, "إلو عنا", r.Remaining)).ToList();

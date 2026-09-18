@@ -577,13 +577,14 @@ public class PartnerService : IPartnerService
                 .OrderByDescending(r => Math.Abs(r.Remaining))
                 .ToList();
 
-        // Someone who both sells and drives appears in BOTH lists — they have one ledger balance
-        // between them, so the same figure shows twice rather than the person going missing from one.
-        var farmers = BuildRows(partners.Where(p => PartnerRoles.Has(p.Type, PartnerType.Farmer)), SellerCurrent);
-        var drivers = BuildRows(partners.Where(p => PartnerRoles.Has(p.Type, PartnerType.Driver)), SellerCurrent);
+        // One list for both roles, because it is one ledger. Listed separately, the man who sells
+        // AND drives appeared twice carrying the same balance — once under الباعة and once under
+        // السواق — so the page totalled his debt twice and so did everything that joined the
+        // two lists to answer "مين إله أكتر مستحقات".
+        var sellers = BuildRows(partners.Where(p => PartnerRoles.HasSellerSide(p.Type)), SellerCurrent);
         var merchants = BuildRows(partners.Where(p => PartnerRoles.Has(p.Type, PartnerType.Merchant)), MerchantCurrent);
 
-        return new DebtsOverviewDto(farmers, drivers, merchants);
+        return new DebtsOverviewDto(sellers, merchants);
     }
 
     /// <summary>See the interface doc comment — matches Invoice.DriverId for a Driver partner,

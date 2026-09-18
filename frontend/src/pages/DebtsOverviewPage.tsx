@@ -15,12 +15,14 @@ import { CollapsibleRows } from "../components/CollapsibleRows";
 /// that type who currently has a non-zero balance (see backend PartnerService.GetDebtsOverviewAsync —
 /// zero-balance people are already excluded server-side). Remaining uses the exact same formula/sign
 /// convention as each person's own "كشف حساب" page, so drilling into any row here matches exactly.
-/// A partner of type "بائع/مشتري" (Both) can legitimately appear in BOTH the بائع and المشتري
-/// sections at once, each with its own independent balance — same as their two separate كشف حساب links.
+/// Two sections. باعة and سواق share one — they share one ledger, and the man who sells and
+/// drives used to be listed under both with the same figure, which read as two debts.
+///
+/// A partner who also BUYS does still appear in both sections, and that is a different thing: his
+/// buyer balance is a genuinely separate account, same as his two separate كشف حساب links.
 /// </summary>
 export function DebtsOverviewPage() {
-  const [farmers, setFarmers] = useState<PartnerDebtRow[]>([]);
-  const [drivers, setDrivers] = useState<PartnerDebtRow[]>([]);
+  const [sellers, setSellers] = useState<PartnerDebtRow[]>([]);
   const [merchants, setMerchants] = useState<PartnerDebtRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -35,8 +37,7 @@ export function DebtsOverviewPage() {
     setLoading(true);
     getDebtsOverview()
       .then((data) => {
-        setFarmers(data.farmers);
-        setDrivers(data.drivers);
+        setSellers(data.sellers);
         setMerchants(data.merchants);
       })
       .catch((err) => setError(apiErrorMessage(err, "فشل تحميل قيمة الديون")))
@@ -48,8 +49,7 @@ export function DebtsOverviewPage() {
 
   const q = search.trim().toLowerCase();
   const matches = (r: PartnerDebtRow) => q === "" || r.name.toLowerCase().includes(q);
-  const filteredFarmers = farmers.filter(matches);
-  const filteredDrivers = drivers.filter(matches);
+  const filteredSellers = sellers.filter(matches);
   const filteredMerchants = merchants.filter(matches);
 
   return (
@@ -77,23 +77,16 @@ export function DebtsOverviewPage() {
       {error && <div className="text-sm text-red-600 bg-red-50 rounded-md p-2 mb-4">{error}</div>}
 
       <div className="space-y-8">
+        {/* One section, one ledger. A driver and a seller are the same account here, and the
+            man who is both has one balance rather than the same figure printed twice. */}
         <DebtSection
-          title="الباعة"
-          rows={filteredFarmers}
+          title="الباعة والسواق"
+          rows={filteredSellers}
           linkFor={(id) => `/partners/${id}/farmer-account`}
           detailLinkFor={(id) => `/partners/${id}/farmer-invoice-detail`}
           owedToThemLabel="له من السوق"
           owedByThemLabel="عليه للسوق"
-          emptyText={search ? "لا يوجد باعة مطابقين للبحث" : "لا يوجد باعة عليهم أو لهم رصيد حاليًا"}
-        />
-        <DebtSection
-          title="السائقين"
-          rows={filteredDrivers}
-          linkFor={(id) => `/partners/${id}/farmer-account`}
-          detailLinkFor={(id) => `/partners/${id}/farmer-invoice-detail`}
-          owedToThemLabel="له من السوق"
-          owedByThemLabel="عليه للسوق"
-          emptyText={search ? "لا يوجد سواق مطابقين للبحث" : "لا يوجد سواق عليهم أو لهم رصيد حاليًا"}
+          emptyText={search ? "ما في حدا مطابق للبحث" : "ما في باعة أو سواق عليهم أو إلهم رصيد حاليًا"}
         />
         <DebtSection
           title="المشترين"

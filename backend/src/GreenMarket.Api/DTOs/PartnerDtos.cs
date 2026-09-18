@@ -39,10 +39,15 @@ public record UpdatePartnerRequest(
 /// their own screen and their own endpoint (see IContainerService / PartnerContainersDto)
 /// instead of riding along on the buyer's money DTO, where sacks and hand-recorded hand-outs
 /// would have had nowhere to go.</summary>
+/// <param name="OpeningBalance">His الرصيد الافتتاحي when it counts on THIS account. Null when
+/// it counts on his seller side instead — see Domain.Services.OpeningBalanceOwner.</param>
+/// <param name="OpeningBalanceElsewhere">The same figure when it is counted on his OTHER account,
+/// so this sheet can name it without adding it twice. Zero when there is nothing to say.</param>
 public record MerchantAccountDto(
     int PartnerId, string Name,
     decimal TotalPurchases, decimal TotalPaid, decimal Remaining,
     decimal? OpeningBalance,
+    decimal OpeningBalanceElsewhere,
     IReadOnlyList<StatementLineDto> Statement);
 
 /// <summary>Requirement doc §6: farmer/driver account = value sold or transport fees earned,

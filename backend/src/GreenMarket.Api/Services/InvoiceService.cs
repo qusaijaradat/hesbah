@@ -495,7 +495,15 @@ public class InvoiceService : IInvoiceService
         // Only for a buyer marked for it — see Partner.IncludeOpeningBalanceInInvoices for why an
         // old debt stays off a printed invoice unless someone says otherwise. His account still
         // carries it either way; this is about what the paper says.
-        var openingBalance = merchant?.IncludeOpeningBalanceInInvoices == true ? merchant.OpeningBalance ?? 0 : 0;
+        //
+        // And only when the figure is HIS BUYER balance at all. الرصيد الافتتاحي is one figure
+        // counted on one side (OpeningBalanceOwner): for a man who also sells it lives on his
+        // seller account, where a positive number means the market owes HIM. Printing it on his
+        // buyer invoice would add it a second time and with the sign reversed.
+        var openingBalance = merchant?.IncludeOpeningBalanceInInvoices == true
+                             && OpeningBalanceOwner.OnBuyerSide(merchant.Type)
+            ? merchant.OpeningBalance ?? 0
+            : 0;
 
         var otherInvoices = await _db.Invoices
             .Where(i => i.MerchantId == merchantId && i.Status == InvoiceStatus.Active && !excludeInvoiceIds.Contains(i.Id))

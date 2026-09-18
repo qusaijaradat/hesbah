@@ -281,7 +281,13 @@ public class PaymentService : IPaymentService
         //
         // The formulas are the same formulas, because they are now a function both sides call
         // (Domain.Services.PartnerBalance) rather than the same arithmetic typed out again.
-        var openingBalance = partner.OpeningBalance ?? 0;
+        // Counted once, on the side it belongs to — see OpeningBalanceOwner. Split here too, and
+        // not only on the account pages: this is what the "هذا الشخص كمان..." line on each page
+        // reads, and the figure a seller's sheet deducts.
+        var opening = partner.OpeningBalance ?? 0;
+        var onSeller = OpeningBalanceOwner.OnSellerSide(partner.Type);
+        var buyerOpening = onSeller ? 0m : opening;
+        var sellerOpening = onSeller ? opening : 0m;
 
         var purchases = await _db.Invoices
             .Where(i => i.MerchantId == partnerId && i.Status == InvoiceStatus.Active)
@@ -297,8 +303,8 @@ public class PaymentService : IPaymentService
             .Where(t => t.FarmerId == partnerId)
             .SumAsync(t => (decimal?)t.Amount) ?? 0m;
 
-        var buyerOwes = PartnerBalance.ForBuyer(openingBalance, purchases, paid);
-        var marketOwesSeller = PartnerBalance.ForSeller(openingBalance, ledgerNet);
+        var buyerOwes = PartnerBalance.ForBuyer(buyerOpening, purchases, paid);
+        var marketOwesSeller = PartnerBalance.ForSeller(sellerOpening, ledgerNet);
 
         return new PartnerBalancesDto(
             partner.Id, partner.Name,

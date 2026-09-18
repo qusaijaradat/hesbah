@@ -404,7 +404,12 @@ public class PartnerService : IPartnerService
                     InvoiceId: p.InvoiceId, InvoiceNumber: p.LinkedInvoiceNumber, Method: p.Method, Notes: p.Notes);
             }));
 
-        var openingBalance = partner.OpeningBalance ?? 0;
+        // الرصيد الافتتاحي is ONE figure for ONE person, counted ONCE — see OpeningBalanceOwner.
+        // A man who sells and also buys keeps it on his seller side; this sheet then names it
+        // and says where it is counted, instead of adding the same 500 a second time.
+        var countsHere = OpeningBalanceOwner.OnBuyerSide(partner.Type);
+        var openingBalance = countsHere ? partner.OpeningBalance ?? 0 : 0m;
+        var openingElsewhere = countsHere ? 0m : partner.OpeningBalance ?? 0;
         var statement = AccountStatementBuilder.Slice(
             AccountStatementBuilder.Build(entries, openingBalance, partner.CreatedAt), dateFrom, dateTo);
         var totalPurchases = invoices.Sum(i => i.GrandTotal);
@@ -422,7 +427,8 @@ public class PartnerService : IPartnerService
         return new MerchantAccountDto(
             partner.Id, partner.Name,
             totalPurchases, totalPaid, remaining,
-            partner.OpeningBalance,
+            countsHere ? partner.OpeningBalance : null,
+            openingElsewhere,
             statement.Select(ToStatementLineDto).ToList());
     }
 
@@ -633,11 +639,15 @@ public class PartnerService : IPartnerService
         decimal MerchantCurrent(int id) =>
             purchasesByMerchant.GetValueOrDefault(id) - paidByMerchant.GetValueOrDefault(id);
 
-        List<PartnerDebtRow> BuildRows(IEnumerable<PartnerBalanceSeed> people, Func<int, decimal> currentFn) =>
+        List<PartnerDebtRow> BuildRows(
+            IEnumerable<PartnerBalanceSeed> people, Func<int, decimal> currentFn,
+            Func<PartnerType?, bool> countsOldDebt) =>
             people
                 .Select(p =>
                 {
-                    var oldDebt = p.OpeningBalance ?? 0;
+                    // Only on the side it counts — the same person used to appear in both sections
+                    // carrying the same old balance, which the page then added up twice.
+                    var oldDebt = countsOldDebt(p.Type) ? p.OpeningBalance ?? 0 : 0m;
                     var current = currentFn(p.Id);
                     // Both formulas reduce to opening + current here: the buyer's subtraction is
                     // already inside MerchantCurrent, and the seller's ledger net inside
@@ -652,8 +662,10 @@ public class PartnerService : IPartnerService
         // AND drives appeared twice carrying the same balance — once under الباعة and once under
         // السواق — so the page totalled his debt twice and so did everything that joined the
         // two lists to answer "مين إله أكتر مستحقات".
-        var sellers = BuildRows(partners.Where(p => PartnerRoles.HasSellerSide(p.Type)), SellerCurrent);
-        var merchants = BuildRows(partners.Where(p => PartnerRoles.Has(p.Type, PartnerType.Merchant)), MerchantCurrent);
+        var sellers = BuildRows(partners.Where(p => PartnerRoles.HasSellerSide(p.Type)), SellerCurrent,
+            OpeningBalanceOwner.OnSellerSide);
+        var merchants = BuildRows(partners.Where(p => PartnerRoles.Has(p.Type, PartnerType.Merchant)), MerchantCurrent,
+            OpeningBalanceOwner.OnBuyerSide);
 
         return new DebtsOverviewDto(sellers, merchants);
     }

@@ -953,5 +953,50 @@ Console.WriteLine("== the buyer balance deducted at the foot of a seller’s she
 }
 
 Console.WriteLine();
+Console.WriteLine("== الرصيد الافتتاحي is counted once (OpeningBalanceOwner) ==");
+{
+    // One figure for one person — what was owed between him and the market before this system.
+    // It used to be added to BOTH of a partner’s accounts, so a man who sells and also buys had the
+    // same 500 counted twice.
+    var both = PartnerType.Farmer | PartnerType.Merchant;
+
+    Check("a seller keeps it on his seller account", OpeningBalanceOwner.OnSellerSide(PartnerType.Farmer));
+    Check("so does a driver", OpeningBalanceOwner.OnSellerSide(PartnerType.Driver));
+    Check("a buyer keeps it on his buyer account", OpeningBalanceOwner.OnBuyerSide(PartnerType.Merchant));
+    Check("a man who sells AND buys keeps it on his seller side", OpeningBalanceOwner.OnSellerSide(both));
+    Check("...and NOT on his buyer side, which is the whole fix", !OpeningBalanceOwner.OnBuyerSide(both));
+    Check("a driver who buys, the same", OpeningBalanceOwner.OnSellerSide(PartnerType.Driver | PartnerType.Merchant));
+
+    // Staff record a person before knowing what he is. The seller ledger is the only account that
+    // can hold a line at all — a buyer’s balance is computed from invoices and payments — so a
+    // figure landing on his buyer side would simply vanish.
+    Check("role not known yet => the seller side", OpeningBalanceOwner.OnSellerSide(null));
+
+    // Exactly one side, for every kind of person. This is the property, not the two rules above it.
+    foreach (var type in new PartnerType?[]
+    {
+        null, PartnerType.Farmer, PartnerType.Driver, PartnerType.Merchant,
+        PartnerType.Farmer | PartnerType.Merchant,
+        PartnerType.Driver | PartnerType.Merchant,
+        PartnerType.Farmer | PartnerType.Driver,
+        PartnerType.Farmer | PartnerType.Driver | PartnerType.Merchant,
+    })
+    {
+        var sides = (OpeningBalanceOwner.OnSellerSide(type) ? 1 : 0) + (OpeningBalanceOwner.OnBuyerSide(type) ? 1 : 0);
+        Check($"counted on exactly one side ({type?.ToString() ?? "غير محدد"})", sides == 1, $"got {sides}");
+    }
+
+    // What the man actually sees. 500 on a both-sided person used to show up on each account and
+    // then cancel itself on the sheet that nets them — three readings of one number.
+    const decimal opening = 500m, ledgerNet = 4_500m, purchases = 2_000m, paid = 0m;
+    var sellerSide = PartnerBalance.ForSeller(OpeningBalanceOwner.OnSellerSide(both) ? opening : 0m, ledgerNet);
+    var buyerSide = PartnerBalance.ForBuyer(OpeningBalanceOwner.OnBuyerSide(both) ? opening : 0m, purchases, paid);
+    Check("the market owes him his ledger plus the old balance", sellerSide == 5_000m, $"got {sellerSide}");
+    Check("and he owes his purchases, with no second copy of it", buyerSide == 2_000m, $"got {buyerSide}");
+    Check("the old balance appears exactly once across the two",
+          sellerSide - buyerSide == ledgerNet - purchases + opening, $"got {sellerSide - buyerSide}");
+}
+
+Console.WriteLine();
 Console.WriteLine($"RESULT: {passed} passed, {failed} failed");
 return failed == 0 ? 0 : 1;

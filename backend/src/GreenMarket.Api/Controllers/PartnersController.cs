@@ -160,7 +160,8 @@ public class PartnersController : ControllerBase
         // only ever the summary of it.
         var detail = await _partnerService.GetStatementDetailAsync(id, buyerSide: true, dateFrom, dateTo);
         var company = await GetCompanyInfoAsync();
-        var bytes = _exportService.GenerateAccountStatementPdf(account.Name, "كشف حساب مشتري", account.Statement, account.Remaining, company, dateFrom, dateTo, detail);
+        var bytes = _exportService.GenerateAccountStatementPdf(account.Name, "كشف حساب مشتري", account.Statement, account.Remaining, company, dateFrom, dateTo, detail,
+            openingBalanceElsewhere: account.OpeningBalanceElsewhere);
         return File(bytes, "application/pdf", "account-statement.pdf");
     }
 

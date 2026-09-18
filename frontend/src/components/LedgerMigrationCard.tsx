@@ -3,6 +3,8 @@ import { previewLedgerMigration, runLedgerMigration, undoLedgerMigration } from 
 import { apiErrorMessage } from "../api/client";
 import { formatCurrency, formatDateTime } from "../lib/format";
 import { CollapsibleRows } from "./CollapsibleRows";
+import { HOUSE_DRIVER_KEY, HouseDriverSetting } from "./HouseDriverSetting";
+import { listSettings } from "../api/settings";
 import type { LedgerMigrationPartnerRow, LedgerMigrationPreviewDto } from "../types";
 
 /** Typed in full before the button works. Not a flourish: see the note on the input below. */
@@ -27,12 +29,17 @@ export function LedgerMigrationCard() {
   const [typed, setTyped] = useState("");
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // The house-driver setting, read here rather than linked to, so the whole job is one screen.
+  const [houseDriver, setHouseDriver] = useState<string | null>(null);
 
   async function refresh() {
     setLoading(true);
     setError(null);
     try {
-      setPreview(await previewLedgerMigration());
+      // Together, because the preview is only readable next to the answer that shaped it.
+      const [next, settings] = await Promise.all([previewLedgerMigration(), listSettings()]);
+      setPreview(next);
+      setHouseDriver(settings.find((x) => x.key === HOUSE_DRIVER_KEY)?.value ?? "");
     } catch (err) {
       setError(apiErrorMessage(err, "تعذّر قراءة حالة النقل"));
       setPreview(null);
@@ -140,6 +147,24 @@ export function LedgerMigrationCard() {
             <p className="text-sm mb-2">
               انعمل النقل بتاريخ <strong>{formatDateTime(preview.lastRunAt)}</strong>.
             </p>
+          )}
+
+          {/* Asked here, not linked to, because the answer changes every figure underneath:
+              whoever is named here keeps his loads on the sellers. Sending somebody to the
+              settings list and back is how a preview gets read once and acted on twice. */}
+          {!undoing && houseDriver !== null && (
+            <div className="mb-3 border border-amber-200 bg-amber-50 rounded-md p-3">
+              <div className="text-sm font-semibold mb-1">قبل ما تنفّذ: مين سائق المصلحة؟</div>
+              <p className="text-xs text-gray-600 mb-2">
+                الشخص اللي بتدخّلو بخانة السائق لما تكون المصلحة هي اللي جابت البضاعة. فواتيرو بتضل مرصودة عند الباعة وما بتنتقل.
+                {" "}القوائم تحت بتتحدّث علطول لما تختار.
+              </p>
+              <HouseDriverSetting
+                value={houseDriver}
+                canEdit={!busy}
+                onSaved={(m) => { setMessage(m); void refresh(); }}
+              />
+            </div>
           )}
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-sm">

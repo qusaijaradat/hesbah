@@ -9,8 +9,7 @@ import { toMonochromePng } from "../lib/monochrome";
 import { MySessionsCard } from "../components/MySessionsCard";
 import { PushNotificationsCard } from "../components/PushNotificationsCard";
 import { LedgerMigrationCard } from "../components/LedgerMigrationCard";
-import { PartnerAutocomplete } from "../components/PartnerAutocomplete";
-import { getPartner } from "../api/partners";
+import { HOUSE_DRIVER_KEY, HouseDriverSetting } from "../components/HouseDriverSetting";
 
 const KEY_LABELS: Record<string, string> = {
   "commission.default_rate": "نسبة العمولة الافتراضية (مثال: 0.10 = 10%)",
@@ -28,65 +27,6 @@ const KEY_LABELS: Record<string, string> = {
   "market.house_driver_partner_id":
     "سائق المصلحة — الشخص اللي بتدخّله بخانة السائق لما تكون المصلحة هي اللي جابت البضاعة. لما يكون هو السائق، الرصيد بيضل عند البائع وما بتنحسب أجرة نقل. اتركه فارغًا وكل سائق بينحسب سائق برّاني",
 };
-
-/** The one setting that names a PERSON rather than holding a number or a piece of text. */
-const HOUSE_DRIVER_KEY = "market.house_driver_partner_id";
-
-/**
- * Picks the partner record standing for the market’s own vehicle.
- *
- * The setting stores an id, and a box asking for one would be unusable: nobody knows that the
- * market is partner 42, and a typo there would quietly start paying the wrong person. So the
- * same name-picker used everywhere else chooses the person, and the id never appears on screen.
- */
-function HouseDriverSetting({
-  value, canEdit, onSaved,
-}: {
-  value: string;
-  canEdit: boolean;
-  onSaved: (message: string) => void;
-}) {
-  const [partner, setPartner] = useState<{ id: number; name: string } | null>(null);
-  const [busy, setBusy] = useState(false);
-
-  // The stored id on its own says nothing — the name has to be fetched to show who it is.
-  useEffect(() => {
-    const id = Number(value);
-    if (!Number.isFinite(id) || id <= 0) { setPartner(null); return; }
-    let cancelled = false;
-    getPartner(id)
-      .then((p) => { if (!cancelled) setPartner({ id: p.id, name: p.name }); })
-      // A person who was deleted after being set here: show the field empty rather than
-      // an error, since empty is exactly what the setting now means in practice.
-      .catch(() => { if (!cancelled) setPartner(null); });
-    return () => { cancelled = true; };
-  }, [value]);
-
-  async function choose(next: { id: number; name: string } | null) {
-    setPartner(next);
-    setBusy(true);
-    try {
-      await updateSetting(HOUSE_DRIVER_KEY, next ? String(next.id) : "");
-      onSaved(next ? `تم الحفظ — سائق المصلحة هو ${next.name}` : "تم الحفظ — ما فيه سائق مصلحة محدد");
-    } catch (err) {
-      onSaved(apiErrorMessage(err, "فشل الحفظ"));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <div className={busy ? "opacity-60" : undefined}>
-      <PartnerAutocomplete
-        label="سائق المصلحة"
-        labelHidden
-        value={partner}
-        onChange={(p) => { if (canEdit) void choose(p); }}
-        placeholder="ابحاث عن الشخص بالاسم..."
-      />
-    </div>
-  );
-}
 
 const MAX_LOGO_BYTES = 3 * 1024 * 1024;
 const ALLOWED_LOGO_TYPES = ["image/png", "image/jpeg", "image/webp"];

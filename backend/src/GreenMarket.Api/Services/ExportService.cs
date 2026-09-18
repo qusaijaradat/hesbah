@@ -116,7 +116,10 @@ public interface IExportService
     /// showing part of an account can never be mistaken for the whole of it.</param>
     /// <param name="detail">The goods behind the figures, printed under the running balance. Null
     /// or empty prints the statement exactly as it was before.</param>
-    byte[] GenerateAccountStatementPdf(string partnerName, string title, IReadOnlyList<StatementLineDto> lines, decimal remaining, CompanyInfo company, DateTimeOffset? dateFrom = null, DateTimeOffset? dateTo = null, StatementDetailDto? detail = null);
+    /// <param name="buyerOwes">What the same person owes as a BUYER, deducted at the foot of a
+    /// SELLER's sheet — the same line, in the same words, that كشف بائع carries. Zero prints
+    /// nothing, and zero is what a person who does not buy always has.</param>
+    byte[] GenerateAccountStatementPdf(string partnerName, string title, IReadOnlyList<StatementLineDto> lines, decimal remaining, CompanyInfo company, DateTimeOffset? dateFrom = null, DateTimeOffset? dateTo = null, StatementDetailDto? detail = null, decimal buyerOwes = 0m);
 
     /// <summary>"قيمة الديون" drill-down print button — see GenerateInvoiceDetailPdf's own doc comment.</summary>
     byte[] GenerateInvoiceDetailPdf(string partnerName, string title, IReadOnlyList<PartnerInvoiceItemLineDto> lines, CompanyInfo company);
@@ -2414,7 +2417,7 @@ public class ExportService : IExportService
     /// partner's two independent statements are two separate print buttons, matching their two
     /// separate on-screen كشف حساب pages.
     /// </summary>
-    public byte[] GenerateAccountStatementPdf(string partnerName, string title, IReadOnlyList<StatementLineDto> lines, decimal remaining, CompanyInfo company, DateTimeOffset? dateFrom = null, DateTimeOffset? dateTo = null, StatementDetailDto? detail = null)
+    public byte[] GenerateAccountStatementPdf(string partnerName, string title, IReadOnlyList<StatementLineDto> lines, decimal remaining, CompanyInfo company, DateTimeOffset? dateFrom = null, DateTimeOffset? dateTo = null, StatementDetailDto? detail = null, decimal buyerOwes = 0m)
     {
         var forPeriod = dateFrom is not null || dateTo is not null;
         // What moved DURING the period, either way — the brought-forward line is not movement, it
@@ -2511,6 +2514,25 @@ public class ExportService : IExportService
                     col.Item().PaddingTop(4).AlignRight()
                         .Text(forPeriod ? $"الرصيد بآخر الفترة: ₪ {remaining:0.##}" : $"الرصيد الحالي (المتبقي): ₪ {remaining:0.##}")
                         .Bold().FontSize(13);
+
+                    // The same man's BUYER account, on his seller sheet — word for word the line كشف
+                    // بائع carries, because the two are printed for the same man on the same day and
+                    // used to end on different figures.
+                    //
+                    // The market settles him once, so what he owes on that side comes off what he is
+                    // owed on this one, on the page, rather than being worked out from two sheets held
+                    // side by side. Its own line and never netted quietly into the balance above it: a
+                    // figure that changes a payout has to be readable by the man being paid.
+                    if (buyerOwes != 0)
+                    {
+                        col.Item().PaddingTop(2).AlignRight()
+                            .Text(buyerOwes > 0
+                                ? $"رصيده كمشتري (عليه للمصلحة): - ₪ {buyerOwes:0.##}"
+                                : $"رصيده كمشتري (إله عند المصلحة): + ₪ {-buyerOwes:0.##}")
+                            .FontSize(10);
+                        col.Item().PaddingTop(2).AlignRight()
+                            .Text($"الإجمالي النهائي: ₪ {(remaining - buyerOwes):0.##}").Bold().FontSize(14);
+                    }
                     col.Item().PaddingTop(2).AlignCenter().Text(x =>
                     {
                         x.Span("صفحة ");

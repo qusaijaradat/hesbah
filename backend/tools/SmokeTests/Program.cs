@@ -919,5 +919,39 @@ Console.WriteLine("== a statement for a period (AccountStatementBuilder.Slice) =
 }
 
 Console.WriteLine();
+Console.WriteLine("== the buyer balance deducted at the foot of a seller’s sheet ==");
+{
+    // Both printed seller sheets — كشف بائع and the account page’s كشف حساب — take what the same
+    // man owes as a BUYER off what he is owed, because the market settles him once. They ask one
+    // method for it, and this is the rule that method applies.
+
+    // الرصيد الافتتاحي is ONE field shared by a partner’s two sides, so a balance query hands a
+    // pure seller his own opening balance back as a "buyer balance". Deducting that would take his
+    // own old credit off what he is owed, on a sheet he is paid from. The role decides, not the
+    // figure.
+    Check("a pure seller has no buyer side to deduct",
+          !SettlementSides.TouchesBuyer(PartnerType.Farmer));
+    Check("nor does a pure driver",
+          !SettlementSides.TouchesBuyer(PartnerType.Driver));
+    Check("nor somebody whose role is not recorded yet",
+          !SettlementSides.TouchesBuyer(null));
+
+    Check("a man who sells AND buys does",
+          SettlementSides.TouchesBuyer(PartnerType.Farmer | PartnerType.Merchant));
+    Check("and a driver who buys",
+          SettlementSides.TouchesBuyer(PartnerType.Driver | PartnerType.Merchant));
+
+    // What the sheet then prints. Owing on the buyer side comes OFF what he is owed; a credit
+    // there adds to it, and the line says which.
+    const decimal owedAsSeller = 5_000m;
+    Check("what he owes as a buyer comes off what he is owed",
+          owedAsSeller - 2_000m == 3_000m);
+    Check("a credit on the buyer side adds instead",
+          owedAsSeller - -800m == 5_800m);
+    Check("nothing on the buyer side leaves the figure alone",
+          owedAsSeller - 0m == owedAsSeller);
+}
+
+Console.WriteLine();
 Console.WriteLine($"RESULT: {passed} passed, {failed} failed");
 return failed == 0 ? 0 : 1;

@@ -334,7 +334,7 @@ var statementDetail = new StatementDetailDto(
     });
 Write("22-account-statement-detailed.pdf",
     export.GenerateAccountStatementPdf("المزارع سامي حسن", "كشف حساب بائع", statementLines, 1_829.19m, company,
-        null, null, statementDetail));
+        null, null, statementDetail, buyerOwes: 1_450m));
 
 Write("08-account-statement.pdf",
     export.GenerateAccountStatementPdf("محل أبو عمار للخضار", "كشف حساب مشتري", statementLines, 1829.19m, company));

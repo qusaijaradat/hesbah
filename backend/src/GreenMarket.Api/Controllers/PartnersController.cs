@@ -20,14 +20,17 @@ public class PartnersController : ControllerBase
     private readonly ISettingsService _settingsService;
     private readonly ICompanyLogoService _logoService;
     private readonly IContainerService _containerService;
+    // Only for the seller statement's foot, which deducts what the same man owes as a buyer.
+    private readonly IPaymentService _paymentService;
 
-    public PartnersController(IPartnerService partnerService, IExportService exportService, ISettingsService settingsService, ICompanyLogoService logoService, IContainerService containerService)
+    public PartnersController(IPartnerService partnerService, IExportService exportService, ISettingsService settingsService, ICompanyLogoService logoService, IContainerService containerService, IPaymentService paymentService)
     {
         _partnerService = partnerService;
         _exportService = exportService;
         _settingsService = settingsService;
         _logoService = logoService;
         _containerService = containerService;
+        _paymentService = paymentService;
     }
 
     [HttpGet]
@@ -178,8 +181,12 @@ public class PartnersController : ControllerBase
         // for with the haulage and the crate money on each. Both sections print only when they
         // have rows, so a plain seller and a plain driver each get theirs and not the other's.
         var detail = await _partnerService.GetStatementDetailAsync(id, buyerSide: false, dateFrom, dateTo);
+        // And what the same man owes as a buyer, deducted at the foot — through the one method that
+        // decides it, which كشف بائع on the print screen also calls. Two sheets for the same man on
+        // the same day ending on different figures is the whole reason this is not computed here.
+        var buyerOwes = await _paymentService.GetBuyerBalanceForSellerSheetAsync(id);
         var company = await GetCompanyInfoAsync();
-        var bytes = _exportService.GenerateAccountStatementPdf(account.Name, $"كشف حساب {roleLabel}", account.Statement, account.Remaining, company, dateFrom, dateTo, detail);
+        var bytes = _exportService.GenerateAccountStatementPdf(account.Name, $"كشف حساب {roleLabel}", account.Statement, account.Remaining, company, dateFrom, dateTo, detail, buyerOwes);
         return File(bytes, "application/pdf", "account-statement.pdf");
     }
 

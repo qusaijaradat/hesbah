@@ -29,6 +29,19 @@ public interface IPaymentService
     /// </summary>
     Task<IReadOnlyList<PaymentDto>> CreateSettlementAsync(CreateSettlementRequest request, int recordedByUserId);
 
+    /// <summary>
+    /// What the same person owes as a BUYER, for deduction at the foot of his seller statement.
+    ///
+    /// Its own method, called by BOTH printed seller sheets, because the alternative was each of
+    /// them reading a balance and deciding for itself — which is how one of them came to deduct a
+    /// debt that did not exist:
+    ///
+    /// Zero when the person does not buy at all. الرصيد الافتتاحي is ONE field shared by both
+    /// sides of a partner, so asking a pure seller for his buyer balance hands back his opening
+    /// balance — and a sheet that deducted it would take his own old credit off what he is owed.
+    /// </summary>
+    Task<decimal> GetBuyerBalanceForSellerSheetAsync(int partnerId);
+
     /// <summary>Single-payment lookup for the edit form — previously the edit screen had to fetch
     /// and filter the whole paged list to find one row instead of asking for it directly.</summary>
     Task<PaymentDto> GetAsync(int id);
@@ -290,6 +303,18 @@ public class PaymentService : IPaymentService
         return new PartnerBalancesDto(
             partner.Id, partner.Name,
             buyerOwes, marketOwesSeller);
+    }
+
+    public async Task<decimal> GetBuyerBalanceForSellerSheetAsync(int partnerId)
+    {
+        var partner = await _db.Partners.FindAsync(partnerId)
+            ?? throw new NotFoundAppException("Partner", partnerId);
+
+        // The same test a تسوية uses to decide whether the amount lands on his buyer account at
+        // all. Somebody with no buyer side has no buyer debt, whatever a balance query returns.
+        if (!SettlementSides.TouchesBuyer(partner.Type)) return 0m;
+
+        return (await GetBalancesAsync(partnerId)).BuyerOwes;
     }
 
     /// <summary>

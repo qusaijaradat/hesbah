@@ -287,8 +287,10 @@ public class InvoicesController : ControllerBase
         // Same "current account balance right now" convention as the driver manifest above.
         var previousBalance = (await _partnerService.GetFarmerAccountAsync(farmerId)).Remaining;
         // And the same man's buyer side, deducted at the foot of the sheet — zero for somebody who
-        // only sells, which is most of them, and the line then does not print at all.
-        var buyerOwes = (await _paymentService.GetBalancesAsync(farmerId)).BuyerOwes;
+        // only sells, which is most of them, and the line then does not print at all. Through the
+        // one method that decides it, which the account page's own كشف حساب also calls: the two
+        // sheets are for the same man on the same day and must not end on different figures.
+        var buyerOwes = await _paymentService.GetBuyerBalanceForSellerSheetAsync(farmerId);
         var company = await GetCompanyInfoAsync();
         var bytes = _exportService.GenerateFarmerStatementPdf(statement, dateFrom, dateTo, company, previousBalance, buyerOwes);
         return File(bytes, "application/pdf", "farmer-statement.pdf");

@@ -68,7 +68,18 @@ export async function createExpense(payload: { date: string; description: string
 }
 
 /**
- * "سند قبض" — the slip the person who took the money signs, for one expense.
+ * "سند قبض" — the proof a buyer, a seller or a driver asks for that a payment happened.
+ *
+ * Two identical copies on the sheet, one for each side, with a cut line between them. Optional
+ * by design: there is a button on the row and nothing is printed unless somebody asks for it.
+ */
+export async function printPaymentReceiptPdf(id: number) {
+  const { data } = await apiClient.get(`/payments/${id}/receipt/pdf`, { responseType: "blob" });
+  return data as Blob;
+}
+
+/**
+ * The same slip for an expense — money out of the till, signed for by whoever took it.
  *
  * Two identical copies on the sheet, one for each side, with a cut line between them. Printing
  * an old one again is just reading, so it is gated on إظهار المصاريف rather than on creating.

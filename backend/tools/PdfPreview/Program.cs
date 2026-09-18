@@ -260,6 +260,23 @@ var statementLines = new List<StatementLineDto>
     new(DateTimeOffset.Now.AddDays(-4), "دفعة", -700m, 500m, null, null, null, null, "شيك", "شيك رقم 88231"),
     new(DateTimeOffset.Now, "فاتورة", 1329.19m, 1829.19m, 101, "INV-2026-000042", 1108.69m, 110.87m, null, null),
 };
+// The سند قبض a buyer asks for: money IN, so it reads "استلمنا من".
+Write("20-payment-receipt-buyer.pdf",
+    export.GeneratePaymentReceiptPdf(
+        new PaymentDto(91, 7, "محل أبو عمار للخضار", PaymentDirection.FromMerchant, 1_500m,
+            DateTimeOffset.Now, "نقدًا", "دفعة على حساب الأسبوع", 101, "INV-2026-000042",
+            null, null, null, null, null),
+        company));
+
+// Money OUT to a seller, paid by a cheque still in collection — the slip says so under the amount,
+// because a voucher for money that has not moved is proof of something that has not happened.
+Write("21-payment-receipt-seller-check.pdf",
+    export.GeneratePaymentReceiptPdf(
+        new PaymentDto(92, 9, "المزارع سامي حسن", PaymentDirection.ToFarmer, 5_000m,
+            DateTimeOffset.Now, "شيك", null, null, null,
+            DateTimeOffset.Now.AddDays(30), "88231", CheckClearanceStatus.Pending, null, null),
+        company));
+
 // The سند قبض for one expense — two copies on the sheet, one for each side.
 Write("18-expense-receipt.pdf",
     export.GenerateExpenseReceiptPdf(

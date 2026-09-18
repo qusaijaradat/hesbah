@@ -92,6 +92,23 @@ public class PaymentsController : ControllerBase
     [RequirePermission(PermissionKeys.PaymentsView)]
     public async Task<ActionResult<PaymentDto>> Get(int id) => Ok(await _paymentService.GetAsync(id));
 
+    /// <summary>
+    /// "سند قبض" for one payment — the proof a buyer, a seller or a driver asks for that the
+    /// money changed hands. Optional: printed when somebody asks, not produced on every payment.
+    ///
+    /// PaymentsView, not Create: printing the slip again for a payment recorded last week is
+    /// reading, and whoever is asked for it is not necessarily whoever recorded it.
+    /// </summary>
+    [HttpGet("{id:int}/receipt/pdf")]
+    [RequirePermission(PermissionKeys.PaymentsView)]
+    public async Task<IActionResult> ReceiptPdf(int id)
+    {
+        var payment = await _paymentService.GetAsync(id);
+        var company = await GetCompanyInfoAsync();
+        var bytes = _exportService.GeneratePaymentReceiptPdf(payment, company);
+        return File(bytes, "application/pdf", $"receipt-payment-{payment.Id}.pdf");
+    }
+
     [HttpPost]
     [RequirePermission(PermissionKeys.PaymentsCreate)]
     public async Task<ActionResult<PaymentDto>> Create(CreatePaymentRequest request) =>

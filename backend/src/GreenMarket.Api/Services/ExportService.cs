@@ -125,8 +125,12 @@ public interface IExportService
     /// <summary>"مصاريف الحسبة" tab print button — see GenerateExpensesListPdf's own doc comment.</summary>
     byte[] GenerateExpensesListPdf(IReadOnlyList<ExpenseDto> expenses, CompanyInfo company, DateTimeOffset? dateFrom, DateTimeOffset? dateTo);
 
-    /// <summary>The سند قبض for one expense — see its own doc comment.</summary>
+    /// <summary>The سند قبض for one expense — see ReceiptVoucherPdf.</summary>
     byte[] GenerateExpenseReceiptPdf(ExpenseDto expense, CompanyInfo company);
+
+    /// <summary>The سند قبض for one payment — the proof a buyer, seller or driver asks for
+    /// that the money changed hands. See ReceiptVoucherPdf.</summary>
+    byte[] GeneratePaymentReceiptPdf(PaymentDto payment, CompanyInfo company);
 
     /// <summary>"بضاعة الباعة" print button — see GenerateFarmerGoodsStockPdf's own doc comment.</summary>
     byte[] GenerateFarmerGoodsStockPdf(string farmerName, IReadOnlyList<GoodsStockRow> stock, CompanyInfo company);
@@ -2830,7 +2834,36 @@ public class ExportService : IExportService
     /// number is its own row id — so a slip in somebody's file can always be traced back to the
     /// one row it came from.
     /// </summary>
-    public byte[] GenerateExpenseReceiptPdf(ExpenseDto expense, CompanyInfo company)
+    /// <summary>
+    /// What one سند قبض says. Filled in differently by the expense and the payment voucher, and
+    /// rendered by exactly one piece of code below, so the two slips cannot drift into two
+    /// documents that look like the same document.
+    /// </summary>
+    /// <param name="Number">Printed as "رقم السند" — the row's own id, so a slip in somebody's file
+    /// traces back to exactly one record.</param>
+    /// <param name="PartyLabel">Who the money moved between, in the direction it moved:
+    /// "استلمنا من" when it came in, "صُرف إلى" when it went out.</param>
+    /// <param name="PartyName">Null leaves a rule to write a name on — money is often handed to
+    /// somebody who is not on any list, and that line is the point of a paper voucher.</param>
+    /// <param name="Caveat">Printed under the amount when the money has NOT actually moved yet — an
+    /// uncleared cheque. A voucher that says "استلمنا" for a cheque still in collection is a proof
+    /// of something that has not happened.</param>
+    private sealed record ReceiptVoucher(
+        string Number, DateTimeOffset Date, decimal Amount,
+        string PartyLabel, string? PartyName,
+        string Purpose, string? Detail, string? Caveat);
+
+    /// <summary>
+    /// "سند قبض" — the slip somebody signs for money that changed hands.
+    ///
+    /// TWO identical copies on the sheet, above and below a cut line: نسخة المصلحة and نسخة
+    /// المستلم. That is how a voucher is actually used — both sides keep one, signed the same
+    /// minute — and printing one copy per sheet would have meant either printing twice or one of
+    /// the two parties holding nothing.
+    ///
+    /// Nothing here is computed. Every figure is the record as it was written.
+    /// </summary>
+    private byte[] ReceiptVoucherPdf(ReceiptVoucher voucher, CompanyInfo company)
     {
         var document = Document.Create(container =>
         {
@@ -2842,17 +2875,17 @@ public class ExportService : IExportService
 
                 page.Content().ContentFromRightToLeft().Column(sheet =>
                 {
-                    ExpenseReceiptCopy(sheet.Item(), expense, company, "نسخة المصلحة");
+                    ReceiptVoucherCopy(sheet.Item(), voucher, company, "نسخة المصلحة");
 
-                    // The cut line, said in words as well as drawn: a dashed rule alone gets
-                    // folded along instead of cut, and then both copies live on one sheet.
+                    // The cut line, said with a symbol as well as drawn: a plain rule gets folded
+                    // along instead of cut, and then both copies live on one sheet.
                     sheet.Item().PaddingVertical(14).Row(row =>
                     {
                         row.AutoItem().PaddingLeft(6).Text("✂").FontSize(10).FontColor(PrintInk.Secondary);
                         row.RelativeItem().AlignMiddle().LineHorizontal(0.5f).LineColor(PrintInk.Secondary);
                     });
 
-                    ExpenseReceiptCopy(sheet.Item(), expense, company, "نسخة المستلم");
+                    ReceiptVoucherCopy(sheet.Item(), voucher, company, "نسخة المستلم");
                 });
             });
         });
@@ -2860,9 +2893,70 @@ public class ExportService : IExportService
         return document.GeneratePdf();
     }
 
+    /// <summary>The سند قبض for one expense — money out of the till, signed for by whoever took
+    /// it. "صُرف إلى" because that is the direction: the market is paying.</summary>
+    public byte[] GenerateExpenseReceiptPdf(ExpenseDto expense, CompanyInfo company) =>
+        ReceiptVoucherPdf(new ReceiptVoucher(
+            Number: expense.Id.ToString(),
+            Date: expense.Date,
+            Amount: expense.Amount,
+            PartyLabel: "صُرف إلى",
+            PartyName: expense.EmployeeName,
+            Purpose: expense.Description,
+            Detail: string.IsNullOrWhiteSpace(expense.Category) ? null : $"البند: {expense.Category}",
+            Caveat: null),
+            company);
+
+    /// <summary>
+    /// The سند قبض for one payment — the proof a buyer, a seller or a driver asks for that the
+    /// money changed hands. Optional, and printed when somebody asks for it.
+    ///
+    /// The wording follows the DIRECTION. Money in from a buyer is "استلمنا من" and the slip is
+    /// his proof that he paid; money out to a seller or a driver is "صُرف إلى" and he signs it as
+    /// the one who received. One document either way, because it is one event.
+    ///
+    /// A cheque still in collection says so on the slip. Handing somebody a voucher that reads
+    /// "استلمنا خمسة آلاف" for a cheque that has not cleared is proof of something that has not
+    /// happened yet — and the balance in this system agrees with the caveat, not with the amount
+    /// (see PaymentRules).
+    /// </summary>
+    public byte[] GeneratePaymentReceiptPdf(PaymentDto payment, CompanyInfo company)
+    {
+        var incoming = payment.Direction == PaymentDirection.FromMerchant;
+
+        var purpose = payment.InvoiceNumber is not null
+            ? $"دفعة على الفاتورة رقم {payment.InvoiceNumber}"
+            : "دفعة على الحساب";
+
+        var detail = new List<string>();
+        if (!string.IsNullOrWhiteSpace(payment.Method)) detail.Add($"طريقة الدفع: {payment.Method}");
+        if (!string.IsNullOrWhiteSpace(payment.CheckNumber)) detail.Add($"شيك رقم: {payment.CheckNumber}");
+        if (payment.CheckDueDate is not null) detail.Add($"استحقاق: {payment.CheckDueDate.Value:yyyy-MM-dd}");
+        if (!string.IsNullOrWhiteSpace(payment.Notes)) detail.Add(payment.Notes!);
+
+        // Only when the money has not moved. A cleared cheque and cash are both simply money.
+        var caveat = payment.CheckStatus switch
+        {
+            CheckClearanceStatus.Pending => "شيك قيد التحصيل — ما بينحسب من الحساب إلا لما يُصرف",
+            CheckClearanceStatus.Bounced => "شيك مرتجع — ما اندفع",
+            _ => null
+        };
+
+        return ReceiptVoucherPdf(new ReceiptVoucher(
+            Number: payment.Id.ToString(),
+            Date: payment.Date,
+            Amount: payment.Amount,
+            PartyLabel: incoming ? "استلمنا من" : "صُرف إلى",
+            PartyName: payment.PartnerName,
+            Purpose: purpose,
+            Detail: detail.Count > 0 ? string.Join(" — ", detail) : null,
+            Caveat: caveat),
+            company);
+    }
+
     /// <summary>One of the two copies on a سند قبض sheet. Identical in every respect but the
     /// word naming whose copy it is — two copies that differed anywhere would be two documents.</summary>
-    private static void ExpenseReceiptCopy(IContainer container, ExpenseDto expense, CompanyInfo company, string copyLabel)
+    private static void ReceiptVoucherCopy(IContainer container, ReceiptVoucher voucher, CompanyInfo company, string copyLabel)
     {
         container.Border(1).BorderColor(PrintInk.Text).Padding(14).Column(col =>
         {
@@ -2880,8 +2974,8 @@ public class ExportService : IExportService
             });
             col.Item().PaddingTop(2).Row(row =>
             {
-                row.RelativeItem().Text($"رقم السند: {expense.Id}").FontSize(10);
-                row.AutoItem().Text($"التاريخ: {expense.Date:yyyy-MM-dd}").FontSize(10);
+                row.RelativeItem().Text($"رقم السند: {voucher.Number}").FontSize(10);
+                row.AutoItem().Text($"التاريخ: {voucher.Date:yyyy-MM-dd}").FontSize(10);
             });
             col.Item().PaddingTop(6).LineHorizontal(1).LineColor(PrintInk.Text);
 
@@ -2889,23 +2983,30 @@ public class ExportService : IExportService
             col.Item().PaddingTop(8).Text(text =>
             {
                 text.Span("المبلغ: ").FontSize(12);
-                text.Span($"₪ {expense.Amount:0.##}").Bold().FontSize(20);
+                text.Span($"₪ {voucher.Amount:0.##}").Bold().FontSize(20);
             });
 
-            col.Item().PaddingTop(8).Text($"وذلك عن: {expense.Description}").FontSize(12);
-            if (!string.IsNullOrWhiteSpace(expense.Category))
-                col.Item().PaddingTop(2).Text($"البند: {expense.Category}").FontSize(10).FontColor(PrintInk.Secondary);
+            // Said right under the amount, where it cannot be missed: the figure above is not
+            // money that has moved yet.
+            if (voucher.Caveat is not null)
+                col.Item().PaddingTop(2).Text(voucher.Caveat).Bold().FontSize(10).FontColor(PrintInk.Deduction);
+
+            col.Item().PaddingTop(8).Text($"وذلك عن: {voucher.Purpose}").FontSize(12);
+            if (voucher.Detail is not null)
+                col.Item().PaddingTop(2).Text(voucher.Detail).FontSize(10).FontColor(PrintInk.Secondary);
 
             // Filled in when the expense names an employee, and a rule to write on when it does
             // not — the money often goes to somebody who is not on the staff list. Drawn, not typed
             // as underscores: a row of dashes is what a pen skids off.
             col.Item().PaddingTop(10).Row(row =>
             {
-                row.AutoItem().Text("اسم المستلم: ").FontSize(12);
-                if (string.IsNullOrWhiteSpace(expense.EmployeeName))
+                // PaddingLeft, not a trailing space: the name sits physically to the LEFT of the
+                // label on an RTL line, and a space at the end of a Text is trimmed away.
+                row.AutoItem().PaddingLeft(5).Text($"{voucher.PartyLabel}:").FontSize(12);
+                if (string.IsNullOrWhiteSpace(voucher.PartyName))
                     row.RelativeItem().PaddingTop(14).LineHorizontal(0.5f).LineColor(PrintInk.Text);
                 else
-                    row.RelativeItem().Text(expense.EmployeeName).Bold().FontSize(12);
+                    row.RelativeItem().Text(voucher.PartyName).Bold().FontSize(12);
             });
 
             col.Item().PaddingTop(22).Row(row =>

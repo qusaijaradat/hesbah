@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import {
-  createExpense, createPayment, deleteExpense, deletePayment, printExpenseReceiptPdf,
+  createExpense, createPayment, deleteExpense, deletePayment, printExpenseReceiptPdf, printPaymentReceiptPdf,
   listExpenses, listPayments, printExpensesPdf, printPaymentsListPdf, updateExpense, updatePayment,
 } from "../api/payments";
 import { listEmployees } from "../api/employees";
@@ -79,7 +79,9 @@ export function PaymentsPage() {
 }
 
 function PaymentsTab({ canCreate, canEdit, canDelete }: { canCreate: boolean; canEdit: boolean; canDelete: boolean }) {
-  const showActionsColumn = canEdit || canDelete;
+  // Always shown: every row carries a "سند قبض" button, and printing the slip is reading — it
+  // needs no edit or delete permission. Same on the expenses table below.
+  const showActionsColumn = true;
   const [payments, setPayments] = useState<PaymentDto[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<PaymentDto | null>(null);
@@ -152,9 +154,16 @@ function PaymentsTab({ canCreate, canEdit, canDelete }: { canCreate: boolean; ca
    * market does not have, and the half that goes missing is always the phone's.
    */
   function rowActions(p: PaymentDto) {
-    if (!canEdit && !canDelete) return null;
     return (
-      <span className="flex flex-wrap gap-3">
+      <span className="flex flex-wrap gap-3 items-center">
+        {/* Optional and on demand: a buyer, a seller or a driver asks for proof that the money
+            changed hands, and the slip is printed then — not produced on every payment. */}
+        <PdfActions
+          fetchPdf={() => printPaymentReceiptPdf(p.id)}
+          fileName={`receipt-payment-${p.id}.pdf`}
+          shareTitle={`سند قبض رقم ${p.id} — ${p.partnerName}`}
+          printLabel="🧾 سند قبض"
+        />
         {canEdit && <button className="btn-link text-brand-700 text-sm hover:underline" onClick={() => setEditing(p)}>تعديل</button>}
         {canDelete && <button className="btn-link text-red-500 text-sm hover:underline" onClick={() => handleDelete(p)}>حذف</button>}
       </span>
@@ -232,7 +241,7 @@ function PaymentsTab({ canCreate, canEdit, canDelete }: { canCreate: boolean; ca
               { label: "الفاتورة", value: <InvoiceLink invoiceId={p.invoiceId} invoiceNumber={p.invoiceNumber} /> },
               { label: "طريقة الدفع", value: p.method || "—" },
               { label: "ملاحظات", value: p.notes || "—" },
-              ...(canEdit || canDelete ? [{ label: "", value: rowActions(p) }] : []),
+              { label: "", value: rowActions(p) },
             ]}
             empty="لا توجد دفعات"
           />

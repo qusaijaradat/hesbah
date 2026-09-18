@@ -424,7 +424,15 @@ public class ExportService : IExportService
                         {
                             table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(item.WoodPrice > 0 ? item.WoodPrice.ToString("0.##") : "—");
                         }
-                        table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(unpriced ? "غير مسعّر" : item.LineTotal.ToString("0.##"));
+                        // "مجموع كلي" means the line AND its wood, the way the market's own invoices have
+                        // always read it — عجمي at 18 with 8 of wood totals 26. It used to print the line
+                        // alone, so the column sat next to a wood column it did not include and a
+                        // buyer adding it up reached a figure lower than the total underneath.
+                        //
+                        // The buyer's copy only. The seller is not paid سعر الخشب — the buyer pays it
+                        // and the market keeps it (see InvoiceCharge) — so adding it into a total on
+                        // HIS sheet would overstate what he is owed.
+                        table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(unpriced ? "غير مسعّر" : (item.LineTotal + item.WoodPrice).ToString("0.##"));
                     }
                 });
 
@@ -895,9 +903,9 @@ public class ExportService : IExportService
                         if (sellerMoneyGoesToDriver)
                         {
                             columns.RelativeColumn(5);   // البائع
-                            columns.RelativeColumn(2);   // الصناديق
-                            columns.RelativeColumn(2);   // عدد الفواتير
-                            columns.RelativeColumn(3);   // المستحق له
+                            columns.RelativeColumn(2);   // العدد
+                            columns.RelativeColumn(2);   // الخشب
+                            columns.RelativeColumn(3);   // المبلغ
                         }
                         else
                         {
@@ -914,17 +922,19 @@ public class ExportService : IExportService
                     {
                         if (sellerMoneyGoesToDriver)
                         {
-                            // One line per person, and the only figure on it is the one he is handed.
-                            // The sale value and the commission were here and are gone: the amount is
+                            // The market's own long-standing sheet, column for column: the seller,
+                            // the crates, the wood, and the one figure he is handed for that person.
+                            // The sale value and the commission are deliberately not here — المبلغ is
                             // already net of both, and what the driver is doing with this sheet is
                             // paying people, not explaining the market's cut to them. The seller who
                             // wants that detail has his own statement, which carries all of it.
                             header.Cell().Element(HeaderCell).AlignRight().Text("البائع");
-                            // The crates are a count he hands over physically, alongside the money —
-                            // the one other thing that has to be right per person at the handover.
-                            header.Cell().Element(HeaderCell).AlignRight().Text("الصناديق");
-                            header.Cell().Element(HeaderCell).AlignRight().Text("فواتير");
-                            header.Cell().Element(HeaderCell).AlignRight().Text("المستحق له");
+                            header.Cell().Element(HeaderCell).AlignRight().Text("العدد");
+                            // Cargo, not his money: the buyer pays سعر الخشب and the market keeps it
+                            // (see InvoiceCharge). It is on the sheet because the crates are what he
+                            // physically hands over, and the footer adds nothing from this column.
+                            header.Cell().Element(HeaderCell).AlignRight().Text("الخشب");
+                            header.Cell().Element(HeaderCell).AlignRight().Text("المبلغ");
                         }
                         else
                         {
@@ -948,12 +958,20 @@ public class ExportService : IExportService
                             // the rows stop adding up to the total he is handed.
                             var sellerName = string.IsNullOrWhiteSpace(group.Key.Name) ? "بدون بائع" : group.Key.Name!;
                             var groupBoxes = group.Sum(i => i.Items.Sum(it => it.BoxQuantity));
+                            var groupWood = group.Sum(i => i.WoodTotal);
                             table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(sellerName).Bold();
                             table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(groupBoxes > 0 ? groupBoxes.ToString("0.###") : "—");
-                            table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(group.Count().ToString());
+                            table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(groupWood > 0 ? groupWood.ToString("0.##") : "—");
                             table.Cell().Element(c => DataCell(c, shaded)).AlignRight()
                                 .Text($"₪ {group.Sum(i => i.NetDueToFarmer):0.##}").Bold();
                         }
+
+                        // The مجموع row inside the table, where the market has always read it — so each
+                        // column can be checked against the rows above it without turning the page.
+                        table.Cell().Element(c => DataCell(c, true)).AlignRight().Text("المجموع").Bold();
+                        table.Cell().Element(c => DataCell(c, true)).AlignRight().Text(totalBoxes > 0 ? totalBoxes.ToString("0.###") : "—").Bold();
+                        table.Cell().Element(c => DataCell(c, true)).AlignRight().Text(woodTotal > 0 ? woodTotal.ToString("0.##") : "—").Bold();
+                        table.Cell().Element(c => DataCell(c, true)).AlignRight().Text($"₪ {sellersTotal:0.##}").Bold();
                     }
                     else
                     {
@@ -975,29 +993,33 @@ public class ExportService : IExportService
                 page.Footer().ContentFromRightToLeft().Column(col =>
                 {
                     col.Item().LineHorizontal(1).LineColor(PrintInk.Text);
-                    if (totalBoxes > 0)
-                        col.Item().AlignRight().Text($"إجمالي الصناديق: {totalBoxes:0.###}").FontSize(9);
-                    if (totalWeightKg > 0)
-                        col.Item().AlignRight().Text($"إجمالي الوزن: {totalWeightKg:0.###} كغم").FontSize(9);
-                    if (woodTotal > 0)
-                        col.Item().AlignRight().Text($"إجمالي سعر الخشب (لا يُضاف لمستحقات السائق): ₪ {woodTotal:0.##}").FontSize(9).FontColor(PrintInk.Secondary);
 
                     if (sellerMoneyGoesToDriver)
                     {
-                        // The sum written out as an addition rather than as one figure, because
-                        // this is the sheet he settles from: what he owes the sellers, then what is
-                        // his on top of it, then the single amount he is handed for the lot.
+                        // Four lines and nothing else. The crate, weight and wood totals used to be
+                        // here too and are gone: they are columns in the table now, and a footer
+                        // that restates the table is a footer nobody reads to the end of.
+                        //
+                        // Written as an addition rather than as one figure, because this is the
+                        // sheet he settles from: what he owes the sellers, then what is his on top
+                        // of it, then the single amount he is handed for the lot.
                         col.Item().PaddingTop(4).AlignRight()
-                            .Text($"إجمالي المستحق للباعة (يوزّعه عليهم): ₪ {sellersTotal:0.##}").FontSize(11);
-                        col.Item().AlignRight().Text($"أجرة النقل (له): + ₪ {transportTotal:0.##}").FontSize(11);
-                        col.Item().AlignRight().Text($"أجرة الصناديق (له): + ₪ {totalDriverBoxFee:0.##}").FontSize(11);
+                            .Text($"المجموع الكلي: ₪ {sellersTotal:0.##}").FontSize(12);
+                        col.Item().AlignRight().Text($"أجرة النقل: + ₪ {transportTotal:0.##}").FontSize(12);
+                        col.Item().AlignRight().Text($"رسوم الصناديق: + ₪ {totalDriverBoxFee:0.##}").FontSize(12);
                         col.Item().PaddingTop(4).AlignRight()
-                            .Text($"الإجمالي المقبوض من المصلحة: ₪ {grandTotal:0.##}").Bold().FontSize(13);
-                        col.Item().AlignRight()
-                            .Text($"الباقي للسائق بعد توزيع الباعة: ₪ {(transportTotal + totalDriverBoxFee):0.##}").FontSize(10).FontColor(PrintInk.Secondary);
+                            .Text($"الإجمالي الكامل: ₪ {grandTotal:0.##}").Bold().FontSize(14);
                     }
                     else
                     {
+                        // The market's own vehicle brought it, so there is no seller money on this
+                        // sheet — it stays the haulage note it has always been, cargo totals and all.
+                        if (totalBoxes > 0)
+                            col.Item().AlignRight().Text($"إجمالي الصناديق: {totalBoxes:0.###}").FontSize(9);
+                        if (totalWeightKg > 0)
+                            col.Item().AlignRight().Text($"إجمالي الوزن: {totalWeightKg:0.###} كغم").FontSize(9);
+                        if (woodTotal > 0)
+                            col.Item().AlignRight().Text($"إجمالي سعر الخشب (لا يُضاف لمستحقات السائق): ₪ {woodTotal:0.##}").FontSize(9).FontColor(PrintInk.Secondary);
                         if (totalDriverBoxFee > 0)
                             col.Item().AlignRight().Text($"إجمالي أجرة الصناديق (تُضاف لمستحقات السائق): ₪ {totalDriverBoxFee:0.##}").FontSize(9);
                         col.Item().PaddingTop(4).AlignRight().Text($"الإجمالي المستحق للسائق (أجرة النقل + أجرة الصناديق): ₪ {grandTotal:0.##}").Bold().FontSize(13);
@@ -1752,7 +1774,8 @@ public class ExportService : IExportService
             card.Content().ExtendVertical().Column(col =>
             {
                 if (driverCarriesProduce) return;
-                CardItemsTable(col, part.Items, isDriverCopy: role == InvoicePrintRole.Driver);
+                CardItemsTable(col, part.Items, isDriverCopy: role == InvoicePrintRole.Driver,
+                    woodInTotal: role == InvoicePrintRole.Merchant);
             });
 
             card.After().Column(col =>
@@ -1863,7 +1886,11 @@ public class ExportService : IExportService
     /// DriverItemBreakdownRow). Shared by InvoiceCard and MergedInvoiceCard so a single invoice
     /// and a merged same-day group print their lines identically.
     /// </summary>
-    private static void CardItemsTable(ColumnDescriptor column, IReadOnlyList<InvoiceItemDto> items, bool isDriverCopy)
+    /// <param name="woodInTotal">The buyer's copy only: "مجموع كلي" then means the line AND its
+    /// wood, matching the market's own invoices and the full A4 copy. The seller is not paid
+    /// سعر الخشب, so his column is the line alone and is named "الإجمالي" instead — two
+    /// different figures, two different names.</param>
+    private static void CardItemsTable(ColumnDescriptor column, IReadOnlyList<InvoiceItemDto> items, bool isDriverCopy, bool woodInTotal)
     {
         column.Item().PaddingTop(4).Table(table =>
         {
@@ -1876,19 +1903,15 @@ public class ExportService : IExportService
                 // on-screen invoice already use, so a line reads the same everywhere.
                 columns.RelativeColumn(2);
                 columns.RelativeColumn(2);
-                // "س.الخشب" per line on every copy (explicit request) — the wood/crate charge
-                // is money on all three sides (the buyer pays it, and the seller AND driver are
-                // each paid it in full), so every copy shows which line it came from instead of
-                // only a lump total in the footer. Same column the full A4 invoice already has.
-                columns.RelativeColumn(2);
                 // A driver hauls the goods, he doesn't sell them — there IS no per-item price
-                // on his side (see DriverItemBreakdownRow), so his card lists cargo only and
-                // drops the price/total columns entirely instead of printing empty ones.
-                if (!isDriverCopy)
-                {
-                    columns.RelativeColumn(2);
-                    columns.RelativeColumn(2);
-                }
+                // on his side, so his card lists cargo only and drops the price/total columns
+                // entirely instead of printing empty ones.
+                if (!isDriverCopy) columns.RelativeColumn(2);
+                // "س.الخشب" per line on every copy (explicit request), and AFTER السعر — the same
+                // column order as the full A4 invoice and as the market's own paper invoices, so
+                // a line reads the same wherever it is printed.
+                columns.RelativeColumn(2);
+                if (!isDriverCopy) columns.RelativeColumn(2);
             });
 
             table.Header(header =>
@@ -1896,12 +1919,10 @@ public class ExportService : IExportService
                 header.Cell().Element(MiniHeaderCell).AlignRight().Text("الصنف");
                 header.Cell().Element(MiniHeaderCell).AlignRight().Text("العدد");
                 header.Cell().Element(MiniHeaderCell).AlignRight().Text("الوزن");
+                if (!isDriverCopy) header.Cell().Element(MiniHeaderCell).AlignRight().Text("السعر");
                 header.Cell().Element(MiniHeaderCell).AlignRight().Text("س.الخشب");
                 if (!isDriverCopy)
-                {
-                    header.Cell().Element(MiniHeaderCell).AlignRight().Text("السعر");
-                    header.Cell().Element(MiniHeaderCell).AlignRight().Text("الإجمالي");
-                }
+                    header.Cell().Element(MiniHeaderCell).AlignRight().Text(woodInTotal ? "مجموع كلي" : "الإجمالي");
             });
 
             for (var i = 0; i < items.Count; i++)
@@ -1914,10 +1935,12 @@ public class ExportService : IExportService
                 table.Cell().Element(c => MiniDataCell(c, shaded)).AlignRight().Text(item.ItemName).Bold();
                 table.Cell().Element(c => MiniDataCell(c, shaded)).AlignRight().Text(CountCell(item.Quantity));
                 table.Cell().Element(c => MiniDataCell(c, shaded)).AlignRight().Text(WeightCell(item.WeightKg));
+                if (!isDriverCopy)
+                    table.Cell().Element(c => MiniDataCell(c, shaded)).AlignRight().Text(unpriced ? "غير مسعّر" : item.PricePerUnit.ToString("0.##"));
                 table.Cell().Element(c => MiniDataCell(c, shaded)).AlignRight().Text(item.WoodPrice > 0 ? item.WoodPrice.ToString("0.##") : "—");
                 if (isDriverCopy) continue;
-                table.Cell().Element(c => MiniDataCell(c, shaded)).AlignRight().Text(unpriced ? "غير مسعّر" : item.PricePerUnit.ToString("0.##"));
-                table.Cell().Element(c => MiniDataCell(c, shaded)).AlignRight().Text(unpriced ? "غير مسعّر" : item.LineTotal.ToString("0.##"));
+                var lineTotal = woodInTotal ? item.LineTotal + item.WoodPrice : item.LineTotal;
+                table.Cell().Element(c => MiniDataCell(c, shaded)).AlignRight().Text(unpriced ? "غير مسعّر" : lineTotal.ToString("0.##"));
             }
         });
     }
@@ -1989,7 +2012,8 @@ public class ExportService : IExportService
                 col.Item().PaddingTop(4).LineHorizontal(0.5f).LineColor(PrintInk.Text);
             });
 
-            card.Content().ExtendVertical().Column(col => CardItemsTable(col, part.Items, isDriverCopy: false));
+            // The merged card is a buyer's, so "مجموع كلي" includes the wood here too.
+            card.Content().ExtendVertical().Column(col => CardItemsTable(col, part.Items, isDriverCopy: false, woodInTotal: true));
 
             card.After().Column(col =>
             {

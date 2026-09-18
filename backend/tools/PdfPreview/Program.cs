@@ -312,8 +312,8 @@ var statementDetail = new StatementDetailDto(
     },
     new List<StatementDriverRow>
     {
-        new("المزارع أبو زياد", 3, 52m, 240m, 26m),
-        new("المزارع سامي حسن", 1, 10m, 80m, 5m),
+        new("المزارع أبو زياد", 52m, 240m, 26m),
+        new("المزارع سامي حسن", 10m, 80m, 5m),
     });
 Write("22-account-statement-detailed.pdf",
     export.GenerateAccountStatementPdf("المزارع سامي حسن", "كشف حساب بائع", statementLines, 1_829.19m, company,

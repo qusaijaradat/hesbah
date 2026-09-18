@@ -586,7 +586,7 @@ public class PartnerService : IPartnerService
         var driverRows = drove
             .GroupBy(x => x.SellerName ?? "بدون بائع")
             .Select(g => new StatementDriverRow(
-                g.Key, g.Count(), g.Sum(x => x.Boxes), g.Sum(x => x.TransportFee), g.Sum(x => x.BoxFee)))
+                g.Key, g.Sum(x => x.Boxes), g.Sum(x => x.TransportFee), g.Sum(x => x.BoxFee)))
             .OrderByDescending(r => r.TransportFee + r.BoxFee)
             .ToList();
 

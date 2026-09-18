@@ -111,9 +111,13 @@ public record StatementDetailLine(
 /// A driver has no per-item price — he earns أجرة نقل per invoice and أجرة صناديق per crate — so
 /// his detail is not a list of goods but a list of PEOPLE: whose produce he brought, how many
 /// crates, and what he earned on it.
+///
+/// No invoice count. Nothing the market hands somebody carries one: it is a fact about our data
+/// entry rather than about his money, and it starts an argument about paperwork in the middle of
+/// one about a balance.
 /// </summary>
 public record StatementDriverRow(
-    string SellerName, int Invoices, decimal Boxes, decimal TransportFee, decimal BoxFee);
+    string SellerName, decimal Boxes, decimal TransportFee, decimal BoxFee);
 
 /// <summary>
 /// Everyone with a non-zero balance right now, in the two sections the market actually has.

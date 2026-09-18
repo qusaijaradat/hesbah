@@ -547,7 +547,11 @@ public class ExportService : IExportService
                         header.Cell().Element(HeaderCell).AlignRight().Text("الوزن");
                         header.Cell().Element(HeaderCell).AlignRight().Text("السعر");
                         header.Cell().Element(HeaderCell).AlignRight().Text("س.الخشب");
-                        header.Cell().Element(HeaderCell).AlignRight().Text("مجموع كلي");
+                        // "الإجمالي", not "مجموع كلي" as on the buyer's copy: there the column includes
+                        // the wood beside it, here it cannot — the seller is not paid سعر الخشب — and
+                        // two different figures should not share a name across two sheets of the same
+                        // invoice. The footer says as much in words.
+                        header.Cell().Element(HeaderCell).AlignRight().Text("الإجمالي");
                     });
 
                     for (var i = 0; i < invoice.Items.Count; i++)
@@ -1860,7 +1864,7 @@ public class ExportService : IExportService
                             col.Item().PaddingTop(2).LineHorizontal(0.5f).LineColor(PrintInk.Text);
                             col.Item().AlignRight().Text($"المستحق لك كسائق: ₪ {driverDue:0.##}").FontSize(9);
                             col.Item().PaddingTop(2).AlignRight()
-                                .Text($"الإجمالي : ₪ {InvoiceCharge.ForSellerDriver(invoice.TotalValue, invoice.Commission, invoice.TransportFee, invoice.DriverBoxFeeTotal):0.##}")
+                                .Text($"الإجمالي المقبوض: ₪ {InvoiceCharge.ForSellerDriver(invoice.TotalValue, invoice.Commission, invoice.TransportFee, invoice.DriverBoxFeeTotal):0.##}")
                                 .Bold().FontSize(14);
                             break;
                         }
@@ -2622,7 +2626,9 @@ public class ExportService : IExportService
             table.ColumnsDefinition(columns =>
             {
                 columns.RelativeColumn(5);   // البائع
-                columns.RelativeColumn(2);   // فواتير
+                // No invoice count anywhere on a document somebody is handed: it is a fact about
+                // our data entry, not about his money, and it invites an argument about paperwork
+                // in the middle of one about a balance.
                 columns.RelativeColumn(2);   // الصناديق
                 columns.RelativeColumn(3);   // أجرة النقل
                 columns.RelativeColumn(3);   // أجرة الصناديق
@@ -2632,7 +2638,6 @@ public class ExportService : IExportService
             table.Header(header =>
             {
                 header.Cell().Element(HeaderCell).AlignRight().Text("البائع");
-                header.Cell().Element(HeaderCell).AlignRight().Text("فواتير");
                 header.Cell().Element(HeaderCell).AlignRight().Text("الصناديق");
                 header.Cell().Element(HeaderCell).AlignRight().Text("أجرة النقل");
                 header.Cell().Element(HeaderCell).AlignRight().Text("أجرة الصناديق");
@@ -2644,7 +2649,6 @@ public class ExportService : IExportService
                 var row = rows[i];
                 var shaded = i % 2 == 1;
                 table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(row.SellerName);
-                table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(row.Invoices.ToString());
                 table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(row.Boxes > 0 ? row.Boxes.ToString("0.###") : "—");
                 table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(row.TransportFee.ToString("0.##"));
                 table.Cell().Element(c => DataCell(c, shaded)).AlignRight().Text(row.BoxFee.ToString("0.##"));

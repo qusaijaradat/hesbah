@@ -1176,7 +1176,6 @@ export function BulkPrintPage() {
                 <PartnerLink partnerId={g.merchantId} name={g.merchantName} side="merchant" label="فتح ↗" />
               )}
               details={(g) => [
-                { label: "عدد الفواتير", value: g.invoiceIds.length },
                 { label: "", value: (
                   <button
                     className="btn-secondary"
@@ -1195,7 +1194,6 @@ export function BulkPrintPage() {
               <tr>
                 <th>المشتري</th>
                 <th>اليوم</th>
-                <th>عدد الفواتير</th>
                 <th>الإجمالي</th>
                 <th></th>
               </tr>
@@ -1205,7 +1203,6 @@ export function BulkPrintPage() {
                 <tr key={g.key}>
                   <td><PartnerLink partnerId={g.merchantId} name={g.merchantName} side="merchant" /></td>
                   <td className="text-sm text-gray-500">{g.day}</td>
-                  <td>{g.invoiceIds.length}</td>
                   <td className="font-semibold">{formatCurrency(g.total)}</td>
                   <td>
                     <button
@@ -1237,7 +1234,6 @@ export function BulkPrintPage() {
                 <PartnerLink partnerId={g.farmerId} name={g.farmerName} side="seller" label="فتح ↗" />
               )}
               details={(g) => [
-                { label: "عدد الفواتير", value: g.invoiceIds.length },
                 { label: "", value: (
                   <button
                     className="btn-secondary"
@@ -1255,7 +1251,6 @@ export function BulkPrintPage() {
             <thead>
               <tr>
                 <th>البائع</th>
-                <th>عدد الفواتير</th>
                 <th>الإجمالي</th>
                 <th></th>
               </tr>
@@ -1264,7 +1259,6 @@ export function BulkPrintPage() {
               {farmerGroups.map((g) => (
                 <tr key={g.farmerId}>
                   <td><PartnerLink partnerId={g.farmerId} name={g.farmerName} side="seller" /></td>
-                  <td>{g.invoiceIds.length}</td>
                   <td className="font-semibold">{formatCurrency(g.total)}</td>
                   <td>
                     <button
@@ -1298,7 +1292,6 @@ export function BulkPrintPage() {
                 <PartnerLink partnerId={g.driverId} name={g.driverName} side="seller" label="فتح ↗" />
               )}
               details={(g) => [
-                { label: "عدد الفواتير", value: g.invoiceIds.length },
                 { label: "", value: (
                   <div className="flex flex-wrap gap-2">
                     <PdfActions
@@ -1324,7 +1317,6 @@ export function BulkPrintPage() {
             <thead>
               <tr>
                 <th>السائق</th>
-                <th>عدد الفواتير</th>
                 <th>المستحق للسائق</th>
                 <th></th>
               </tr>
@@ -1333,7 +1325,6 @@ export function BulkPrintPage() {
               {driverGroups.map((g) => (
                 <tr key={g.key}>
                   <td className="font-medium"><PartnerLink partnerId={g.driverId} name={g.driverName} side="seller" /></td>
-                  <td>{g.invoiceIds.length}</td>
                   <td className="font-semibold">{formatCurrency(g.totalDriverDue)}</td>
                   <td>
                     <div className="flex flex-wrap gap-2">

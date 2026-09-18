@@ -22,8 +22,10 @@ public class InvoicesController : ControllerBase
     private readonly ICompanyLogoService _logoService;
     private readonly IPartnerService _partnerService;
     private readonly IGoodsReturnService _goodsReturnService;
+    // Only for the seller statement's foot, which deducts what the same man owes as a buyer.
+    private readonly IPaymentService _paymentService;
 
-    public InvoicesController(IInvoiceService invoiceService, IExportService exportService, ISettingsService settingsService, ICompanyLogoService logoService, IPartnerService partnerService, IGoodsReturnService goodsReturnService)
+    public InvoicesController(IInvoiceService invoiceService, IExportService exportService, ISettingsService settingsService, ICompanyLogoService logoService, IPartnerService partnerService, IGoodsReturnService goodsReturnService, IPaymentService paymentService)
     {
         _invoiceService = invoiceService;
         _exportService = exportService;
@@ -31,6 +33,7 @@ public class InvoicesController : ControllerBase
         _logoService = logoService;
         _partnerService = partnerService;
         _goodsReturnService = goodsReturnService;
+        _paymentService = paymentService;
     }
 
     [HttpGet]
@@ -269,8 +272,11 @@ public class InvoicesController : ControllerBase
 
         // Same "current account balance right now" convention as the driver manifest above.
         var previousBalance = (await _partnerService.GetFarmerAccountAsync(farmerId)).Remaining;
+        // And the same man's buyer side, deducted at the foot of the sheet — zero for somebody who
+        // only sells, which is most of them, and the line then does not print at all.
+        var buyerOwes = (await _paymentService.GetBalancesAsync(farmerId)).BuyerOwes;
         var company = await GetCompanyInfoAsync();
-        var bytes = _exportService.GenerateFarmerStatementPdf(statement, dateFrom, dateTo, company, previousBalance);
+        var bytes = _exportService.GenerateFarmerStatementPdf(statement, dateFrom, dateTo, company, previousBalance, buyerOwes);
         return File(bytes, "application/pdf", "farmer-statement.pdf");
     }
 

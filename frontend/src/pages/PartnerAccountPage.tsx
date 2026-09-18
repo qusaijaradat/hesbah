@@ -14,6 +14,7 @@ import { useAuth } from "../auth/AuthContext";
 import { PdfActions } from "../components/PdfActions";
 import { CollapsibleRows } from "../components/CollapsibleRows";
 import { OtherSideNotice } from "../components/OtherSideNotice";
+import { SettlementCard } from "../components/SettlementCard";
 
 
 
@@ -58,6 +59,8 @@ export function FarmerAccountPage() {
       {/* Already folded into "المتبقي" above — shown on its own only when set, so the number is
           traceable back to what was manually entered vs. what came from actual transactions. */}
 
+
+      <SettlementCard partnerId={Number(id)} onChanged={refresh} />
 
       <AdjustmentSection partnerId={Number(id)} roleLabel={roleLabel} onChanged={refresh} />
 
@@ -122,12 +125,16 @@ function AdjustmentSection({ partnerId, roleLabel, onChanged }: { partnerId: num
     <div className="card p-4 mb-4">
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div>
-          <div className="font-semibold text-gray-700">تسوية / تعويض</div>
+          {/* Called تعويض and not تسوية, now that the card above owns that word. They are two
+              different things and the names have to say so: this one is money the market gives a
+              seller because his produce lost its price, and it touches ONE account. */}
+          <div className="font-semibold text-gray-700">تعويض / تصحيح رصيد</div>
           <p className="text-xs text-gray-500 mt-1">
-            لتعويض ال{roleLabel} عن بضاعة انخسف سعرها، أو لتصحيح رصيد. بتظهر كسطر مستقل بالكشف، وما بتأثر على العمولة.
+            لتعويض ال{roleLabel} عن بضاعة انخسف سعرها، أو لتصحيح رصيد. بتظهر كسطر مستقل بالكشف،
+            وما بتأثر على العمولة. بتنزل على <span className="font-semibold">هالحساب لحالو</span> — مش على حسابه كمشتري.
           </p>
         </div>
-        {!open && <button className="btn-secondary text-sm" onClick={() => setOpen(true)}>➕ تسجيل تسوية</button>}
+        {!open && <button className="btn-secondary text-sm" onClick={() => setOpen(true)}>➕ تسجيل تعويض</button>}
       </div>
 
       {open && (
@@ -193,6 +200,10 @@ export function MerchantAccountPage() {
         <StatCard label="المدفوع" value={formatCurrency(account.totalPaid)} tone="positive" />
         <StatCard label="المتبقي" value={formatCurrency(account.remaining)} tone="negative" />
       </div>
+
+      {/* The same control the seller side has. A buyer's balance is computed from his invoices
+          and payments, so a settlement here is an ordinary payment — which is exactly what it is. */}
+      <SettlementCard partnerId={Number(id)} onChanged={refresh} />
 
 
       {/* Crates and sacks have their own screen now — they are counts, they apply to sellers and

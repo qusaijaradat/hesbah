@@ -27,7 +27,7 @@ public interface IPaymentService
     /// until now the market handed him cash for the one and collected cash back for the other, on
     /// the same day, in opposite directions.
     /// </summary>
-    Task<IReadOnlyList<PaymentDto>> CreateOffsetAsync(CreateOffsetRequest request, int recordedByUserId);
+    Task<IReadOnlyList<PaymentDto>> CreateSettlementAsync(CreateSettlementRequest request, int recordedByUserId);
 
     /// <summary>Single-payment lookup for the edit form — previously the edit screen had to fetch
     /// and filter the whole paged list to find one row instead of asking for it directly.</summary>
@@ -289,33 +289,42 @@ public class PaymentService : IPaymentService
 
         return new PartnerBalancesDto(
             partner.Id, partner.Name,
-            buyerOwes, marketOwesSeller,
-            OffsetRules.Maximum(buyerOwes, marketOwesSeller));
+            buyerOwes, marketOwesSeller);
     }
 
-    public async Task<IReadOnlyList<PaymentDto>> CreateOffsetAsync(
-        CreateOffsetRequest request, int recordedByUserId)
+    /// <summary>
+    /// An amount written straight onto somebody's account — see Domain.Services.SettlementSides
+    /// for what this replaced and why.
+    ///
+    /// No ceiling and no "there is nothing to settle". Both used to be here, and both were
+    /// correct: settling more than the market owes him leaves him owing it as a seller, out of
+    /// nothing. They are gone because the market asked for them to be — it knows what it agreed
+    /// with the man in front of it, and a screen that refuses the figure he agreed to is a screen
+    /// nobody opens. A settlement is an ordinary payment either way, so an amount that overshoots
+    /// shows up as a credit on the account and is deleted like any other payment.
+    ///
+    /// What it will NOT do is invent an account. The amount lands on the sides the person
+    /// actually has, and the screen says which before you press save.
+    /// </summary>
+    public async Task<IReadOnlyList<PaymentDto>> CreateSettlementAsync(
+        CreateSettlementRequest request, int recordedByUserId)
     {
-        var balances = await GetBalancesAsync(request.PartnerId);
-
         if (request.Amount <= 0)
-            throw new ValidationAppException("قيمة المقاصّة لازم تكون أكبر من صفر.");
-        if (balances.MaxOffset <= 0)
-            throw new ValidationAppException(
-                "ما في إشي للمقاصّة: لازم يكون عليه مبلغ كمشتري وإله مبلغ كبائع بنفس الوقت.");
-        if (!OffsetRules.IsAllowed(request.Amount, balances.BuyerOwes, balances.MarketOwesSeller))
-            throw new ValidationAppException(
-                $"أكبر مبلغ ممكن تقاصّه هو {balances.MaxOffset:N2} — عليه {balances.BuyerOwes:N2} كمشتري وإله {balances.MarketOwesSeller:N2} كبائع.");
+            throw new ValidationAppException("قيمة التسوية لازم تكون أكبر من صفر.");
 
-        // Both roles, because both halves are about to be written against them. Typing somebody's
-        // name into either field has always granted the role (see GetWithRoleAsync); this is the
-        // same statement, made once for each side.
-        await _partners.GetWithRoleAsync(request.PartnerId, PartnerType.Merchant, "مشتري");
-        var partner = await _partners.GetWithRoleAsync(request.PartnerId, PartnerType.Farmer, "بائع");
+        var partner = await _db.Partners.FindAsync(request.PartnerId)
+            ?? throw new NotFoundAppException("Partner", request.PartnerId);
+
+        // Read, never granted. Elsewhere in this file typing a name into a field IS the statement
+        // that the person plays that role — but nobody is naming a role here, and turning a plain
+        // seller into a buyer as a side effect of settling his account would put a credit on a
+        // page that should not exist for him.
+        var onSeller = SettlementSides.TouchesSeller(partner.Type);
+        var onBuyer = SettlementSides.TouchesBuyer(partner.Type);
 
         var group = Guid.NewGuid();
         var notes = string.IsNullOrWhiteSpace(request.Notes)
-            ? "مقاصّة بين حسابه كمشتري وحسابه كبائع"
+            ? "تسوية على الحساب"
             : request.Notes!.Trim();
 
         Payment Half(PaymentDirection direction) => new()
@@ -324,45 +333,47 @@ public class PaymentService : IPaymentService
             Direction = direction,
             Amount = request.Amount,
             Date = request.Date,
-            Method = OffsetMethod,
+            Method = SettlementMethod,
             Notes = notes,
             RecordedByUserId = recordedByUserId,
             OffsetGroupId = group
             // No invoice link and no check: a مقاصّة settles a BALANCE, and there is no paper.
         };
 
-        var fromBuyer = Half(PaymentDirection.FromMerchant);
-        var toSeller = Half(PaymentDirection.ToFarmer);
+        var fromBuyer = onBuyer ? Half(PaymentDirection.FromMerchant) : null;
+        var toSeller = onSeller ? Half(PaymentDirection.ToFarmer) : null;
 
-        // One transaction over all three writes, for the reason CreateAsync gives: a half-written
-        // offset is worse than none, because it silently moves one balance and not the other.
+        // One transaction over every write, for the reason CreateAsync gives: half a settlement
+        // is worse than none, because it silently moves one balance and not the other.
         await using var transaction = await _db.Database.BeginTransactionAsync();
 
-        _db.Payments.Add(fromBuyer);
-        _db.Payments.Add(toSeller);
+        if (fromBuyer is not null) _db.Payments.Add(fromBuyer);
+        if (toSeller is not null) _db.Payments.Add(toSeller);
         await _db.SaveChangesAsync(); // need toSeller.Id for the ledger row below
 
         // The seller half posts to the internal ledger exactly as an ordinary payment to a seller
         // does — same table, same sign, same shape — so his statement reads it without knowing
-        // anything about offsets. Never a check, so it always counts immediately.
-        _db.FarmerTransactions.Add(new FarmerTransaction
+        // anything about settlements. Never a check, so it always counts immediately.
+        if (toSeller is not null)
         {
-            FarmerId = partner.Id,
-            Type = FarmerTransactionType.Payment,
-            PaymentId = toSeller.Id,
-            Date = toSeller.Date,
-            Amount = -toSeller.Amount,
-            Notes = notes
-        });
-        await _db.SaveChangesAsync();
+            _db.FarmerTransactions.Add(new FarmerTransaction
+            {
+                FarmerId = partner.Id,
+                Type = FarmerTransactionType.Payment,
+                PaymentId = toSeller.Id,
+                Date = toSeller.Date,
+                Amount = -toSeller.Amount,
+                Notes = notes
+            });
+            await _db.SaveChangesAsync();
+        }
         await transaction.CommitAsync();
 
         // Buyer side first: it is the half that answers "what happened to what he owed me".
-        return new[]
-        {
-            ToDto(fromBuyer, partner.Name, null),
-            ToDto(toSeller, partner.Name, null),
-        };
+        return new[] { fromBuyer, toSeller }
+            .Where(p => p is not null)
+            .Select(p => ToDto(p!, partner.Name, null))
+            .ToList();
     }
 
     /// <summary>Direction tells us which side of the ledger a partner belongs on: ToFarmer =>
@@ -457,5 +468,12 @@ public class PaymentService : IPaymentService
     /// It matters that this reads as its own thing rather than as "نقدي": somebody reconciling a
     /// day's cash must be able to see at a glance that these two rows moved no money at all.
     /// </summary>
-    public const string OffsetMethod = "مقاصّة";
+    /// <summary>
+    /// What a settlement row reads as in the "طريقة الدفع" column. Not a payment method at all — no
+    /// cash, no cheque — which is exactly why it says so instead of leaving the column blank.
+    ///
+    /// Rows written before this was called "تسوية" carry the old word; a one-time relabel in
+    /// Program.cs brings them over, so there is one spelling in the table and not two.
+    /// </summary>
+    public const string SettlementMethod = "تسوية";
 }

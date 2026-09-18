@@ -25,7 +25,7 @@ import type { ColumnFilterSpec } from "../lib/columnFilters";
 import { ColumnFilterRow, ColumnFilterSummary } from "../components/ColumnFilterRow";
 import { BulkEditDialog } from "../components/BulkEditDialog";
 import type { BulkEditField } from "../components/BulkEditDialog";
-import { OffsetDialog } from "../components/OffsetDialog";
+
 
 // Module-level: useColumnFilters memoizes on the array identity, and these never vary.
 //
@@ -79,9 +79,6 @@ export function PaymentsPage() {
 }
 
 function PaymentsTab({ canCreate, canEdit, canDelete }: { canCreate: boolean; canEdit: boolean; canDelete: boolean }) {
-  // "مقاصّة" — see components/OffsetDialog. It writes two ordinary payments, so it belongs to
-  // payments.create like any other.
-  const [offsetting, setOffsetting] = useState(false);
   const showActionsColumn = canEdit || canDelete;
   const [payments, setPayments] = useState<PaymentDto[]>([]);
   const [showForm, setShowForm] = useState(false);
@@ -170,11 +167,8 @@ function PaymentsTab({ canCreate, canEdit, canDelete }: { canCreate: boolean; ca
         {canCreate && (
           <button className="btn-primary" onClick={() => setShowForm(true)}>+ تسجيل دفعة</button>
         )}
-        {/* For the man who is a seller and a buyer at once — the market has always had them, and
-            until now it counted cash out to him and back in from him on the same day. */}
-        {canCreate && (
-          <button className="btn-secondary" onClick={() => setOffsetting(true)}>⇄ مقاصّة</button>
-        )}
+        {/* No "مقاصّة" button any more. Settling a balance now happens on the person's own
+            account page, where his balances already are — see components/SettlementCard. */}
         <Link to="/checks" className="btn-secondary">📅 الشيكات</Link>
         <PdfActions
           fetchPdf={() => printPaymentsListPdf({})}
@@ -308,7 +302,7 @@ function PaymentsTab({ canCreate, canEdit, canDelete }: { canCreate: boolean; ca
                       cash has to be able to see at a glance that this one moved none. */}
                   {p.offsetGroupId && (
                     <span className="inline-block text-xs bg-brand-50 text-brand-800 border border-brand-200 rounded px-1.5 py-0.5 me-2">
-                      مقاصّة — بدون كاش
+                      تسوية — بدون كاش
                     </span>
                   )}
                   {p.notes || "—"}
@@ -327,10 +321,6 @@ function PaymentsTab({ canCreate, canEdit, canDelete }: { canCreate: boolean; ca
 
       {showForm && <PaymentFormModal onClose={() => setShowForm(false)} onSaved={refresh} />}
       {editing && <PaymentEditModal payment={editing} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); refresh(); }} />}
-
-      {offsetting && (
-        <OffsetDialog onClose={() => setOffsetting(false)} onSaved={() => { setOffsetting(false); refresh(); }} />
-      )}
     </div>
   );
 }

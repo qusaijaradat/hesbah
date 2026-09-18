@@ -303,11 +303,13 @@ Same("a seller-driver statement nets out to seller + driver",
      statementSales - statementCommission + ownLoadStatement.DriverSide.BoxFeeTotal);
 Write("14-seller-driver-statement.pdf",
     export.GenerateFarmerStatementPdf(ownLoadStatement, DateTimeOffset.Now.AddDays(-7), DateTimeOffset.Now,
-        company, previousBalance: 260m));
+        company, previousBalance: 260m, buyerOwes: 0m));
 
+// The man who sells AND buys: what he owes on the other side comes off the foot of this sheet,
+// on its own line, so the figure he is handed is the figure he can check.
 Write("09-farmer-statement.pdf",
     export.GenerateFarmerStatementPdf(farmerStatement, DateTimeOffset.Now.AddDays(-7), DateTimeOffset.Now,
-        company, previousBalance: 260m));
+        company, previousBalance: 260m, buyerOwes: 1_450m));
 
 // The same statement with no transport and no opening balance — the case that used to print no
 // أجرة النقل line at all, leaving a reader unable to tell a zero from an omission.
@@ -316,7 +318,7 @@ Write("10-farmer-statement-no-transport.pdf",
         new FarmerStatementDto(
             9, "المزارع سامي حسن", TransportTotal: 0m,
             new FarmerStatementDriverSide(0m, 0m), farmerStatementLines),
-        DateTimeOffset.Now.AddDays(-7), DateTimeOffset.Now, company, previousBalance: 0m));
+        DateTimeOffset.Now.AddDays(-7), DateTimeOffset.Now, company, previousBalance: 0m, buyerOwes: 0m));
 
 
 // المخالات — the market's total per kind, who is holding what, and the log behind both.

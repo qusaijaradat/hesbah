@@ -653,46 +653,38 @@ Console.WriteLine("== when a signed-in device is still signed in (SessionRules) 
 }
 
 Console.WriteLine();
-Console.WriteLine("== settling a seller who also buys (OffsetRules) ==");
+Console.WriteLine("== writing an amount straight onto an account (SettlementSides) ==");
 {
-    // The market's own case: the same man brings produce in the morning and buys something else in
-    // the afternoon. `buyerOwes` is his merchant balance (positive = he owes the market);
-    // `marketOwesSeller` is his seller balance (positive = the market owes him).
+    // The market settles a balance by saying so — "خلص، صافينا" — and wants the amount on the
+    // account. The only rule left is WHICH accounts it lands on, because the same man often has
+    // two: he brings produce in the morning and buys a crate of something else in the afternoon.
 
-    Check("owes 2,000 as a buyer, owed 5,000 as a seller => 2,000 can be settled",
-          OffsetRules.Maximum(2_000m, 5_000m) == 2_000m, $"got {OffsetRules.Maximum(2_000m, 5_000m)}");
-    Check("...and the other way round, the seller side is the ceiling",
-          OffsetRules.Maximum(5_000m, 2_000m) == 2_000m, $"got {OffsetRules.Maximum(5_000m, 2_000m)}");
-    Check("equal on both sides settles the lot",
-          OffsetRules.Maximum(3_000m, 3_000m) == 3_000m);
+    Check("a plain seller => his seller account",
+          SettlementSides.TouchesSeller(PartnerType.Farmer) && !SettlementSides.TouchesBuyer(PartnerType.Farmer));
+    Check("a driver => his seller-side account too, the same ledger",
+          SettlementSides.TouchesSeller(PartnerType.Driver) && !SettlementSides.TouchesBuyer(PartnerType.Driver));
+    Check("a plain buyer => his buyer account only",
+          SettlementSides.TouchesBuyer(PartnerType.Merchant) && !SettlementSides.TouchesSeller(PartnerType.Merchant));
 
-    // Nothing to settle. Each of these would otherwise invent a debt out of nothing: paying him
-    // money the market does not owe, or collecting money he does not owe.
-    Check("owes nothing as a buyer => nothing to settle", OffsetRules.Maximum(0m, 5_000m) == 0m);
-    Check("the market owes him nothing => nothing to settle", OffsetRules.Maximum(2_000m, 0m) == 0m);
-    Check("neither side => nothing to settle", OffsetRules.Maximum(0m, 0m) == 0m);
+    // The case the old مقاصّة screen existed for, now with no screen: one amount, both sides.
+    var both = PartnerType.Farmer | PartnerType.Merchant;
+    Check("sells AND buys => both accounts, from one amount",
+          SettlementSides.TouchesSeller(both) && SettlementSides.TouchesBuyer(both));
+    var driverBuyer = PartnerType.Driver | PartnerType.Merchant;
+    Check("drives AND buys => both as well",
+          SettlementSides.TouchesSeller(driverBuyer) && SettlementSides.TouchesBuyer(driverBuyer));
 
-    // A credit on either side is a negative balance, and a negative maximum would be meaningless.
-    Check("he is in credit as a buyer => nothing to settle, never a negative",
-          OffsetRules.Maximum(-1_500m, 5_000m) == 0m, $"got {OffsetRules.Maximum(-1_500m, 5_000m)}");
-    Check("he owes the market as a seller => nothing to settle either",
-          OffsetRules.Maximum(2_000m, -800m) == 0m, $"got {OffsetRules.Maximum(2_000m, -800m)}");
-    Check("both negative => still zero, not the larger negative",
-          OffsetRules.Maximum(-2_000m, -5_000m) == 0m);
+    // Staff record a person before knowing what they are. The amount still has to land somewhere:
+    // the seller ledger is the only table a hand-written line can live in at all.
+    Check("role not known yet => the seller ledger, never nowhere",
+          SettlementSides.TouchesSeller(null));
+    Check("...and not his buyer side, which may not exist",
+          !SettlementSides.TouchesBuyer(null));
 
-    // What may actually be written.
-    Check("settling exactly the maximum is allowed", OffsetRules.IsAllowed(2_000m, 2_000m, 5_000m));
-    Check("settling less is allowed", OffsetRules.IsAllowed(500m, 2_000m, 5_000m));
-    Check("one agora over the maximum is refused, not clamped",
-          !OffsetRules.IsAllowed(2_000.01m, 2_000m, 5_000m));
-    Check("zero is refused", !OffsetRules.IsAllowed(0m, 2_000m, 5_000m));
-    Check("a negative amount is refused", !OffsetRules.IsAllowed(-100m, 2_000m, 5_000m));
-    Check("nothing at all can be settled when one side is empty",
-          !OffsetRules.IsAllowed(100m, 0m, 5_000m));
-
-    // The identity that makes this safe to record as two ordinary payments: settling X takes X off
-    // what he owes AND X off what he is owed, so the market's net position is unchanged. If those
-    // two ever stopped moving together, one side of the books would drift.
+    // The identity that makes this safe to record as ordinary payments: settling X takes X off
+    // what he owes AND X off what he is owed, so the market's net position across the two
+    // accounts is unchanged. If those ever stopped moving together, one side of the books would
+    // drift — which is the whole reason both halves are written in one transaction.
     const decimal buyer = 2_000m, seller = 5_000m, settle = 1_200m;
     var netBefore = seller - buyer;
     var netAfter = (seller - settle) - (buyer - settle);
@@ -700,6 +692,13 @@ Console.WriteLine("== settling a seller who also buys (OffsetRules) ==");
           netAfter == netBefore, $"{netBefore} => {netAfter}");
     Check("and the settled amount really came off each side",
           (buyer - settle) == 800m && (seller - settle) == 3_800m);
+
+    // No ceiling any more, by request. Overshooting is allowed and reads as a credit — it is an
+    // ordinary payment, deleted like any other. Asserted so that "the limit came back" would fail
+    // here rather than be discovered by somebody who could not save the figure he agreed to.
+    var overshoot = seller - 9_000m;
+    Check("settling more than the market owes leaves a credit, not an error",
+          overshoot == -4_000m, $"got {overshoot}");
 }
 
 Console.WriteLine();

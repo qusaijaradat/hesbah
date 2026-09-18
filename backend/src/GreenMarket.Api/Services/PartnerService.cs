@@ -375,12 +375,13 @@ public class PartnerService : IPartnerService
             .Concat(payments.Select(p =>
             {
                 var counts = PaymentRules.CountsTowardBalance(p.CheckStatus);
-                // A مقاصّة says so in the LINE ITSELF, not only in the method column beside it.
+                // A تسوية says so in the LINE ITSELF, not only in the method column beside it — the
+                // printed statement carries the description and not the method.
                 // On paper "دفعة مستلمة" reads as cash across a counter, and this one never was:
                 // it came off what the market owed him as a seller. The statement somebody is
                 // handed has to be arguable from, and that is the fact being argued about.
                 var description = p.OffsetGroupId is not null
-                    ? "مقاصّة — خصم من مستحقاته كبائع"
+                    ? "تسوية — خصم من الحساب (ما فيه كاش)"
                     : counts
                     ? "دفعة مستلمة"
                     : p.CheckStatus == CheckClearanceStatus.Bounced
@@ -453,10 +454,10 @@ public class PartnerService : IPartnerService
                     // someone typed on this account. Different things, so they read differently —
                     // and the reason typed for the manual one shows in Notes just below.
                     FarmerTransactionType.Adjustment => t.Invoice is not null ? $"تعديل — فاتورة رقم {t.Invoice.InvoiceNumber}" : "تسوية",
-                    // The other half of the same مقاصّة. "دفعة مدفوعة" would say the market
-                    // handed him money; it handed him nothing and collected nothing.
+                    // A تسوية. "دفعة مدفوعة" would say the market handed him money; it handed
+                    // him nothing and collected nothing.
                     _ => t.Payment != null && t.Payment.OffsetGroupId != null
-                        ? "مقاصّة — خصم مما عليه كمشتري"
+                        ? "تسوية — خصم من الحساب (ما فيه كاش)"
                         : "دفعة مدفوعة"
                 },
                 t.Amount,

@@ -454,15 +454,15 @@ export interface PagedResult<T> {
  *
  * buyerOwes: positive means he owes the market.
  * marketOwesSeller: positive means the market owes him.
- * maxOffset: the smaller of the two, floored at zero. Decided server-side (OffsetRules), never
- * here — two opinions about what somebody owes is one too many.
+ *
+ * There is no "most that can be settled" any more — the screen that computed one is gone. These
+ * two are read to SAY what the person's position is, never to refuse an amount.
  */
 export interface PartnerBalancesDto {
   partnerId: number;
   partnerName: string;
   buyerOwes: number;
   marketOwesSeller: number;
-  maxOffset: number;
 }
 
 export interface PaymentDto {
@@ -485,9 +485,12 @@ export interface PaymentDto {
    * "Cleared". Distinct from checkDueDate (the nominal due date). */
   checkClearedDate?: string | null;
   /**
-   * Set on BOTH halves of a "مقاصّة" — settling what somebody owes as a buyer against what the
-   * market owes them as a seller. Two rows, one event, no cash. The screens read it to say so,
-   * and deleting either half takes the pair.
+   * Set on every row of one "تسوية" — an amount written straight onto somebody's account. Two
+   * rows for a man who both sells and buys, one for everybody else; one event either way, and no
+   * cash. The screens read it to say so, and deleting either row takes the pair.
+   *
+   * (The name is the old one, from when this was called مقاصّة — renaming a column of live money
+   * rows to match a word on a screen is not worth a migration.)
    */
   offsetGroupId?: string | null;
 }

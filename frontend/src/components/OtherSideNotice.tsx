@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
 import { partnerBalances } from "../api/payments";
 import { useAuth } from "../auth/AuthContext";
 import { formatCurrency } from "../lib/format";
@@ -14,7 +13,8 @@ import type { PartnerBalancesDto } from "../types";
  * back in, on the same day, in opposite directions, because neither screen mentioned the other.
  *
  * So each account page says it, on the page, with the number. That is the whole feature: knowing.
- * The مقاصّة form on الدفعات is what acts on it, and this links there.
+ * Acting on it is the "تسوية على الحساب" card further down the same page — it used to be a
+ * separate screen and a link out, and that was the trip nobody made.
  *
  * Shows nothing at all when the other side is empty — which is most people, and the reason this
  * can sit on every account page without becoming furniture.
@@ -45,7 +45,6 @@ export function OtherSideNotice({ partnerId, side }: {
   const other = side === "merchant" ? balances.marketOwesSeller : balances.buyerOwes;
   if (other <= 0) return null;
 
-  const canOffset = balances.maxOffset > 0 && hasPermission("payments.create");
 
   return (
     <div className="text-sm bg-brand-50 text-brand-900 border border-brand-200 rounded-md p-3 mb-4">
@@ -54,16 +53,10 @@ export function OtherSideNotice({ partnerId, side }: {
       ) : (
         <>هذا الشخص كمان <span className="font-semibold">مشتري</span> عندك، وعليه <span className="font-semibold">{formatCurrency(balances.buyerOwes)}</span>.</>
       )}
-      {canOffset ? (
-        <>
-          {" "}بتقدر تقاصّ <span className="font-semibold">{formatCurrency(balances.maxOffset)}</span> بدل ما تعطيه كاش وتستلم منه كاش.{" "}
-          <Link to="/payments" className="underline font-semibold">افتح المقاصّة</Link>
-        </>
-      ) : (
-        // The other side has a balance but the two cannot be netted — one of them is a credit, so
-        // there is nothing to settle against. Said plainly rather than offering a button that
-        // would refuse.
-        <> ما في إشي للمقاصّة حالياً — لازم يكون عليه مبلغ كمشتري وإله مبلغ كبائع بنفس الوقت.</>
+      {/* No link out any more: "تسوية على الحساب" is on this very page, a little further down,
+          and it says for itself that the amount comes off both sides. */}
+      {hasPermission("payments.create") && (
+        <> أي تسوية بتكتبها تحت رح تنزل من الطرفين.</>
       )}
     </div>
   );

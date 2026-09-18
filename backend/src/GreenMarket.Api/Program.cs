@@ -349,9 +349,10 @@ using (var scope = app.Services.CreateScope())
         app.Logger.LogError(ex, "Failed to prepare the sack_kinds table / container_movements.SackKindId column — the sacks screen will not work until this is fixed.");
     }
 
-    // "مقاصّة": settling what somebody owes as a buyer against what the market owes them as a
-    // seller writes TWO payments — one on each side — and they share this id so a delete can never
-    // take half of it and leave the books out by the amount. Null on every ordinary payment.
+    // A "تسوية" on somebody who both sells and buys writes TWO payments — one on each side —
+    // and they share this id so a delete can never take half of it and leave the books out by the
+    // amount. Null on every ordinary payment. (The column keeps its original name: renaming it
+    // would be a migration of live money rows to match a word on a screen.)
     try
     {
         await db.Database.ExecuteSqlRawAsync("""
@@ -361,7 +362,24 @@ using (var scope = app.Services.CreateScope())
     }
     catch (Exception ex)
     {
-        app.Logger.LogError(ex, "Failed to prepare payments.OffsetGroupId — مقاصّة will not work until this is fixed.");
+        app.Logger.LogError(ex, "Failed to prepare payments.OffsetGroupId — تسوية will not work until this is fixed.");
+    }
+
+    // The same rows used to be called "مقاصّة", and a few were written under that name before the
+    // market asked for the whole idea to be replaced by something it would actually use. Relabelled
+    // rather than left alone, so the "طريقة الدفع" column holds ONE word for one thing instead of
+    // two that a reader has to know are the same. Touches a label and nothing else: no amount, no
+    // direction, no link, no balance anywhere moves by an agora.
+    try
+    {
+        await db.Database.ExecuteSqlRawAsync("""
+            UPDATE payments SET "Method" = 'تسوية'
+            WHERE "Method" = 'مقاصّة' AND "OffsetGroupId" IS NOT NULL;
+            """);
+    }
+    catch (Exception ex)
+    {
+        app.Logger.LogError(ex, "Failed to relabel old مقاصّة payments as تسوية — those rows keep the old word in the method column. Harmless: no balance depends on it.");
     }
 
     // Signed-in devices. Accounts stay signed in until somebody ends the session (the market's

@@ -95,7 +95,9 @@ public interface IExportService
     byte[] GenerateBuyerStatementPdf(IReadOnlyList<MerchantItemBreakdownRow> rows, DateTimeOffset? dateFrom, DateTimeOffset? dateTo, CompanyInfo company);
     byte[] GenerateFarmerItemsStatementPdf(IReadOnlyList<FarmerItemBreakdownRow> rows, DateTimeOffset? dateFrom, DateTimeOffset? dateTo, CompanyInfo company);
     byte[] GenerateDriverItemsStatementPdf(IReadOnlyList<DriverItemBreakdownRow> rows, DateTimeOffset? dateFrom, DateTimeOffset? dateTo, CompanyInfo company);
-    byte[] GenerateFarmerStatementPdf(FarmerStatementDto statement, DateTimeOffset? dateFrom, DateTimeOffset? dateTo, CompanyInfo company, decimal previousBalance);
+    /// <param name="buyerOwes">What the same person owes as a BUYER, if he buys too. Deducted at
+    /// the foot of his seller statement, because the market settles one man once.</param>
+    byte[] GenerateFarmerStatementPdf(FarmerStatementDto statement, DateTimeOffset? dateFrom, DateTimeOffset? dateTo, CompanyInfo company, decimal previousBalance, decimal buyerOwes);
     byte[] SimpleReportToPdf(string title, string[] headers, IEnumerable<string[]> rows);
     byte[] DailyClosingToPdf(DailyClosingDto closing, string marketName);
 
@@ -1308,7 +1310,7 @@ public class ExportService : IExportService
     /// and per item, because it is part of what he brought — but it is no longer ADDED to his net:
     /// the buyer pays it and the market keeps it. This print was still paying it to him.
     /// </summary>
-    public byte[] GenerateFarmerStatementPdf(FarmerStatementDto statement, DateTimeOffset? dateFrom, DateTimeOffset? dateTo, CompanyInfo company, decimal previousBalance)
+    public byte[] GenerateFarmerStatementPdf(FarmerStatementDto statement, DateTimeOffset? dateFrom, DateTimeOffset? dateTo, CompanyInfo company, decimal previousBalance, decimal buyerOwes)
     {
         var itemGroups = statement.Lines
             .GroupBy(l => l.ItemName)
@@ -1543,10 +1545,25 @@ public class ExportService : IExportService
                                 }
 
                                 if (previousBalance != 0)
-                                {
                                     Settle("الرصيد السابق (حساب البائع)", $"₪ {previousBalance:0.##}");
-                                    Settle("الإجمالي النهائي", $"₪ {(finalDue + previousBalance):0.##}", bold: true);
-                                }
+
+                                // The same man's BUYER account, on his seller sheet.
+                                //
+                                // He brings produce in the morning and buys a crate of something
+                                // else in the afternoon, and the market settles him once — so what
+                                // he owes on that side comes off what he is owed on this one, on
+                                // the page, rather than being worked out from two sheets held side
+                                // by side. Printed as its own line and never netted quietly into
+                                // the total above it: a figure that changes a payout has to be
+                                // readable by the man being paid.
+                                //
+                                // A credit on that side (negative) adds instead, and says so.
+                                if (buyerOwes != 0)
+                                    Settle(buyerOwes > 0 ? "رصيده كمشتري (عليه للمصلحة)" : "رصيده كمشتري (إله عند المصلحة)",
+                                           buyerOwes > 0 ? $"- ₪ {buyerOwes:0.##}" : $"+ ₪ {-buyerOwes:0.##}");
+
+                                if (previousBalance != 0 || buyerOwes != 0)
+                                    Settle("الإجمالي النهائي", $"₪ {(finalDue + previousBalance - buyerOwes):0.##}", bold: true);
                             });
 
                             // Counts and the wood, deliberately kept OUT of the table above: none

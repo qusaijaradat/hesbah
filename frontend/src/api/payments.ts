@@ -88,10 +88,13 @@ export async function partnerBalances(partnerId: number) {
 }
 
 /**
- * "مقاصّة" — settles the two against each other. Writes two payments, one on each side, and
- * returns both. No cash moves.
+ * "تسوية" — an amount written straight onto somebody's account.
+ *
+ * Writes an ordinary payment per account the person actually has, and returns them: one row for
+ * most people, two for the man who sells in the morning and buys in the afternoon. No cash moves,
+ * and there is no ceiling — see the backend's CreateSettlementAsync for why both limits went.
  */
-export async function createOffset(payload: { partnerId: number; amount: number; date: string; notes?: string }) {
-  const { data } = await apiClient.post<PaymentDto[]>("/payments/offset", payload);
+export async function createSettlement(payload: { partnerId: number; amount: number; date: string; notes?: string }) {
+  const { data } = await apiClient.post<PaymentDto[]>("/payments/settlement", payload);
   return data;
 }

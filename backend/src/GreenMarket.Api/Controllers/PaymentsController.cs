@@ -98,9 +98,9 @@ public class PaymentsController : ControllerBase
         Ok(await _paymentService.CreateAsync(request, CurrentUserId.Require(User)));
 
     /// <summary>
-    /// Both sides of one person — what he owes as a buyer, what the market owes him as a seller,
-    /// and how much of the two can be settled. Feeds the مقاصّة form, and the line the account
-    /// pages show when somebody turns out to have a balance on the other side too.
+    /// Both sides of one person — what he owes as a buyer and what the market owes him as a
+    /// seller. Feeds the line the account pages show when somebody turns out to have a balance on
+    /// the other side too, and the seller's printed statement, which deducts the one from the other.
     ///
     /// PaymentsView, not Create: it is a reading of two balances, and the form that writes has its
     /// own gate below.
@@ -111,13 +111,14 @@ public class PaymentsController : ControllerBase
         Ok(await _paymentService.GetBalancesAsync(partnerId));
 
     /// <summary>
-    /// "مقاصّة" — settles what he owes as a buyer against what the market owes him as a seller.
-    /// Writes two payments and returns both. PaymentsCreate, because that is what it is.
+    /// "تسوية" — an amount written straight onto somebody's account, landing on whichever
+    /// sides he has. Writes an ordinary payment per side and returns them. PaymentsCreate,
+    /// because that is what it writes.
     /// </summary>
-    [HttpPost("offset")]
+    [HttpPost("settlement")]
     [RequirePermission(PermissionKeys.PaymentsCreate)]
-    public async Task<ActionResult<IReadOnlyList<PaymentDto>>> Offset(CreateOffsetRequest request) =>
-        Ok(await _paymentService.CreateOffsetAsync(request, CurrentUserId.Require(User)));
+    public async Task<ActionResult<IReadOnlyList<PaymentDto>>> Settlement(CreateSettlementRequest request) =>
+        Ok(await _paymentService.CreateSettlementAsync(request, CurrentUserId.Require(User)));
 
     [HttpPut("{id:int}")]
     [RequirePermission(PermissionKeys.PaymentsEdit)]

@@ -43,12 +43,18 @@ public record ExpenseDto(int Id, DateTimeOffset Date, string Description, decima
 /// </summary>
 /// <param name="BuyerOwes">His merchant balance. Positive means he owes the market.</param>
 /// <param name="MarketOwesSeller">His seller/driver balance. Positive means the market owes him.</param>
-/// <param name="MaxOffset">The smaller of the two, floored at zero — Domain.Services.OffsetRules.</param>
+/// <remarks>There is no "most that can be settled" any more. The screen that computed one, and
+/// refused anything larger, is gone — see Domain.Services.SettlementSides.</remarks>
 public record PartnerBalancesDto(
-    int PartnerId, string PartnerName, decimal BuyerOwes, decimal MarketOwesSeller, decimal MaxOffset);
+    int PartnerId, string PartnerName, decimal BuyerOwes, decimal MarketOwesSeller);
 
 /// <summary>
-/// One مقاصّة. Becomes two payments — one collected from him as a buyer, one paid to him as a
-/// seller — of the same amount, on the same date, sharing an OffsetGroupId. No cash moves.
+/// One "تسوية": an amount written straight onto somebody's account.
+///
+/// It becomes an ordinary payment on each account the person actually has — both, for the man
+/// who sells in the morning and buys in the afternoon — of the same amount, on the same date,
+/// sharing an OffsetGroupId so the pair is found again on delete. No cash moves.
 /// </summary>
-public record CreateOffsetRequest(int PartnerId, decimal Amount, DateTimeOffset Date, string? Notes);
+/// <param name="Notes">Why, in the market's own words. Optional, and it is what the line SAYS on
+/// the printed statement, so leaving it blank falls back to a plain "تسوية على الحساب".</param>
+public record CreateSettlementRequest(int PartnerId, decimal Amount, DateTimeOffset Date, string? Notes);

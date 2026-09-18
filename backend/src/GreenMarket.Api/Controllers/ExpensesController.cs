@@ -43,6 +43,22 @@ public class ExpensesController : ControllerBase
         return File(bytes, "application/pdf", "expenses.pdf");
     }
 
+    /// <summary>
+    /// The سند قبض for one expense — the slip the person who took the money signs.
+    ///
+    /// ExpensesView, not Create: printing a voucher again for one that was written last week is
+    /// reading, and whoever files them is not necessarily whoever records them.
+    /// </summary>
+    [HttpGet("{id:int}/receipt/pdf")]
+    [RequirePermission(PermissionKeys.ExpensesView)]
+    public async Task<IActionResult> ReceiptPdf(int id)
+    {
+        var expense = await _expenseService.GetAsync(id);
+        var company = await GetCompanyInfoAsync();
+        var bytes = _exportService.GenerateExpenseReceiptPdf(expense, company);
+        return File(bytes, "application/pdf", $"receipt-{expense.Id}.pdf");
+    }
+
     /// <summary>Same letterhead-building logic as the other controllers' own copies — kept
     /// duplicated rather than shared, matching how these controllers already don't share a base class.</summary>
     private async Task<CompanyInfo> GetCompanyInfoAsync()

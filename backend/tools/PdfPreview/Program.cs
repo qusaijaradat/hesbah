@@ -260,6 +260,18 @@ var statementLines = new List<StatementLineDto>
     new(DateTimeOffset.Now.AddDays(-4), "دفعة", -700m, 500m, null, null, null, null, "شيك", "شيك رقم 88231"),
     new(DateTimeOffset.Now, "فاتورة", 1329.19m, 1829.19m, 101, "INV-2026-000042", 1108.69m, 110.87m, null, null),
 };
+// The سند قبض for one expense — two copies on the sheet, one for each side.
+Write("18-expense-receipt.pdf",
+    export.GenerateExpenseReceiptPdf(
+        new ExpenseDto(37, DateTimeOffset.Now, "أجرة عمال تنزيل — يوم الخميس", 450m, "أجور", 4, "محمود العبد"),
+        company));
+
+// The same voucher with nobody named: the recipient and the signature are lines to write on.
+Write("19-expense-receipt-unnamed.pdf",
+    export.GenerateExpenseReceiptPdf(
+        new ExpenseDto(38, DateTimeOffset.Now, "تصليح موتور المي", 120m, null, null, null),
+        company));
+
 // The same account narrowed to a period: it opens on what the earlier movements left behind,
 // rather than on a figure with nothing above it.
 Write("17-account-statement-period.pdf",

@@ -125,6 +125,9 @@ public interface IExportService
     /// <summary>"مصاريف الحسبة" tab print button — see GenerateExpensesListPdf's own doc comment.</summary>
     byte[] GenerateExpensesListPdf(IReadOnlyList<ExpenseDto> expenses, CompanyInfo company, DateTimeOffset? dateFrom, DateTimeOffset? dateTo);
 
+    /// <summary>The سند قبض for one expense — see its own doc comment.</summary>
+    byte[] GenerateExpenseReceiptPdf(ExpenseDto expense, CompanyInfo company);
+
     /// <summary>"بضاعة الباعة" print button — see GenerateFarmerGoodsStockPdf's own doc comment.</summary>
     byte[] GenerateFarmerGoodsStockPdf(string farmerName, IReadOnlyList<GoodsStockRow> stock, CompanyInfo company);
 }
@@ -2810,6 +2813,117 @@ public class ExportService : IExportService
 
     /// <summary>"مصاريف الحسبة" tab print button (PaymentsPage.tsx) — the recorded expense list,
     /// optionally date-ranged to match whatever filter the screen is showing.</summary>
+    /// <summary>
+    /// "سند قبض" — the slip the person who took the money signs, printed the moment an expense
+    /// is recorded.
+    ///
+    /// TWO identical copies on the sheet, above and below a cut line: نسخة المصلحة and نسخة
+    /// المستلم. That is how a voucher is actually used — both sides keep one, signed the same
+    /// minute — and printing one copy per sheet would have meant either printing twice or one of
+    /// the two parties holding nothing.
+    ///
+    /// The recipient line is left BLANK when no employee is attached, rather than omitted: an
+    /// expense is often paid to somebody who is not on the staff list, and a line to write a name
+    /// on is the whole point of a paper voucher. Same for the signature.
+    ///
+    /// Nothing here is computed. Every figure is the expense as it was recorded, and the voucher
+    /// number is its own row id — so a slip in somebody's file can always be traced back to the
+    /// one row it came from.
+    /// </summary>
+    public byte[] GenerateExpenseReceiptPdf(ExpenseDto expense, CompanyInfo company)
+    {
+        var document = Document.Create(container =>
+        {
+            container.Page(page =>
+            {
+                page.Size(PageSizes.A4);
+                page.Margin(24);
+                page.DefaultTextStyle(x => x.FontSize(11).FontFamily(PdfFontFamily));
+
+                page.Content().ContentFromRightToLeft().Column(sheet =>
+                {
+                    ExpenseReceiptCopy(sheet.Item(), expense, company, "نسخة المصلحة");
+
+                    // The cut line, said in words as well as drawn: a dashed rule alone gets
+                    // folded along instead of cut, and then both copies live on one sheet.
+                    sheet.Item().PaddingVertical(14).Row(row =>
+                    {
+                        row.AutoItem().PaddingLeft(6).Text("✂").FontSize(10).FontColor(PrintInk.Secondary);
+                        row.RelativeItem().AlignMiddle().LineHorizontal(0.5f).LineColor(PrintInk.Secondary);
+                    });
+
+                    ExpenseReceiptCopy(sheet.Item(), expense, company, "نسخة المستلم");
+                });
+            });
+        });
+
+        return document.GeneratePdf();
+    }
+
+    /// <summary>One of the two copies on a سند قبض sheet. Identical in every respect but the
+    /// word naming whose copy it is — two copies that differed anywhere would be two documents.</summary>
+    private static void ExpenseReceiptCopy(IContainer container, ExpenseDto expense, CompanyInfo company, string copyLabel)
+    {
+        container.Border(1).BorderColor(PrintInk.Text).Padding(14).Column(col =>
+        {
+            CompanyHeaderBlock(col, company, 40f, textCol =>
+            {
+                textCol.Item().AlignCenter().Text(company.Name).Bold().FontSize(14);
+                if (!string.IsNullOrWhiteSpace(company.Phone))
+                    textCol.Item().AlignCenter().Text($"هاتف: {company.Phone}").FontSize(8);
+            });
+
+            col.Item().PaddingTop(6).Row(row =>
+            {
+                row.RelativeItem().Text("سند قبض").Bold().FontSize(16);
+                row.AutoItem().AlignMiddle().Text(copyLabel).FontSize(9).FontColor(PrintInk.Secondary);
+            });
+            col.Item().PaddingTop(2).Row(row =>
+            {
+                row.RelativeItem().Text($"رقم السند: {expense.Id}").FontSize(10);
+                row.AutoItem().Text($"التاريخ: {expense.Date:yyyy-MM-dd}").FontSize(10);
+            });
+            col.Item().PaddingTop(6).LineHorizontal(1).LineColor(PrintInk.Text);
+
+            // The amount is the one figure on this slip, so it is the one thing set large.
+            col.Item().PaddingTop(8).Text(text =>
+            {
+                text.Span("المبلغ: ").FontSize(12);
+                text.Span($"₪ {expense.Amount:0.##}").Bold().FontSize(20);
+            });
+
+            col.Item().PaddingTop(8).Text($"وذلك عن: {expense.Description}").FontSize(12);
+            if (!string.IsNullOrWhiteSpace(expense.Category))
+                col.Item().PaddingTop(2).Text($"البند: {expense.Category}").FontSize(10).FontColor(PrintInk.Secondary);
+
+            // Filled in when the expense names an employee, and a rule to write on when it does
+            // not — the money often goes to somebody who is not on the staff list. Drawn, not typed
+            // as underscores: a row of dashes is what a pen skids off.
+            col.Item().PaddingTop(10).Row(row =>
+            {
+                row.AutoItem().Text("اسم المستلم: ").FontSize(12);
+                if (string.IsNullOrWhiteSpace(expense.EmployeeName))
+                    row.RelativeItem().PaddingTop(14).LineHorizontal(0.5f).LineColor(PrintInk.Text);
+                else
+                    row.RelativeItem().Text(expense.EmployeeName).Bold().FontSize(12);
+            });
+
+            col.Item().PaddingTop(22).Row(row =>
+            {
+                void Signature(string label)
+                {
+                    row.RelativeItem().PaddingHorizontal(8).Column(c =>
+                    {
+                        c.Item().LineHorizontal(0.5f).LineColor(PrintInk.Text);
+                        c.Item().PaddingTop(2).AlignCenter().Text(label).FontSize(9).FontColor(PrintInk.Secondary);
+                    });
+                }
+                Signature("توقيع المستلم");
+                Signature("المسؤول");
+            });
+        });
+    }
+
     public byte[] GenerateExpensesListPdf(IReadOnlyList<ExpenseDto> expenses, CompanyInfo company, DateTimeOffset? dateFrom, DateTimeOffset? dateTo)
     {
         var document = Document.Create(container =>

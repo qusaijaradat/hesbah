@@ -9,6 +9,10 @@ namespace GreenMarket.Api.Services;
 public interface IExpenseService
 {
     Task<ExpenseDto> CreateAsync(CreateExpenseRequest request, int recordedByUserId);
+
+    /// <summary>One expense, for the printed سند قبض. Its own lookup rather than fishing it out of
+    /// a paged list, which is what printing one row used to require.</summary>
+    Task<ExpenseDto> GetAsync(int id);
     Task<PagedResult<ExpenseDto>> ListAsync(DateTimeOffset? from, DateTimeOffset? to, int page, int pageSize);
     Task<ExpenseDto> UpdateAsync(int id, UpdateExpenseRequest request);
     Task DeleteAsync(int id);
@@ -37,6 +41,14 @@ public class ExpenseService : IExpenseService
         };
         _db.Expenses.Add(expense);
         await _db.SaveChangesAsync();
+        return ToDto(expense);
+    }
+
+    public async Task<ExpenseDto> GetAsync(int id)
+    {
+        var expense = await _db.Expenses.Include(e => e.Employee)
+            .SingleOrDefaultAsync(e => e.Id == id)
+            ?? throw new NotFoundAppException("Expense", id);
         return ToDto(expense);
     }
 

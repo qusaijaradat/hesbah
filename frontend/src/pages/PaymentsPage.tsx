@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import {
-  createExpense, createPayment, deleteExpense, deletePayment,
+  createExpense, createPayment, deleteExpense, deletePayment, printExpenseReceiptPdf,
   listExpenses, listPayments, printExpensesPdf, printPaymentsListPdf, updateExpense, updatePayment,
 } from "../api/payments";
 import { listEmployees } from "../api/employees";
@@ -711,7 +711,9 @@ function EmployeeSelect({ employeeId, onChange, currentName }: {
 }
 
 function ExpensesTab({ canCreate, canEdit, canDelete }: { canCreate: boolean; canEdit: boolean; canDelete: boolean }) {
-  const showActionsColumn = canEdit || canDelete;
+  // Always shown on the expenses table, unlike the payments one above: every row carries a "سند
+  // قبض" button, and printing a voucher again is reading — it needs no edit or delete permission.
+  const showActionsColumn = true;
   const [expenses, setExpenses] = useState<ExpenseDto[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<ExpenseDto | null>(null);
@@ -781,9 +783,16 @@ function ExpensesTab({ canCreate, canEdit, canDelete }: { canCreate: boolean; ca
    * market does not have, and the half that goes missing is always the phone's.
    */
   function expenseActions(e: ExpenseDto) {
-    if (!canEdit && !canDelete) return null;
     return (
-      <span className="flex flex-wrap gap-3">
+      <span className="flex flex-wrap gap-3 items-center">
+        {/* On every row, not only on the one just added: a voucher gets lost, or a second copy
+            is wanted a week later, and re-printing it is reading rather than writing. */}
+        <PdfActions
+          fetchPdf={() => printExpenseReceiptPdf(e.id)}
+          fileName={`receipt-${e.id}.pdf`}
+          shareTitle={`سند قبض رقم ${e.id}`}
+          printLabel="🧾 سند قبض"
+        />
         {canEdit && <button className="btn-link text-brand-700 text-sm hover:underline" onClick={() => setEditing(e)}>تعديل</button>}
         {canDelete && <button className="btn-link text-red-500 text-sm hover:underline" onClick={() => handleDelete(e)}>حذف</button>}
       </span>
@@ -845,7 +854,7 @@ function ExpensesTab({ canCreate, canEdit, canDelete }: { canCreate: boolean; ca
               { label: "التاريخ", value: formatDate(e.date) },
               { label: "الفئة", value: e.category || "—" },
               { label: "الموظف", value: e.employeeName || "—" },
-              ...(canEdit || canDelete ? [{ label: "", value: expenseActions(e) }] : []),
+              { label: "", value: expenseActions(e) },
             ]}
             empty="لا توجد مصاريف"
           />
@@ -918,6 +927,7 @@ function ExpenseFormModal({ onClose, onSaved }: { onClose: () => void; onSaved: 
   const [busy, setBusy] = useState(false);
   const [justAdded, setJustAdded] = useState(false);
   const [savedOnce, setSavedOnce] = useState(false);
+  const [lastSaved, setLastSaved] = useState<ExpenseDto | null>(null);
   const descRef = useRef<HTMLInputElement>(null);
 
   async function handleSave() {
@@ -927,10 +937,14 @@ function ExpenseFormModal({ onClose, onSaved }: { onClose: () => void; onSaved: 
     setBusy(true);
     setError(null);
     try {
-      await createExpense({ date: new Date(date).toISOString(), description, amount: amountValue, category: category || undefined, employeeId });
+      const saved = await createExpense({ date: new Date(date).toISOString(), description, amount: amountValue, category: category || undefined, employeeId });
       onSaved();
       // Stay open for the next expense (category/date/employee carried over, description/amount reset).
       setDescription(""); setAmount("");
+      // The voucher for the one just saved, right here, while the person who took the money is
+      // still standing there. Kept until the next save replaces it rather than disappearing with
+      // the "تم الحفظ" flash — finding the row again to print a slip is the step that gets skipped.
+      setLastSaved(saved);
       setJustAdded(true);
       setSavedOnce(true);
       descRef.current?.focus();
@@ -953,6 +967,22 @@ function ExpenseFormModal({ onClose, onSaved }: { onClose: () => void; onSaved: 
           <div><label className="label">التاريخ</label><input className="input" type="date" value={date} onChange={(e) => setDate(e.target.value)} /></div>
           <EmployeeSelect employeeId={employeeId} onChange={setEmployeeId} />
           {justAdded && <div className="text-sm text-brand-700">✅ تم حفظ المصروف — تابع بمصروف جديد أو اضغط "تم"</div>}
+          {lastSaved && (
+            <div className="border border-gray-200 rounded-md p-3 bg-gray-50">
+              <div className="text-sm font-semibold text-gray-700">
+                سند قبض رقم {lastSaved.id} — {formatCurrency(lastSaved.amount)}
+              </div>
+              <p className="text-xs text-gray-500 mt-1 mb-2">
+                نسختين على الورقة — وحدة إلك ووحدة للمستلم يوقّع عليها.
+              </p>
+              <PdfActions
+                fetchPdf={() => printExpenseReceiptPdf(lastSaved.id)}
+                fileName={`receipt-${lastSaved.id}.pdf`}
+                shareTitle={`سند قبض رقم ${lastSaved.id}`}
+                printLabel="🧾 طباعة سند القبض"
+              />
+            </div>
+          )}
           {error && <div className="text-sm text-red-600 bg-red-50 rounded-md p-2">{error}</div>}
         </div>
         <div className="flex justify-end gap-2 mt-6">

@@ -67,6 +67,17 @@ export async function createExpense(payload: { date: string; description: string
   return data;
 }
 
+/**
+ * "سند قبض" — the slip the person who took the money signs, for one expense.
+ *
+ * Two identical copies on the sheet, one for each side, with a cut line between them. Printing
+ * an old one again is just reading, so it is gated on إظهار المصاريف rather than on creating.
+ */
+export async function printExpenseReceiptPdf(id: number) {
+  const { data } = await apiClient.get(`/expenses/${id}/receipt/pdf`, { responseType: "blob" });
+  return data as Blob;
+}
+
 export async function updateExpense(id: number, payload: { date: string; description: string; amount: number; category?: string; employeeId?: number | null }) {
   const { data } = await apiClient.put<ExpenseDto>(`/expenses/${id}`, payload);
   return data;

@@ -652,26 +652,24 @@ public class InvoiceService : IInvoiceService
             })
             .ToListAsync();
 
-        // Bulk-print page's per-type sections want each invoice row to also show that row's
-        // merchant/farmer/driver CURRENT overall account balance (their own كشف حساب "المتبقي" —
-        // already includes their opening balance, and for a merchant, every invoice's own wood
-        // total). Batched over the distinct partners on THIS page only (not one query per row), and
-        // reusing PartnerService's own account methods rather than a third copy of the balance
-        // formula, so this can never drift out of sync with the account pages after a future fix
-        // there. Sequential awaits, not Task.WhenAll — a single EF Core DbContext can't run more
-        // than one query at a time.
-        var merchantIds = raw.Select(x => x.MerchantId).Distinct().ToList();
-        var sellerIds = raw.Select(x => x.FarmerId).Concat(raw.Select(x => x.DriverId))
-            .Where(id => id is not null).Select(id => id!.Value).Distinct().ToList();
-
-        var merchantRemainingById = new Dictionary<int, decimal>();
-        foreach (var merchantId in merchantIds)
-            merchantRemainingById[merchantId] = (await _partners.GetMerchantAccountAsync(merchantId)).Remaining;
-
-        // One dictionary covers both farmers and drivers — they share the same ledger/account method.
-        var sellerRemainingById = new Dictionary<int, decimal>();
-        foreach (var sellerId in sellerIds)
-            sellerRemainingById[sellerId] = (await _partners.GetFarmerAccountAsync(sellerId)).Remaining;
+        // Each row also shows its merchant's / seller's / driver's CURRENT overall balance — the
+        // same المتبقي his own كشف حساب shows — for the bulk-print page's per-type sections.
+        //
+        // FOUR queries for the whole page, through PartnerService's bulk lookup. It used to ask
+        // GetMerchantAccountAsync / GetFarmerAccountAsync once per distinct person, and each of
+        // those builds a COMPLETE STATEMENT — every invoice, every payment, every ledger row that
+        // person ever had, assembled into running balances — to hand back one number. A page of
+        // twenty-five invoices could touch seventy-five people and build seventy-five statements,
+        // on the screen this market opens more than any other, growing heavier every month.
+        //
+        // The figures are unchanged: the lookup and the account pages call the same PartnerBalance
+        // functions, which is why replacing one with the other is a change of cost and nothing else.
+        var partnerIds = raw.Select(x => x.MerchantId)
+            .Concat(raw.Select(x => x.FarmerId).Where(id => id is not null).Select(id => id!.Value))
+            .Concat(raw.Select(x => x.DriverId).Where(id => id is not null).Select(id => id!.Value))
+            .Distinct()
+            .ToList();
+        var remainingById = await _partners.GetRemainingAsync(partnerIds);
 
         var items = raw.Select(x =>
         {
@@ -690,9 +688,11 @@ public class InvoiceService : IInvoiceService
                 x.GrandTotal,
                 string.Join("، ", x.ItemNames.Distinct()),
                 x.WoodTotal, boxFeeTotal,
-                merchantRemainingById.GetValueOrDefault(x.MerchantId),
-                x.FarmerId is not null ? sellerRemainingById.GetValueOrDefault(x.FarmerId.Value) : null,
-                x.DriverId is not null ? sellerRemainingById.GetValueOrDefault(x.DriverId.Value) : null,
+                // A merchant on an invoice always has the merchant role (the resolver grants it),
+                // so Buyer is filled; the ?? is for a record edited out from under a stale page.
+                remainingById.GetValueOrDefault(x.MerchantId).Buyer ?? 0m,
+                x.FarmerId is not null ? remainingById.GetValueOrDefault(x.FarmerId.Value).Seller ?? 0m : null,
+                x.DriverId is not null ? remainingById.GetValueOrDefault(x.DriverId.Value).Seller ?? 0m : null,
                 commissionResult.Commission, InvoiceCharge.ForSeller(x.TotalValue, commissionResult.Commission, x.TransportFee),
                 driverBoxFeeTotal, InvoiceCharge.ForDriver(x.TransportFee, driverBoxFeeTotal),
                 x.ReturnsTotal,

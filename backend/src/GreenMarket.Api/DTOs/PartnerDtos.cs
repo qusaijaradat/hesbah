@@ -88,6 +88,15 @@ public record StatementLineDto(
 public record PartnerDebtRow(int PartnerId, string Name, decimal OldDebt, decimal CurrentDebt, decimal Remaining);
 
 /// <summary>
+/// One person's المتبقي on each of his two sides, for the bulk lookup that screens listing many
+/// people use — the same figure each account page shows, from the same formulas
+/// (Domain.Services.PartnerBalance), without building a statement to get at it.
+/// </summary>
+/// <param name="Seller">Null when he has no seller/driver side at all.</param>
+/// <param name="Buyer">Null when he does not buy.</param>
+public readonly record struct PartnerRemaining(decimal? Seller, decimal? Buyer);
+
+/// <summary>
 /// What sits UNDER the running balance on a printed كشف حساب: the goods behind the figures.
 ///
 /// A statement of invoice totals answers "كم عليه" and nothing else. The argument at the counter

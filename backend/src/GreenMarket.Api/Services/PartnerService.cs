@@ -69,6 +69,20 @@ public interface IPartnerService
     /// the implementations. Omitting it is what every caller but the print buttons does.</summary>
     Task<MerchantAccountDto> GetMerchantAccountAsync(int id, DateTimeOffset? dateFrom = null, DateTimeOffset? dateTo = null);
 
+    /// <summary>
+    /// المتبقي for many people at once, both sides, in a fixed number of queries — four,
+    /// whether the list is one person or two hundred.
+    ///
+    /// For the screens that LIST people or invoices and want a balance beside each row. Asking
+    /// GetMerchantAccountAsync/GetFarmerAccountAsync per row builds a complete statement — every
+    /// invoice, every payment, every ledger row that person ever had, assembled into running
+    /// balances — to hand back one number, and does it once per person on the page.
+    ///
+    /// Same formulas either way, because they are a function both call (PartnerBalance) rather
+    /// than the same arithmetic typed out again.
+    /// </summary>
+    Task<IReadOnlyDictionary<int, PartnerRemaining>> GetRemainingAsync(IReadOnlyCollection<int> partnerIds);
+
     /// <summary>The goods behind the figures, for the printed كشف حساب — see StatementDetailDto.</summary>
     /// <param name="buyerSide">Which of the person's two accounts is being printed. Only that
     /// side is queried: a man who both sells and buys has two statements, and each shows its own.</param>
@@ -114,45 +128,15 @@ public class PartnerService : IPartnerService
             .Skip((page - 1) * pageSize).Take(pageSize)
             .ToListAsync();
 
-        // "الرصيد" column on this list: same bulk-aggregated Remaining formulas as
-        // GetDebtsOverviewAsync (one grouped query across this page's ids, not one DB round trip
-        // per row) — see PartnerDto's doc comment for why Farmer/Merchant sides stay separate.
-        var sellerIds = pageItems.Where(p => PartnerRoles.HasSellerSide(p.Type)).Select(p => p.Id).ToList();
-        var merchantIds = pageItems.Where(p => PartnerRoles.Has(p.Type, PartnerType.Merchant)).Select(p => p.Id).ToList();
-
-        var netAmountBySeller = await _db.FarmerTransactions
-            .Where(t => sellerIds.Contains(t.FarmerId))
-            .GroupBy(t => t.FarmerId)
-            .Select(g => new { FarmerId = g.Key, Total = g.Sum(t => t.Amount) })
-            .ToDictionaryAsync(x => x.FarmerId, x => x.Total);
-
-        var purchasesByMerchant = await _db.Invoices
-            .Where(i => merchantIds.Contains(i.MerchantId) && i.Status == InvoiceStatus.Active)
-            .GroupBy(i => i.MerchantId)
-            .Select(g => new { MerchantId = g.Key, Total = g.Sum(i => i.GrandTotal) })
-            .ToDictionaryAsync(x => x.MerchantId, x => x.Total);
-
-        // A check only counts once it has actually cleared — see PaymentRules, which every
-        // "paid" sum in the app now goes through.
-        var paidByMerchant = await _db.Payments
-            .Where(PaymentRules.CountsTowardBalanceExpression)
-            .Where(p => merchantIds.Contains(p.PartnerId) && p.Direction == PaymentDirection.FromMerchant)
-            .GroupBy(p => p.PartnerId)
-            .Select(g => new { PartnerId = g.Key, Total = g.Sum(p => p.Amount) })
-            .ToDictionaryAsync(x => x.PartnerId, x => x.Total);
+        // "الرصيد" column on this list. Four queries for the whole page, through the one bulk
+        // lookup the invoices list uses too — this used to write the same four out by hand, and
+        // the hand-written copy counted الرصيد الافتتاحي on both sides of anyone who is both.
+        var remaining = await GetRemainingAsync(pageItems.Select(p => p.Id).ToList());
 
         var items = pageItems.Select(p =>
         {
-            decimal? farmerRemaining = PartnerRoles.HasSellerSide(p.Type)
-                ? PartnerBalance.ForSeller(p.OpeningBalance ?? 0, netAmountBySeller.GetValueOrDefault(p.Id))
-                : null;
-            decimal? merchantRemaining = PartnerRoles.Has(p.Type, PartnerType.Merchant)
-                ? PartnerBalance.ForBuyer(
-                    p.OpeningBalance ?? 0,
-                    purchasesByMerchant.GetValueOrDefault(p.Id),
-                    paidByMerchant.GetValueOrDefault(p.Id))
-                : null;
-            return ToDto(p, farmerRemaining, merchantRemaining);
+            var sides = remaining.GetValueOrDefault(p.Id);
+            return ToDto(p, sides.Seller, sides.Buyer);
         }).ToList();
 
         return new PagedResult<PartnerDto> { Items = items, TotalCount = total, Page = page, PageSize = pageSize };
@@ -352,6 +336,54 @@ public class PartnerService : IPartnerService
             throw new ValidationAppException("اسم الشخص مطلوب.");
         if (type is not null && !Enum.IsDefined(typeof(PartnerType), type.Value))
             throw new ValidationAppException("نوع الشخص غير صالح.");
+    }
+
+    public async Task<IReadOnlyDictionary<int, PartnerRemaining>> GetRemainingAsync(IReadOnlyCollection<int> partnerIds)
+    {
+        var ids = partnerIds.Distinct().ToList();
+        if (ids.Count == 0) return new Dictionary<int, PartnerRemaining>();
+
+        var people = await _db.Partners
+            .Where(p => ids.Contains(p.Id))
+            .Select(p => new { p.Id, p.Type, p.OpeningBalance })
+            .ToListAsync();
+
+        var ledgerNet = await _db.FarmerTransactions
+            .Where(t => ids.Contains(t.FarmerId))
+            .GroupBy(t => t.FarmerId)
+            .Select(g => new { FarmerId = g.Key, Total = g.Sum(t => t.Amount) })
+            .ToDictionaryAsync(x => x.FarmerId, x => x.Total);
+
+        var purchases = await _db.Invoices
+            .Where(i => ids.Contains(i.MerchantId) && i.Status == InvoiceStatus.Active)
+            .GroupBy(i => i.MerchantId)
+            .Select(g => new { MerchantId = g.Key, Total = g.Sum(i => i.GrandTotal) })
+            .ToDictionaryAsync(x => x.MerchantId, x => x.Total);
+
+        // A check only counts once it has actually cleared — see PaymentRules, which every "paid"
+        // sum in the app goes through.
+        var paid = await _db.Payments
+            .Where(PaymentRules.CountsTowardBalanceExpression)
+            .Where(p => ids.Contains(p.PartnerId) && p.Direction == PaymentDirection.FromMerchant)
+            .GroupBy(p => p.PartnerId)
+            .Select(g => new { PartnerId = g.Key, Total = g.Sum(p => p.Amount) })
+            .ToDictionaryAsync(x => x.PartnerId, x => x.Total);
+
+        return people.ToDictionary(p => p.Id, p =>
+        {
+            // الرصيد الافتتاحي is one figure counted on one side — OpeningBalanceOwner. Counting it
+            // on both is what every place that wrote this out by hand ended up doing.
+            var opening = p.OpeningBalance ?? 0;
+            var onSeller = OpeningBalanceOwner.OnSellerSide(p.Type);
+
+            decimal? seller = PartnerRoles.HasSellerSide(p.Type)
+                ? PartnerBalance.ForSeller(onSeller ? opening : 0m, ledgerNet.GetValueOrDefault(p.Id))
+                : null;
+            decimal? buyer = PartnerRoles.Has(p.Type, PartnerType.Merchant)
+                ? PartnerBalance.ForBuyer(onSeller ? 0m : opening, purchases.GetValueOrDefault(p.Id), paid.GetValueOrDefault(p.Id))
+                : null;
+            return new PartnerRemaining(seller, buyer);
+        });
     }
 
     /// <summary>Requirement doc §6: merchant account = invoices, total purchases, paid, remaining + statement.</summary>

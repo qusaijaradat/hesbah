@@ -89,6 +89,23 @@ Show("a driver’s sellers under his statement (PartnerService.GetStatementDetai
             Boxes = i.Items.Sum(it => it.BoxQuantity)
         }));
 
+// The bulk balance lookup behind the invoices list and the partners list — four grouped queries for
+// a whole page, in place of a complete account statement per person on it. Printed because an
+// untranslated GroupBy here would pull every ledger row in the system into memory on the screen
+// this market opens most.
+var pageIds = new[] { 7, 9, 11 };
+Show("bulk المتبقي — the ledger half (PartnerService.GetRemainingAsync)",
+    db.FarmerTransactions
+        .Where(t => pageIds.Contains(t.FarmerId))
+        .GroupBy(t => t.FarmerId)
+        .Select(g => new { FarmerId = g.Key, Total = g.Sum(t => t.Amount) }));
+
+Show("bulk المتبقي — the purchases half (PartnerService.GetRemainingAsync)",
+    db.Invoices
+        .Where(i => pageIds.Contains(i.MerchantId) && i.Status == InvoiceStatus.Active)
+        .GroupBy(i => i.MerchantId)
+        .Select(g => new { MerchantId = g.Key, Total = g.Sum(i => i.GrandTotal) }));
+
 void Show<T>(string label, IQueryable<T> query)
 {
     Console.WriteLine($"--- {label}");

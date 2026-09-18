@@ -517,7 +517,6 @@ export interface EmployeeDto {
 export interface FarmerReportRow {
   farmerId: number;
   farmerName: string;
-  invoiceCount: number;
   totalWeightKg: number;
   totalBoxes: number;
   totalCartons: number;
@@ -533,7 +532,6 @@ export interface FarmerReportRow {
 export interface MerchantReportRow {
   merchantId: number;
   merchantName: string;
-  invoiceCount: number;
   totalWeightKg: number;
   totalBoxes: number;
   totalCartons: number;
@@ -555,7 +553,6 @@ export interface MerchantReportRow {
 export interface DriverReportRow {
   driverId: number;
   driverName: string;
-  invoiceCount: number;
   /** The containers he handled — crates are what his أجرة الصناديق is paid on. */
   totalBoxes: number;
   totalCartons: number;

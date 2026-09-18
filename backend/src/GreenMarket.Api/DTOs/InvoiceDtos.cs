@@ -324,6 +324,14 @@ public record CancelInvoiceRequest(string Reason);
 /// invoice in the WHOLE group at once (IInvoiceService.GetMerchantGroupPreviousBalanceAsync),
 /// never a single invoice's own PreviousBalance.
 /// </summary>
+/// <summary>
+/// One driver’s فاتورة سائق: his name, the invoices on it, where his account stood before it,
+/// and whether the produce money on those loads is his to distribute
+/// (Domain.Services.InvoiceLedgerTarget). One of these per driver in a print run.
+/// </summary>
+public record DriverManifest(
+    string DriverName, IReadOnlyList<InvoiceDto> Invoices, decimal PreviousBalance, bool SellerMoneyGoesToDriver);
+
 public record MergedInvoiceGroupDto(
     string MerchantName, DateTimeOffset Date,
     IReadOnlyList<InvoiceItemDto> Items,

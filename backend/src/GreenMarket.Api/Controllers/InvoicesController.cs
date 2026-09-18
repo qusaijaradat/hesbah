@@ -229,10 +229,14 @@ public class InvoicesController : ControllerBase
         return File(bytes, "application/pdf", "invoices-merchant-merged.pdf");
     }
 
-    /// <summary>Bulk-print page's "طباعة فواتير السائق" section: the caller has already grouped
-    /// the selected invoices by driver client-side (see BulkPrintPage.tsx driverGroups) and passes
-    /// one driver's invoice ids at a time — this collects every item across all of them into one
-    /// consolidated hand-over sheet grouped by farmer/seller, instead of one printout per invoice.</summary>
+    /// <summary>
+    /// "فاتورة السائق" for whatever is selected — one sheet per driver, in one file.
+    ///
+    /// It used to require the caller to have already split the selection by driver and to send one
+    /// driver's ids at a time; anything wider produced a single sheet addressed to whoever happened
+    /// to come first, with every other driver's loads on it. Grouped here instead, so the section's
+    /// own print button can hand over a whole day and each driver gets his own page.
+    /// </summary>
     [HttpGet("print/driver-manifest/pdf")]
     [RequirePermission(PermissionKeys.InvoicesView)]
     public async Task<IActionResult> PrintDriverManifestPdf([FromQuery] List<int> ids)
@@ -242,19 +246,29 @@ public class InvoicesController : ControllerBase
         EnsureNotTooMany(ids);
 
         var invoices = await _invoiceService.GetManyAsync(ids);
-        var driverName = invoices.Select(i => i.DriverName).FirstOrDefault(n => !string.IsNullOrWhiteSpace(n)) ?? "غير محدد";
-        var driverId = invoices.Select(i => i.DriverId).FirstOrDefault(id => id is not null);
-        // "الرصيد السابق" here is this driver's own account balance right now — same كشف حساب
-        // Remaining their account page shows (see AskUserQuestion decision: farmer/driver previous
-        // balance means their CURRENT balance, not a batch-excluded figure like the merchant's).
-        var previousBalance = driverId is not null ? (await _partnerService.GetFarmerAccountAsync(driverId.Value)).Remaining : 0;
         var company = await GetCompanyInfoAsync();
         // The same test the ledger uses, so the sheet he settles from and the account he is
         // settled against always describe the same arrangement. For the market's own vehicle the
         // produce money never left the sellers, and the sheet stays the haulage note it was.
         var houseDriverId = await _settingsService.GetIntOrNullAsync(Setting.Keys.HouseDriverPartnerId);
-        var sellerMoneyGoesToDriver = InvoiceLedgerTarget.IsOutsideDriver(driverId, houseDriverId);
-        var bytes = _exportService.GenerateDriverManifestPdf(driverName, invoices, company, previousBalance, sellerMoneyGoesToDriver);
+
+        var manifests = new List<DriverManifest>();
+        foreach (var group in invoices.GroupBy(i => i.DriverId).OrderBy(g => g.First().DriverName))
+        {
+            // "الرصيد السابق" is this driver's own account balance right now — the same كشف حساب
+            // Remaining his account page shows. Sequential, not Task.WhenAll: one DbContext runs one
+            // query at a time.
+            var previousBalance = group.Key is not null
+                ? (await _partnerService.GetFarmerAccountAsync(group.Key.Value)).Remaining
+                : 0m;
+            manifests.Add(new DriverManifest(
+                group.First().DriverName ?? "غير محدد",
+                group.ToList(),
+                previousBalance,
+                InvoiceLedgerTarget.IsOutsideDriver(group.Key, houseDriverId)));
+        }
+
+        var bytes = _exportService.GenerateDriverManifestPdf(manifests, company);
         return File(bytes, "application/pdf", "driver-manifest.pdf");
     }
 

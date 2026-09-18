@@ -238,8 +238,10 @@ Write("11-bulk-mixed-lengths.pdf",
 // The market's own vehicle brought it: the produce money never left the sellers, so this stays
 // the haulage note it always was.
 Write("07-driver-manifest.pdf",
-    export.GenerateDriverManifestPdf("السائق خالد", new[] { invoice, invoice }, company, previousBalance: 140m,
-                                     sellerMoneyGoesToDriver: false));
+    export.GenerateDriverManifestPdf(new[]
+    {
+        new DriverManifest("السائق خالد", new[] { invoice, invoice }, 140m, SellerMoneyGoesToDriver: false),
+    }, company));
 
 // An outside driver: one load, three sellers, and he hands each of them their own share out of
 // the single amount he collects. Two loads for the same seller so the grouping has something to
@@ -250,9 +252,13 @@ var driverLoad = new[] { invoice, shortInvoice, otherSeller, noSeller };
 Same("the sheet's own addition is what the market pays out",
      driverLoad.Sum(i => i.NetDueToFarmer) + driverLoad.Sum(i => i.TransportFee) + driverLoad.Sum(i => i.DriverBoxFeeTotal),
      driverLoad.Sum(i => i.TotalValue - i.Commission + i.DriverBoxFeeTotal));
+// Two drivers in one print run: a sheet each, in one file.
 Write("16-driver-invoice.pdf",
-    export.GenerateDriverManifestPdf("السائق خالد", driverLoad, company, previousBalance: 140m,
-                                     sellerMoneyGoesToDriver: true));
+    export.GenerateDriverManifestPdf(new[]
+    {
+        new DriverManifest("السائق خالد", driverLoad, 140m, SellerMoneyGoesToDriver: true),
+        new DriverManifest("السائق محمود", new[] { otherSeller }, 0m, SellerMoneyGoesToDriver: true),
+    }, company));
 
 var statementLines = new List<StatementLineDto>
 {

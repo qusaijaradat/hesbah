@@ -126,7 +126,6 @@ function FarmersTable({ rows }: { rows: FarmerReportRow[] }) {
           title={(r) => r.farmerName}
           value={(r) => formatCurrency(r.remaining)}
           details={(r) => [
-            { label: "عدد الفواتير", value: r.invoiceCount },
             { label: "المبيعات", value: formatCurrency(r.totalSalesValue) },
             { label: "العمولة", value: formatCurrency(r.totalCommission) },
             { label: "صافي المستحق", value: formatCurrency(r.netDue) },
@@ -139,7 +138,7 @@ function FarmersTable({ rows }: { rows: FarmerReportRow[] }) {
       <table className="table-base">
         <thead>
           <tr>
-            <th>البائع</th><th>عدد الفواتير</th><th>الوزن</th><th>الصناديق</th><th>الكرتون</th><th>المبيعات</th>
+            <th>البائع</th><th>الوزن</th><th>الصناديق</th><th>الكرتون</th><th>المبيعات</th>
             <th>العمولة</th><th>صافي المستحق</th><th>المدفوع</th>
             <th>المتبقي</th><th>آخر فاتورة</th>
           </tr>
@@ -150,7 +149,6 @@ function FarmersTable({ rows }: { rows: FarmerReportRow[] }) {
           ) : pager.pageRows.map((r) => (
             <tr key={r.farmerId}>
               <td className="font-medium"><PartnerLink partnerId={r.farmerId} name={r.farmerName} side="seller" /></td>
-              <td>{r.invoiceCount}</td>
               <td>{formatWeight(r.totalWeightKg)}</td>
               <td>{r.totalBoxes.toLocaleString("en-US", { maximumFractionDigits: 3 })}</td>
               <td>{r.totalCartons.toLocaleString("en-US", { maximumFractionDigits: 3 })}</td>
@@ -184,7 +182,6 @@ function MerchantsTable({ rows }: { rows: MerchantReportRow[] }) {
           title={(r) => r.merchantName}
           value={(r) => formatCurrency(r.remaining)}
           details={(r) => [
-            { label: "عدد الفواتير", value: r.invoiceCount },
             { label: "المشتريات", value: formatCurrency(r.totalPurchases) },
             { label: "سعر الخشب", value: formatCurrency(r.totalWoodTotal) },
             { label: "رسوم الصناديق", value: formatCurrency(r.totalBoxFee) },
@@ -198,7 +195,7 @@ function MerchantsTable({ rows }: { rows: MerchantReportRow[] }) {
       <table className="table-base">
         <thead>
           <tr>
-            <th>المشتري</th><th>عدد الفواتير</th><th>الوزن</th><th>الصناديق</th><th>الكرتون</th><th>المشتريات</th>
+            <th>المشتري</th><th>الوزن</th><th>الصناديق</th><th>الكرتون</th><th>المشتريات</th>
             <th>سعر الخشب</th><th>رسوم الصناديق</th><th>الإجمالي الكلي</th><th>المدفوع</th>
             <th>المتبقي</th><th>آخر فاتورة</th>
           </tr>
@@ -209,7 +206,6 @@ function MerchantsTable({ rows }: { rows: MerchantReportRow[] }) {
           ) : pager.pageRows.map((r) => (
             <tr key={r.merchantId}>
               <td className="font-medium"><PartnerLink partnerId={r.merchantId} name={r.merchantName} side="merchant" /></td>
-              <td>{r.invoiceCount}</td>
               <td>{formatWeight(r.totalWeightKg)}</td>
               <td>{r.totalBoxes.toLocaleString("en-US", { maximumFractionDigits: 3 })}</td>
               <td>{r.totalCartons.toLocaleString("en-US", { maximumFractionDigits: 3 })}</td>
@@ -244,7 +240,6 @@ function DriversTable({ rows }: { rows: DriverReportRow[] }) {
           title={(r) => r.driverName}
           value={(r) => formatCurrency(r.totalTransportFee)}
           details={(r) => [
-            { label: "عدد الفواتير", value: r.invoiceCount },
             { label: "الصناديق", value: r.totalBoxes },
             { label: "الكرتون", value: r.totalCartons },
             { label: "المدفوع", value: formatCurrency(r.totalPaid) },
@@ -257,7 +252,7 @@ function DriversTable({ rows }: { rows: DriverReportRow[] }) {
       <table className="table-base">
         <thead>
           <tr>
-            <th>السائق</th><th>عدد الفواتير</th><th>الصناديق</th><th>الكرتون</th><th>أجرة النقل</th><th>المدفوع</th>
+            <th>السائق</th><th>الصناديق</th><th>الكرتون</th><th>أجرة النقل</th><th>المدفوع</th>
             <th>المتبقي</th><th>آخر فاتورة</th>
           </tr>
         </thead>
@@ -267,7 +262,6 @@ function DriversTable({ rows }: { rows: DriverReportRow[] }) {
           ) : pager.pageRows.map((r) => (
             <tr key={r.driverId}>
               <td className="font-medium"><PartnerLink partnerId={r.driverId} name={r.driverName} side="seller" /></td>
-              <td>{r.invoiceCount}</td>
               <td>{r.totalBoxes.toLocaleString("en-US", { maximumFractionDigits: 3 })}</td>
               <td>{r.totalCartons.toLocaleString("en-US", { maximumFractionDigits: 3 })}</td>
               <td>{formatCurrency(r.totalTransportFee)}</td>

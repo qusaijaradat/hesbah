@@ -59,7 +59,6 @@ public class ReportService : IReportService
             {
                 FarmerId = g.Key.FarmerId,
                 FarmerName = g.Key.Name,
-                InvoiceCount = g.Count(),
                 TotalWeightKg = g.Sum(i => i.TotalWeightKg),
                 TotalBoxes = g.Sum(i => i.Items.Sum(it => it.BoxQuantity)),
                 TotalCartons = g.Sum(i => i.Items.Sum(it => it.CartonQuantity)),
@@ -124,7 +123,7 @@ public class ReportService : IReportService
             var commission = commissionByFarmer.GetValueOrDefault(a.FarmerId);
             var opening = openingBalances.GetValueOrDefault(a.FarmerId);
             return new FarmerReportRow(
-                a.FarmerId, a.FarmerName, a.InvoiceCount, a.TotalWeightKg, a.TotalBoxes, a.TotalCartons, a.TotalSalesValue,
+                a.FarmerId, a.FarmerName, a.TotalWeightKg, a.TotalBoxes, a.TotalCartons, a.TotalSalesValue,
                 // InvoiceCharge.ForSeller itself, over the aggregate — it said "ForSeller" in this
                 // comment while spelling the formula out again below it, which is exactly how the
                 // other copies of this rule drifted. Called now, so NetDue here cannot disagree with
@@ -156,7 +155,6 @@ public class ReportService : IReportService
             {
                 MerchantId = g.Key.MerchantId,
                 MerchantName = g.Key.Name,
-                InvoiceCount = g.Count(),
                 TotalWeightKg = g.Sum(i => i.TotalWeightKg),
                 TotalBoxes = g.Sum(i => i.Items.Sum(it => it.BoxQuantity)),
                 TotalCartons = g.Sum(i => i.Items.Sum(it => it.CartonQuantity)),
@@ -208,7 +206,7 @@ public class ReportService : IReportService
             var opening = openingBalances.GetValueOrDefault(a.MerchantId);
             var remaining = opening + allTimePurchases.GetValueOrDefault(a.MerchantId) - totalPaid;
             return new MerchantReportRow(
-                a.MerchantId, a.MerchantName, a.InvoiceCount, a.TotalWeightKg, a.TotalBoxes, a.TotalCartons,
+                a.MerchantId, a.MerchantName, a.TotalWeightKg, a.TotalBoxes, a.TotalCartons,
                 a.TotalPurchases, a.TotalWoodTotal, a.TotalBoxFee, a.GrandTotal,
                 totalPaid, remaining, opening, a.LastInvoiceDate);
         })
@@ -240,7 +238,6 @@ public class ReportService : IReportService
             {
                 DriverId = g.Key.DriverId,
                 DriverName = g.Key.Name,
-                InvoiceCount = g.Count(),
                 // The containers he handled — crates are what his أجرة الصناديق is paid on, and
                 // cartons are counted beside them so his sheet shows everything that moved.
                 TotalBoxes = g.Sum(i => i.Items.Sum(it => it.BoxQuantity)),
@@ -276,7 +273,7 @@ public class ReportService : IReportService
         {
             var opening = openingBalances.GetValueOrDefault(a.DriverId);
             return new DriverReportRow(
-                a.DriverId, a.DriverName, a.InvoiceCount, a.TotalBoxes, a.TotalCartons,
+                a.DriverId, a.DriverName, a.TotalBoxes, a.TotalCartons,
                 a.TotalTransportFee, paidByDriver.GetValueOrDefault(a.DriverId),
                 opening + allTimeBalance.GetValueOrDefault(a.DriverId), opening, a.LastInvoiceDate);
         })

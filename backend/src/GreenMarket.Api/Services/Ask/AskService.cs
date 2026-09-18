@@ -209,7 +209,7 @@ public class AskService : IAskService
 
         return Answer(plan, $"{partner!.Name} بهالفترة:", new List<AskRowDto>
         {
-            new("قيمة المبيعات", $"{row.InvoiceCount} فاتورة", row.TotalSalesValue),
+            new("قيمة المبيعات", "", row.TotalSalesValue),
             new("العمولة", "مخصومة", row.TotalCommission),
             new("الصافي المستحق", "", row.NetDue),
             new("المدفوع إلو", "", row.TotalPaid),
@@ -227,7 +227,7 @@ public class AskService : IAskService
 
         return Answer(plan, $"{partner!.Name} بهالفترة:", new List<AskRowDto>
         {
-            new("قيمة المشتريات", $"{row.InvoiceCount} فاتورة", row.TotalPurchases),
+            new("قيمة المشتريات", "", row.TotalPurchases),
             new("الإجمالي الكلي", "مع الخشب والصناديق", row.GrandTotal),
             new("المدفوع", "", row.TotalPaid),
             new("المتبقي", "", row.Remaining),

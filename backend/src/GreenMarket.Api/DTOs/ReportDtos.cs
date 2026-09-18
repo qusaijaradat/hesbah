@@ -22,13 +22,15 @@ public class ReportFilterRequest
 /// every payment, and any Adjustment reversal) so both "how much did we owe from sales alone" and
 /// "how much is left right now" are visible at once. OpeningBalance is broken out on its own even
 /// though it's already folded into Remaining — same traceability convention as
-/// MerchantAccountDto/FarmerAccountDto. LastInvoiceDate is null only if InvoiceCount is 0, which
-/// can't happen here (a farmer only appears in this report at all because they have at least one
-/// matching invoice).
+/// MerchantAccountDto/FarmerAccountDto. LastInvoiceDate is never null here: a farmer only appears
+/// in this report at all because he has at least one matching invoice.
+///
+/// No invoice count. It says how busy our data entry was, not how the business went, and the market
+/// asked for it off every screen and sheet — the figures beside it are the ones that answer anything.
 /// </summary>
 public record FarmerReportRow(
     int FarmerId, string FarmerName,
-    int InvoiceCount, decimal TotalWeightKg, decimal TotalBoxes, decimal TotalCartons, decimal TotalSalesValue,
+    decimal TotalWeightKg, decimal TotalBoxes, decimal TotalCartons, decimal TotalSalesValue,
     decimal TotalCommission, decimal NetDue, decimal TotalPaid, decimal Remaining,
     decimal OpeningBalance, DateTimeOffset? LastInvoiceDate);
 
@@ -49,7 +51,7 @@ public record FarmerReportRow(
 /// </summary>
 public record MerchantReportRow(
     int MerchantId, string MerchantName,
-    int InvoiceCount, decimal TotalWeightKg, decimal TotalBoxes, decimal TotalCartons,
+    decimal TotalWeightKg, decimal TotalBoxes, decimal TotalCartons,
     decimal TotalPurchases, decimal TotalWoodTotal, decimal TotalBoxFee, decimal GrandTotal,
     decimal TotalPaid, decimal Remaining, decimal OpeningBalance, DateTimeOffset? LastInvoiceDate);
 
@@ -66,7 +68,7 @@ public record MerchantReportRow(
 /// </summary>
 public record DriverReportRow(
     int DriverId, string DriverName,
-    int InvoiceCount, decimal TotalBoxes, decimal TotalCartons,
+    decimal TotalBoxes, decimal TotalCartons,
     decimal TotalTransportFee, decimal TotalPaid, decimal Remaining,
     decimal OpeningBalance, DateTimeOffset? LastInvoiceDate);
 

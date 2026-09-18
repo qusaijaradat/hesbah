@@ -173,14 +173,18 @@ function useRoleSection(role: Role) {
   // Returns the blob rather than downloading it: PdfActions decides whether it becomes a download
   // or an attachment in the share sheet, and owns the busy/error state that used to live here.
   async function buildPdf() {
-      // Merchant tab (explicit request): several invoices for the same merchant on the same
-      // calendar day print as ONE combined invoice, regardless of which farmer/driver supplied
-      // each one — so this tab uses the merged-invoice endpoint instead of the quadrant-grid bulk
-      // print the Farmer/Driver tabs still use. Both produce THIS section's own document type: a
-      // "فاتورة بائع" from the بائع tab and a "فاتورة سائق" from the سائق tab, never the buyer's
-      // copy (which is what every tab used to hand out).
+      // Each tab prints ITS OWN document, which is three different shapes:
+      //
+      //  مشتري — several invoices for the same buyer on the same day merge into ONE invoice
+      //          (explicit request), four to a sheet.
+      //  بائع  — a فاتورة بائع per invoice, four to a sheet.
+      //  سائق  — the consolidated فاتورة السائق: one sheet per driver, a row per seller, the
+      //          way the market has always settled with him. It used to print quarter-page cards,
+      //          one per invoice, which is not the document anybody asked this button for.
     return role === "Merchant"
       ? printMerchantMergedInvoicesPdf(Array.from(selected))
+      : role === "Driver"
+      ? printDriverManifestPdf(Array.from(selected))
       : printInvoicesBulkPdf(Array.from(selected), role);
   }
 
@@ -593,6 +597,8 @@ function SectionPrintBar({ section }: { section: RoleSection }) {
         disabled={section.selected.size === 0}
         printLabel={section.role === "Merchant"
           ? "🖨️ طباعة فواتير مشتري (فاتورة مجمّعة لكل مشتري/يوم — 4 بالصفحة)"
+          : section.role === "Driver"
+          ? "🖨️ طباعة فاتورة السائق (ورقة لكل سائق — سطر لكل بائع)"
           : `🖨️ طباعة فواتير ${ROLE_LABEL[section.role]} (فاتورة ${ROLE_LABEL[section.role]} — 4 بالصفحة)`}
       />
     </div>

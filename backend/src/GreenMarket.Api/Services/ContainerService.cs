@@ -52,7 +52,13 @@ public class ContainerService : IContainerService
 {
     private readonly AppDbContext _db;
 
-    public ContainerService(AppDbContext db) => _db = db;
+    private readonly IPeriodLockService _periodLock;
+
+    public ContainerService(AppDbContext db, IPeriodLockService periodLock)
+    {
+        _db = db;
+        _periodLock = periodLock;
+    }
 
     public async Task<IReadOnlyList<ContainerMovementDto>> ListAsync(int partnerId) =>
         await _db.ContainerMovements
@@ -124,6 +130,9 @@ public class ContainerService : IContainerService
         // partner-type check here at all.
         var partner = await _db.Partners.FindAsync(partnerId) ?? throw new NotFoundAppException("Partner", partnerId);
 
+        // Crates are counted on the same statement the month is settled from.
+        await _periodLock.EnsureOpenAsync(request.Date, "تسجيل حركة صناديق");
+
         var movement = new ContainerMovement
         {
             PartnerId = partner.Id,
@@ -152,6 +161,8 @@ public class ContainerService : IContainerService
         var movement = await _db.ContainerMovements.SingleOrDefaultAsync(m => m.Id == movementId)
             ?? throw new NotFoundAppException("ContainerMovement", movementId);
 
+        await _periodLock.EnsureOpenAsync(movement.Date, request.Date, "تعديل حركة صناديق");
+
         movement.Type = request.Type;
         movement.Direction = request.Direction;
         movement.Date = request.Date;
@@ -170,6 +181,7 @@ public class ContainerService : IContainerService
     {
         var movement = await _db.ContainerMovements.SingleOrDefaultAsync(m => m.Id == movementId)
             ?? throw new NotFoundAppException("ContainerMovement", movementId);
+        await _periodLock.EnsureOpenAsync(movement.Date, "حذف حركة صناديق");
         movement.IsDeleted = true;
         await _db.SaveChangesAsync();
     }

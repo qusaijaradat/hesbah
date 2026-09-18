@@ -10,6 +10,7 @@ import { MySessionsCard } from "../components/MySessionsCard";
 import { PushNotificationsCard } from "../components/PushNotificationsCard";
 import { LedgerMigrationCard } from "../components/LedgerMigrationCard";
 import { HOUSE_DRIVER_KEY, HouseDriverSetting } from "../components/HouseDriverSetting";
+import { PERIOD_LOCK_KEYS, PeriodLockCard } from "../components/PeriodLockCard";
 
 const KEY_LABELS: Record<string, string> = {
   "commission.default_rate": "نسبة العمولة الافتراضية (مثال: 0.10 = 10%)",
@@ -196,6 +197,10 @@ export function SettingsPage() {
           take one, and the button for that is the paragraph above. */}
       {hasPermission("ledger.migrate") && <LedgerMigrationCard />}
 
+      {/* Everybody sees where the line is, whether or not they may move it: being refused an
+          edit with no way to find out why is how people decide the system is broken. */}
+      <PeriodLockCard canEdit={hasPermission("period.lock")} canEditSettings={canEdit} />
+
       {message && <div className="text-sm bg-brand-50 text-brand-800 rounded-md p-3 mb-4">{message}</div>}
 
       <div className="card p-4 mb-4">
@@ -243,7 +248,9 @@ export function SettingsPage() {
       </div>
 
       <div className="space-y-4">
-        {settings.map((s) => (
+        {/* The three settings the lock runs on are managed by the card above, not typed into a
+            box: a month spelled by hand is how the boundary ends up a month out. */}
+        {settings.filter((s) => !PERIOD_LOCK_KEYS.includes(s.key)).map((s) => (
           <div key={s.key} className="card p-4">
             <label className="label">{KEY_LABELS[s.key] ?? s.key}</label>
             {s.key === HOUSE_DRIVER_KEY ? (

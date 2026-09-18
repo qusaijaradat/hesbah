@@ -65,16 +65,20 @@ public class PaymentService : IPaymentService
 {
     private readonly AppDbContext _db;
     private readonly IPartnerService _partners;
+    private readonly IPeriodLockService _periodLock;
 
-    public PaymentService(AppDbContext db, IPartnerService partners)
+    public PaymentService(AppDbContext db, IPartnerService partners, IPeriodLockService periodLock)
     {
         _db = db;
         _partners = partners;
+        _periodLock = periodLock;
     }
 
     public async Task<PaymentDto> CreateAsync(CreatePaymentRequest request, int recordedByUserId)
     {
         if (request.Amount <= 0) throw new ValidationAppException("Payment amount must be greater than zero.");
+
+        await _periodLock.EnsureOpenAsync(request.Date, "تسجيل دفعة");
 
         var partner = await ResolvePartnerAsync(request.PartnerId, request.PartnerName, request.Direction);
         var invoice = await ResolveInvoiceLinkAsync(request.InvoiceId, partner.Id, request.Direction);
@@ -196,6 +200,8 @@ public class PaymentService : IPaymentService
 
         var invoice = await ResolveInvoiceLinkAsync(request.InvoiceId, payment.PartnerId, payment.Direction);
 
+        await _periodLock.EnsureOpenAsync(payment.Date, request.Date, "تعديل دفعة");
+
         payment.Amount = request.Amount;
         payment.Date = request.Date;
         payment.Method = request.Method;
@@ -244,6 +250,8 @@ public class PaymentService : IPaymentService
     {
         var payment = await _db.Payments.SingleOrDefaultAsync(p => p.Id == id)
             ?? throw new NotFoundAppException("Payment", id);
+
+        await _periodLock.EnsureOpenAsync(payment.Date, "حذف دفعة");
 
         // A مقاصّة is one event written as two rows. Deleting half of it would leave the books out
         // by the amount — his buyer balance corrected and his seller balance not, or the reverse —
@@ -352,6 +360,8 @@ public class PaymentService : IPaymentService
         // page that should not exist for him.
         var onSeller = SettlementSides.TouchesSeller(partner.Type);
         var onBuyer = SettlementSides.TouchesBuyer(partner.Type);
+
+        await _periodLock.EnsureOpenAsync(request.Date, "تسوية على الحساب");
 
         var group = Guid.NewGuid();
         var notes = string.IsNullOrWhiteSpace(request.Notes)

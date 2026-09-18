@@ -33,11 +33,13 @@ public class GoodsService : IGoodsService
 {
     private readonly AppDbContext _db;
     private readonly IItemService _items;
+    private readonly IPeriodLockService _periodLock;
 
-    public GoodsService(AppDbContext db, IItemService items)
+    public GoodsService(AppDbContext db, IItemService items, IPeriodLockService periodLock)
     {
         _db = db;
         _items = items;
+        _periodLock = periodLock;
     }
 
     /// <summary>
@@ -238,6 +240,7 @@ public class GoodsService : IGoodsService
         if (!PartnerRoles.CanBe(farmer.Type, PartnerType.Farmer))
             throw new ValidationAppException($"الشخص المحدد ({farmer.Name}) ليس بائعًا — لا يمكن تسجيل بضاعة له.");
         ValidateLine(request.ItemName, request.Quantity, request.WoodQuantity, request.SackQuantity);
+        await _periodLock.EnsureOpenAsync(request.Date, "تسجيل بضاعة");
 
         // Same "type it once, pick it from a list every time after" growth as InvoiceService.
         await _items.FindOrCreateAsync(request.ItemName);
@@ -266,6 +269,7 @@ public class GoodsService : IGoodsService
     {
         var entry = await _db.FarmerGoodsEntries.FindAsync(id) ?? throw new NotFoundAppException("FarmerGoodsEntry", id);
         ValidateLine(request.ItemName, request.Quantity, request.WoodQuantity, request.SackQuantity);
+        await _periodLock.EnsureOpenAsync(entry.Date, request.Date, "تعديل بضاعة");
 
         await _items.FindOrCreateAsync(request.ItemName);
 
@@ -294,6 +298,7 @@ public class GoodsService : IGoodsService
     public async Task DeleteAsync(int id)
     {
         var entry = await _db.FarmerGoodsEntries.FindAsync(id) ?? throw new NotFoundAppException("FarmerGoodsEntry", id);
+        await _periodLock.EnsureOpenAsync(entry.Date, "حذف بضاعة");
         entry.IsDeleted = true;
         await _db.SaveChangesAsync();
     }

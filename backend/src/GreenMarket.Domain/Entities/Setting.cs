@@ -78,5 +78,23 @@ public class Setting
         /// counts as an outside one, which is what the system did before this existed.
         /// </summary>
         public const string HouseDriverPartnerId = "market.house_driver_partner_id";
+
+        /// <summary>
+        /// The last month closed to writing, as "2026-08" — everything on or before the 31st of it
+        /// is settled and may no longer be edited. Empty means nothing is closed.
+        ///
+        /// A month, not a date, because the market settles by the month; see
+        /// Domain.Services.PeriodLock for the rules and PeriodLockService for what enforces them.
+        /// </summary>
+        public const string PeriodLockedThrough = "period.locked_through";
+
+        /// <summary>Days after a month ends before it closes by itself. Zero turns the automatic
+        /// close off, leaving every month open until somebody presses the button.</summary>
+        public const string PeriodAutoLockDays = "period.auto_lock_days";
+
+        /// <summary>Written by a reopen, never by hand: while this day has not passed, the
+        /// automatic close stands down, so the month just opened is not shut again on the next
+        /// save. See PeriodLock.ReopenHoldDays.</summary>
+        public const string PeriodAutoLockHoldUntil = "period.auto_lock_hold_until";
     }
 }

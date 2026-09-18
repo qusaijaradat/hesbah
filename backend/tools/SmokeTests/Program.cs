@@ -998,5 +998,54 @@ Console.WriteLine("== الرصيد الافتتاحي is counted once (OpeningBa
 }
 
 Console.WriteLine();
+Console.WriteLine("== closing a settled month (PeriodLock) ==");
+{
+    // The bug this exists for: a statement is printed and paid against, and then somebody edits an
+    // invoice inside the month it covered. Everything below is asked of the date ON THE RECORD,
+    // never of the clock.
+    var aug = "2026-08";
+    Check("the last day of the closed month is still closed",
+          PeriodLock.Blocks(new DateTimeOffset(2026, 8, 31, 23, 0, 0, TimeSpan.Zero), aug));
+    Check("and the first day of the next one is open",
+          !PeriodLock.Blocks(new DateTimeOffset(2026, 9, 1, 0, 30, 0, TimeSpan.Zero), aug));
+    Check("a month before it is closed too",
+          PeriodLock.Blocks(new DateTimeOffset(2026, 3, 4, 12, 0, 0, TimeSpan.Zero), aug));
+    Check("nothing is closed when nothing was closed",
+          !PeriodLock.Blocks(new DateTimeOffset(2020, 1, 1, 0, 0, 0, TimeSpan.Zero), null));
+    // A value nobody can read must not be read as a lock: it would refuse real work with nothing
+    // on screen able to explain why.
+    Check("an unreadable setting blocks nothing",
+          !PeriodLock.Blocks(new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero), "شهر آب"));
+
+    // The automatic close, which is what makes this hold when nobody presses the button.
+    var sep20 = new DateOnly(2026, 9, 20);
+    Check("ten days after it ended, last month has closed itself",
+          PeriodLock.AutoTarget("2026-07", sep20, 10, null) == "2026-08");
+    Check("on a longer grace period it has not",
+          PeriodLock.AutoTarget("2026-07", new DateOnly(2026, 9, 5), 10, null) == "2026-07");
+    Check("zero days turns the automatic close off",
+          PeriodLock.AutoTarget("2026-07", sep20, 0, null) == "2026-07");
+    // Installing this must not silently seal a year of history on day one.
+    Check("it never starts on its own — nothing closed stays nothing closed",
+          PeriodLock.AutoTarget(null, sep20, 10, null) is null);
+    // A clock that comes back wrong after a restore, or a shortened grace period, must not reopen
+    // a month somebody closed.
+    Check("it only ever moves forward",
+          PeriodLock.AutoTarget("2026-08", new DateOnly(2026, 9, 1), 10, null) == "2026-08");
+
+    // Reopening: one month back, and the automatic close stands down long enough to fix the row.
+    var reopened = PeriodLock.AfterReopen("2026-08");
+    Check("reopening steps back exactly one month", reopened == "2026-07");
+    Check("and August is writable again",
+          !PeriodLock.Blocks(new DateTimeOffset(2026, 8, 20, 9, 0, 0, TimeSpan.Zero), reopened));
+    Check("July stays closed — opening one month is not opening the history",
+          PeriodLock.Blocks(new DateTimeOffset(2026, 7, 20, 9, 0, 0, TimeSpan.Zero), reopened));
+    // Without the hold, the very next save would close it again: the month is long over.
+    Check("the hold keeps it open while the correction is made",
+          PeriodLock.AutoTarget(reopened, sep20, 10, sep20.AddDays(2)) == "2026-07");
+    Check("and it closes again once the hold passes",
+          PeriodLock.AutoTarget(reopened, sep20, 10, sep20.AddDays(-1)) == "2026-08");
+}
+Console.WriteLine();
 Console.WriteLine($"RESULT: {passed} passed, {failed} failed");
 return failed == 0 ? 0 : 1;

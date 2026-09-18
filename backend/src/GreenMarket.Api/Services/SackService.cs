@@ -51,7 +51,13 @@ public class SackService : ISackService
 {
     private readonly AppDbContext _db;
 
-    public SackService(AppDbContext db) => _db = db;
+    private readonly IPeriodLockService _periodLock;
+
+    public SackService(AppDbContext db, IPeriodLockService periodLock)
+    {
+        _db = db;
+        _periodLock = periodLock;
+    }
 
     private const string NoKind = "بدون نوع";
 
@@ -114,6 +120,8 @@ public class SackService : ISackService
     {
         var partner = await _db.Partners.FindAsync(request.PartnerId)
             ?? throw new NotFoundAppException("Partner", request.PartnerId);
+
+        await _periodLock.EnsureOpenAsync(request.Date, "تسجيل حركة مخالات");
 
         var lines = (request.Lines ?? Array.Empty<SackLineRequest>())
             .Where(l => l.Quantity != 0)
@@ -184,6 +192,8 @@ public class SackService : ISackService
         if (movement.Type != ContainerType.Sack)
             throw new ValidationAppException("هاي الحركة مش مخالات — عدّلها من شاشة الصناديق.");
 
+        await _periodLock.EnsureOpenAsync(movement.Date, request.Date, "تعديل حركة مخالات");
+
         if (request.SackKindId is not null)
         {
             var exists = await _db.SackKinds.AnyAsync(k => k.Id == request.SackKindId.Value);
@@ -215,6 +225,7 @@ public class SackService : ISackService
             ?? throw new NotFoundAppException("Container movement", movementId);
         if (movement.Type != ContainerType.Sack)
             throw new ValidationAppException("هاي الحركة مش مخالات — امسحها من شاشة الصناديق.");
+        await _periodLock.EnsureOpenAsync(movement.Date, "حذف حركة مخالات");
         movement.IsDeleted = true;
         await _db.SaveChangesAsync();
     }

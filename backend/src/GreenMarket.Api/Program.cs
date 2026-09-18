@@ -57,6 +57,7 @@ builder.Services.AddScoped<IGoodsService, GoodsService>();
 builder.Services.AddScoped<IReportService, ReportService>();
 builder.Services.AddScoped<ISettingsService, SettingsService>();
 builder.Services.AddScoped<ILedgerMigrationService, LedgerMigrationService>();
+builder.Services.AddScoped<IPeriodLockService, PeriodLockService>();
 builder.Services.AddScoped<ICompanyLogoService, CompanyLogoService>();
 builder.Services.AddScoped<IAuditLogService, AuditLogService>();
 builder.Services.AddScoped<IBackupService, BackupService>();

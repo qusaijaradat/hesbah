@@ -23,11 +23,13 @@ public class GoodsReturnService : IGoodsReturnService
 {
     private readonly AppDbContext _db;
     private readonly ISettingsService _settings;
+    private readonly IPeriodLockService _periodLock;
 
-    public GoodsReturnService(AppDbContext db, ISettingsService settings)
+    public GoodsReturnService(AppDbContext db, ISettingsService settings, IPeriodLockService periodLock)
     {
         _db = db;
         _settings = settings;
+        _periodLock = periodLock;
     }
 
     public async Task<IReadOnlyList<GoodsReturnDto>> ListForInvoiceAsync(int invoiceId)
@@ -165,6 +167,8 @@ public class GoodsReturnService : IGoodsReturnService
         if (lines.Count == 0)
             throw new ValidationAppException("يجب إدخال كمية أكبر من صفر لصنف واحد على الأقل.");
 
+        await _periodLock.EnsureOpenAsync(request.Date, "تسجيل مرتجع");
+
         var goodsReturn = new GoodsReturn
         {
             InvoiceId = invoice.Id,
@@ -230,6 +234,8 @@ public class GoodsReturnService : IGoodsReturnService
             .Include(r => r.Items)
             .SingleOrDefaultAsync(r => r.Id == id)
             ?? throw new NotFoundAppException("GoodsReturn", id);
+
+        await _periodLock.EnsureOpenAsync(goodsReturn.Date, "حذف مرتجع");
 
         var invoice = await _db.Invoices
             .Include(i => i.Items)

@@ -21,11 +21,19 @@ public interface IExpenseService
 public class ExpenseService : IExpenseService
 {
     private readonly AppDbContext _db;
-    public ExpenseService(AppDbContext db) => _db = db;
+    private readonly IPeriodLockService _periodLock;
+
+    public ExpenseService(AppDbContext db, IPeriodLockService periodLock)
+    {
+        _db = db;
+        _periodLock = periodLock;
+    }
 
     public async Task<ExpenseDto> CreateAsync(CreateExpenseRequest request, int recordedByUserId)
     {
         if (request.Amount < 0) throw new ValidationAppException("Expense amount cannot be negative.");
+
+        await _periodLock.EnsureOpenAsync(request.Date, "تسجيل مصروف");
 
         var employee = await ResolveEmployeeAsync(request.EmployeeId);
 
@@ -80,6 +88,7 @@ public class ExpenseService : IExpenseService
         // subsequent save hit this same check. Relaxed to match CreateAsync's own behavior.
 
         var expense = await _db.Expenses.FindAsync(id) ?? throw new NotFoundAppException("Expense", id);
+        await _periodLock.EnsureOpenAsync(expense.Date, request.Date, "تعديل مصروف");
         var employee = await ResolveEmployeeAsync(request.EmployeeId);
 
         expense.Date = request.Date;
@@ -95,6 +104,7 @@ public class ExpenseService : IExpenseService
     public async Task DeleteAsync(int id)
     {
         var expense = await _db.Expenses.FindAsync(id) ?? throw new NotFoundAppException("Expense", id);
+        await _periodLock.EnsureOpenAsync(expense.Date, "حذف مصروف");
         expense.IsDeleted = true;
         await _db.SaveChangesAsync();
     }

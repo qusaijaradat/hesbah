@@ -184,6 +184,12 @@ public static class DbSeeder
             // existing database keeps whatever was set.
             new Setting { Key = Setting.Keys.BoxPrice, Value = "1", Description = "سعر الصندوق الواحد (₪) — يُطبّق تلقائيًا كرسم إضافي على كل فاتورة تحتوي أصناف بوحدة الصندوق، بالإضافة لأي سعر خشب يدوي على السطر." },
             new Setting { Key = Setting.Keys.DriverBoxFee, Value = "0.3", Description = "أجرة السائق عن كل صندوق (₪) — تُضاف تلقائيًا لأجرة النقل المستحقة للسائق. الفرق بينها وبين سعر الصندوق يبقى للمصلحة." },
+            // Empty on purpose: an existing system suddenly refusing edits to months nobody was
+            // told about is not a safety feature. The first close is a decision somebody makes,
+            // and from then on the automatic one keeps up with it.
+            new Setting { Key = Setting.Keys.PeriodLockedThrough, Value = "", Description = "آخر شهر مقفل (مثال: 2026-08) — ما بينقبل أي تعديل على فواتير أو دفعات أو مصاريف تاريخها ضمنه أو قبله. بيتظبط من بطاقة «قفل الفترة»." },
+            new Setting { Key = Setting.Keys.PeriodAutoLockDays, Value = "10", Description = "كم يوم بعد نهاية الشهر بينقفل لحاله. صفر = بطّل القفل التلقائي." },
+            new Setting { Key = Setting.Keys.PeriodAutoLockHoldUntil, Value = "", Description = "بيتكتب لحاله لما تفتح شهر مقفل — بوقّف القفل التلقائي لحد هالتاريخ." },
         };
 
         var existing = await db.Settings.Select(s => s.Key).ToListAsync();

@@ -46,19 +46,26 @@ public class InvoiceService : IInvoiceService
     private readonly ISettingsService _settings;
     private readonly IPartnerService _partners;
     private readonly IItemService _items;
+    private readonly IPeriodLockService _periodLock;
 
-    public InvoiceService(AppDbContext db, ISettingsService settings, IPartnerService partners, IItemService items)
+    public InvoiceService(AppDbContext db, ISettingsService settings, IPartnerService partners, IItemService items,
+        IPeriodLockService periodLock)
     {
         _db = db;
         _settings = settings;
         _partners = partners;
         _items = items;
+        _periodLock = periodLock;
     }
 
     public async Task<InvoiceDto> CreateAsync(CreateInvoiceRequest request, int recordedByUserId)
     {
         if (request.Items is null || request.Items.Count == 0)
             throw new ValidationAppException("An invoice must have at least one item.");
+
+        // A new invoice back-dated into a settled month changes that month as surely as editing
+        // one already in it does.
+        await _periodLock.EnsureOpenAsync(request.Date, "إنشاء فاتورة");
 
 
         // Previously unchecked — a negative value here flowed straight into GrandTotal and the
@@ -328,6 +335,8 @@ public class InvoiceService : IInvoiceService
         // No previousFarmerId: who the Sale row belongs to is read off the row itself now, since
         // the invoice's seller is no longer the only thing that decides it.
         var previousDriverId = invoice.DriverId;
+
+        await _periodLock.EnsureOpenAsync(invoice.Date, request.Date, "تعديل فاتورة");
 
         invoice.Date = request.Date;
         invoice.MerchantId = merchant.Id;
@@ -720,6 +729,10 @@ public class InvoiceService : IInvoiceService
         if (invoice.Status == InvoiceStatus.Cancelled)
             throw new ConflictAppException("Invoice is already cancelled.");
 
+        // Cancelling posts an offsetting row against the ORIGINAL invoice date, so it moves a
+        // settled month exactly as an edit would.
+        await _periodLock.EnsureOpenAsync(invoice.Date, "إلغاء فاتورة");
+
         invoice.Status = InvoiceStatus.Cancelled;
         invoice.CancelledAt = DateTimeOffset.UtcNow;
         invoice.CancelledByUserId = cancelledByUserId;
@@ -793,6 +806,8 @@ public class InvoiceService : IInvoiceService
     {
         var invoice = await _db.Invoices.SingleOrDefaultAsync(i => i.Id == id)
             ?? throw new NotFoundAppException("Invoice", id);
+
+        await _periodLock.EnsureOpenAsync(invoice.Date, "حذف فاتورة");
 
         var ledgerRows = await _db.FarmerTransactions.Where(t => t.InvoiceId == invoice.Id).ToListAsync();
         _db.FarmerTransactions.RemoveRange(ledgerRows);
@@ -897,6 +912,10 @@ public class InvoiceService : IInvoiceService
 
         if (invoice.Status == InvoiceStatus.Cancelled)
             throw new ConflictAppException("Cannot edit a cancelled invoice.");
+
+        // Both ends: changing the date of a settled invoice, and dragging an open one back into
+        // a settled month, are the same damage seen from either side.
+        await _periodLock.EnsureOpenAsync(invoice.Date, request.Date ?? invoice.Date, "تعديل فاتورة");
 
         // Captured before DriverId is overwritten — SyncDriverTransportRowAsync needs the old one.
         var previousDriverId = invoice.DriverId;

@@ -321,6 +321,17 @@ public static class PermissionKeys
     /// </summary>
     public const string LedgerMigrate = "ledger.migrate";
 
+    /// <summary>
+    /// Closing a settled month against further writing, and opening one back up.
+    ///
+    /// Its own key because the two halves of it are the same decision seen from either side:
+    /// whoever may declare a month finished is whoever may declare it unfinished again. It is not
+    /// an editing permission — it governs whether the editing permissions of permissions still reach
+    /// last month — so it belongs to whoever settles the accounts, not to everyone who may fix a
+    /// line on an invoice. Everybody can SEE where the line is without it.
+    /// </summary>
+    public const string PeriodLock = "period.lock";
+
     public static readonly string[] All =
     {
         InvoicesCreate, InvoicesEdit, InvoicesCancel, InvoicesDelete, InvoicesReturns, InvoicesView,
@@ -338,7 +349,7 @@ public static class PermissionKeys
         RolesView, RolesCreate, RolesEdit, RolesDelete,
         AuditView,
         BackupDownload,
-        LedgerMigrate
+        LedgerMigrate, PeriodLock
     };
 }
 

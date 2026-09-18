@@ -1009,3 +1009,25 @@ export interface PageReadRow {
   woodPrice?: number | null;
   transportFee?: number | null;
 }
+
+/**
+ * Which months are closed to writing, and what closes next.
+ *
+ * Every date here is a plain "yyyy-MM-dd" string and the month is "yyyy-MM" — calendar days the
+ * market names, not moments in time. As timestamps the browser would shift them by a timezone, and
+ * a lock that reads as ending the 31st on one phone and the 30th on another is worse than none.
+ */
+export interface PeriodLockStatusDto {
+  /** "2026-08", or null when nothing is closed yet. */
+  lockedThroughMonth: string | null;
+  /** The last closed day — the end of that month, spelled out. */
+  closedThrough: string | null;
+  /** Days after a month ends before it closes by itself. 0 = the automatic close is off. */
+  autoLockDays: number;
+  /** While this day has not passed, nothing closes by itself. Set by a reopen. */
+  holdUntil: string | null;
+  nextMonthToClose: string | null;
+  nextCloseOn: string | null;
+  /** The newest month that may be closed by hand, so the button and the server agree on which. */
+  closableNow: string;
+}
